@@ -22,6 +22,32 @@ files, and videos.
 
 ---
 
+## What's automatic on the free tier — and what isn't
+
+**Free Google Colab has no public run API.** Nothing can externally trigger a
+notebook cell to execute without you clicking ▶︎ at least once per session,
+and you still have to pick the T4 GPU runtime + tick "Notebook access" on each
+🔑 Secret. Everything **outside** those three clicks is fully automatic.
+
+| Step | Driver | Status |
+|---|---|---|
+| Edit code in Freebuff / repo | you | manual |
+| Push new commits to `origin/main` | Freebuff deploy token (`ghs_…`) embedded in the remote URL | **automatic** — every Freebuff save |
+| Compile-check `aeon.py` + JSON-validate `colab_runner.ipynb` | GitHub Actions on push to `main` (`.github/workflows/aeon-ci.yml`) | **automatic**; on success it prints the click-to-run URL |
+| Print click-to-run Colab badge URL with the latest short SHA | the same Actions run, on success | **automatic** |
+| Open the Colab notebook in your browser | you | **manual** — but the URL is one click from either the badge above, the Actions log, or the README header |
+| Pick the T4 GPU runtime | you (Runtime ▸ Change runtime type) | **manual** — free Colab's hard ceiling |
+| Pull the latest commit, install deps, run `aeon.py` | the launcher cell | **automatic** once you click ▶︎ |
+| Bot replies to Telegram messages | `aeon.py`'s `infinity_polling` | **automatic** while the cell runs |
+
+> **Bottom line:** the entire chain is automatic **except** the three clicks —
+> open the badge, choose T4 GPU, ▶︎ the cell. No GitHub Actions trick replaces
+> those on the free tier without violating Google Cloud ToS (headless
+> puppeteer/Chrome automation is detected and reCAPTCHA'd; the only legit
+> paid alternative is Colab Enterprise / Vertex AI Workbench).
+
+---
+
 ## Architecture (one file, but layered)
 
 | Layer | What it does | Lives in |
@@ -62,6 +88,10 @@ fallback. Marked as **required** or **recommended/optional** below.
 `telebot.parse_mode` is set to `"Markdown"` and replies are clipped to **3500
 chars** to stay under Telegram's per-message limit.
 
+The launcher cell **also** reads `GITHUB_TOKEN` (an *optional* fine-grained
+PAT with `Contents: Read`) — only needed if the repo is private. If the repo
+is public, leave `GITHUB_TOKEN` blank.
+
 ---
 
 ## How to run
@@ -82,9 +112,11 @@ Before you click ▶︎ on the launcher cell:
 1. **Runtime ▸ Change runtime type** → **T4 GPU** (free tier is fine; the
    launcher enforces no specific GPU but the GGUF model expects CUDA).
 2. Open the left sidebar **🔑 Secrets** panel and add each variable from the
-   table above, ticking **"Notebook access"** for every secret.
-3. *(optional, only if you also pasted them as `os.environ[...]` setting in
-   the cell)* — add a SETUP block.
+   table above (including `GITHUB_TOKEN` only if the repo is private),
+   ticking **"Notebook access"** for every secret.
+3. *(alternative)* — set `TELEGRAM_BOT_TOKEN`, `GROQ_API_KEY`, etc. as
+   `os.environ[...]` directly in the cell if you'd rather skip the Secrets
+   tab.
 
 ### To run outside Colab (Linux + NVIDIA GPU)
 
@@ -99,33 +131,46 @@ TELEGRAM_BOT_TOKEN=... GROQ_API_KEY=... GEMINI_API_KEY=... python aeon.py
 > Caveats outside Colab: the script will try to `from google.colab import
 > userdata` (fails gracefully and falls back to `os.getenv`), and it will try
 > to `drive.mount("/content/drive")` (also fails gracefully and falls back to
-> a local `/content/aeon_drive/`).
+> a local `/content/aeon_drive/` — already `.gitignore`d so it won't dirty
+> the repo).
 
 ---
 
 ## GitHub → Colab workflow
 
-This is the edit / push / run loop. It's **manual per push** (free Colab
-doesn't expose a public "trigger a run" API; CI-style automation would
-require Colab Enterprise / Vertex AI Workbench, which is paid). The mechanism
-is just `git pull` inside a launcher cell you re-run yourself.
+This is the edit / push / run loop. The IDE side is automatic (Freebuff
+auto-pushes on save via the embedded `ghs_…` deploy token). The cell side is
+automatic once per session you click ▶︎ (the launcher pulls + pip-installs +
+execs). What's manual is the badge click, the runtime choice, and the run
+button — see [the automation table above](#whats-automatic-on-the-free-tier--and-what-isnt).
 
 ```text
-                       GitHub: beatznlg/aeon  (this repo)
-                              ▲
-            ┌─────────────────┴────────────────┐
-            │   git push  /  edits via Freebuff │
-            └─────────────────┬────────────────┘
-                              ▼
-              colab_runner.ipynb (single cell)
-              ┌──────────────────────────────────────┐
-              │  1. !git clone or !git pull          │
-              │  2. pip install -r requirements.txt  │
-              │  3. exec(open("aeon.py").read())     │
-              └────────────────┬─────────────────────┘
-                               ▼
-                Colab runtime → aeon.py runs forever
-                (Telegram bot is live, replies to text/voice/photo/video)
+       (edit in Freebuff)
+                │
+        ┌───────▼────────┐
+        │  Freebuff UI    │  ← manual
+        └───────┬────────┘
+                │  git push (deploy token ghs_…)
+                ▼
+        github.com/beatznlg/aeon  (source of truth)  ← automatic
+                │
+                ▼
+        GitHub Actions: smoke-check aeon.py + notebook JSON
+        on-success print: https://colab.research.google.com/github/.../colab_runner.ipynb  ← automatic
+                │
+                ▼
+        (you click the badge or follow the URL)          ← manual
+                │
+                ▼
+        colab_runner.ipynb  →  T4 GPU  →  cell runs
+        ┌───────────────────────────────────────┐
+        │ 1. !git clone / !git pull (with PAT)  │
+        │ 2. pip install -r requirements.txt    │
+        │ 3. exec(open("aeon.py").read())       │
+        └─────────────┬─────────────────────────┘
+                      ▼
+           aeon.py runs forever on the latest commit;
+           bot replies on Telegram as long as the cell is alive
 ```
 
 ### Re-deploy after a push
@@ -137,21 +182,7 @@ is just `git pull` inside a launcher cell you re-run yourself.
    — `-q -r requirements.txt` only fetches what's missing), and re-exec
    `aeon.py` with the new commit.
 4. The `[launcher] HEAD = …` print line right before `%run` confirms which
-   commit you're on.
-
-### What this workflow is and isn't
-
-| ✅ Yes | ❌ No |
-| --- | --- |
-| Single badge click opens the latest launcher | No auto-redeploy when you push — you must hit Run again |
-| Pulls the latest `main` commit on each cell run | No background daemon — runtime idles 12h then disconnects |
-| Pip-deps are reproducible from `requirements.txt` | No paid Colab Enterprise / Workbench required |
-| Secrets live in Colab's Secrets tab, not in this repo | No CI tests run on this repo |
-| Same flow works for any future `.py` you add to the repo | Not a general "run any Python from GitHub" service — tuned to `aeon.py` |
-
-If you ever want push-triggered CI runs (e.g. a smoke-import check that
-`aeon.py` still parses), add a `.github/workflows/python-ci.yml` later —
-that's doable on free GitHub Actions and orthogonal to the Colab side.
+   commit you're on. Match it against the short SHA in your last Actions run.
 
 ---
 
@@ -168,7 +199,7 @@ web preview:
 - **`requirements.txt` is provided** so the *real* runtime (Colab, VPS,
   Hugging Face Space, etc.) can install with `pip install -r requirements.txt`.
 - **`colab_runner.ipynb` is provided** so editing code in this repo and
-  clicking Start in Colab is a two-step loop.
+  clicking the badge in Colab is a two-step loop.
 
 If you want a *runnable* Freebuff web preview, the project needs to be wrapped
 into something Freebuff can serve — e.g. a FastAPI control panel around the
@@ -180,8 +211,12 @@ bot — and that's a separate change from putting the bot in the repo.
 
 ```
 .
+├── .github/
+│   └── workflows/
+│       └── aeon-ci.yml    ← syntax check + notebook sanity on every push
 ├── README.md             ← this file
 ├── aeon.py               ← the entire single-cell bot
 ├── colab_runner.ipynb    ← Open-in-Colab launchpad (clone + pip + exec)
+├── .gitignore            ← Python cache, virtualenv, aeon_drive/, editor cruft
 └── requirements.txt      ← pip install -r requirements.txt
 ```

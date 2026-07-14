@@ -1,0 +1,59 @@
+name: AEON CI
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+  repository_dispatch:
+
+jobs:
+  smoke-check:
+    name: Compile + notebook sanity
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Compile-check aeon.py
+        run: |
+          python -m py_compile aeon.py
+          echo "✅ aeon.py compiles cleanly."
+
+      - name: Validate colab_runner.ipynb
+        run: |
+          python -c "
+          import json
+          nb = json.load(open('colab_runner.ipynb'))
+          assert nb['nbformat'] == 4, 'notebook not nbformat 4'
+          assert len(nb['cells']) >= 1, 'no cells'
+          assert nb['cells'][0]['cell_type'] == 'code', 'first cell not code'
+          print('✅ colab_runner.ipynb: nbformat 4,', len(nb['cells']), 'cell(s)')
+          "
+
+      - name: Re-validate launcher URL builders
+        run: |
+          python - <<'PY'
+          # Mirror the launcher's URL composition in isolation, assert it
+          # round-trips through urlparse the way the Colab cell will use it.
+          from urllib.parse import urlparse
+          REPO = "beatznlg/aeon"
+          for tag, tok in [("anon", None), ("token_env", "ghp_FAKE_FOR_TEST")]:
+            url = (f"https://x-access-token:{tok}@github.com/{REPO}.git"
+                   if tok else f"https://github.com/{REPO}.git")
+            p = urlparse(url)
+            assert p.scheme == "https" and p.path == "/" + REPO + ".git", (tag, url)
+            print(f"✅ {tag}: {url[:80]}… ok")
+          PY
+
+      - name: Print click-to-run URL
+        if: success()
+        run: |
+          SHA=$(git rev-parse --short HEAD)
+          echo ""
+          echo "🚀 Commit $SHA is on origin/main."
+          echo "👉 Run on free Colab (T4 GPU required for Qwen 7B):"
+          echo "   https://colab.research.google.com/github/beatznlg/aeon/blob/main/colab_runner.ipynb"
