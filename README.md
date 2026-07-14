@@ -62,7 +62,10 @@ and you still have to pick the T4 GPU runtime + tick "Notebook access" on each
 | **Multimodal** | Gemini 2.5 Flash for image description + audio transcription; edge-tts for voice replies; pollinations.ai for image gen | §10 |
 | **Parasite** | Falls back to Groq `llama-3.1-8b-instant` when the local brain is offline | §11 |
 | **`ask()`** | The single fused entry point: local → Groq → Gemini | §12 |
-| **Telegram surface** | pyTelegramBotAPI handlers for text, voice, audio, photo, video, plus `/start /status /wallet /skills /gen /say` | §13 |
+| **Telegram surface** | pyTelegramBotAPI handlers for text/voice/photo/video + 16 commands: `/start /status /wallet /skills /gen /say /wiki /github /ddg /hf /list_modules /source /seed_module /evolve /debug /rollback` | §13 |
+| **BuffsHub** | Free external API connectors: HF Inference (200/day), GitHub Code Search (60/day), Wikipedia REST, DuckDuckGo Instant Answer — auto-routed from `ask()` when query keywords trigger them, plus explicit `/wiki /github /ddg /hf` commands | added |
+| **ModuleStore** | AEON's mutable Python organs — pending → sandbox-test (subprocess + `ast.parse` + refuse-list) → promote, with backup/restore and hot-reload via `importlib` | added |
+| **SelfEditor** | AEON rewrites its own modules: `/evolve <module> <goal>` and `/debug <module>` loop up to 3 attempts then sandbox-promote + hot-reload, with `/rollback <module>` and traceback auto-capture in `tracebacks.jsonl` | added |
 | **Boot** | Writes a dated diary markdown, starts the asyncio loop in a background thread, begins polling with exponential backoff | §14 |
 
 ---
@@ -77,7 +80,7 @@ fallback. Marked as **required** or **recommended/optional** below.
 | `TELEGRAM_BOT_TOKEN` | **Required** to actually chat | The whole Telegram bot surface. Without it, AEON runs headless and logs a message. |
 | `GROQ_API_KEY` (alias `GROQ`) | Recommended | Free-tier Groq `llama-3.1-8b-instant` fallback when the local Qwen brain isn't loaded. |
 | `GEMINI_API_KEY` (aliases `GOOGLE_API_KEY`, `GEMINI`) | Recommended | Gemini 2.5 Flash — needed for **image understanding**, **video frame summarization**, and **audio/voice-note transcription**. Without it, photo / video / voice replies degrade to text-only. |
-| `HF_API_TOKEN` (alias `HF`) | Optional | Reserved for Hugging Face endpoints (script header mentions `musicgen`; not yet wired into `ask()`). |
+| `HF_API_TOKEN` (alias `HF`) | Recommended (for `/hf` buffs) | Activates `/hf <model> <prompt>` via HF Inference API — daily cap 200 enforced by `BuffsHub.hf()`; also powers any future HF routing in `ask()`. |
 | `WEB3_PRIVATE_KEY` (alias `WALLET_PK`) | Optional | Activates the Base L2 wallet, `/wallet` command, and `verify_payment()`. **Treat this like a password** — anyone with it can drain the account. |
 | `BASE_RPC` | Optional | Override Base RPC URL (defaults to `https://mainnet.base.org`). |
 | `AEON_LOG_LEVEL` | Optional | Standard logging level (defaults to `INFO`). |
@@ -183,6 +186,32 @@ button — see [the automation table above](#whats-automatic-on-the-free-tier--a
    `aeon.py` with the new commit.
 4. The `[launcher] HEAD = …` print line right before `%run` confirms which
    commit you're on. Match it against the short SHA in your last Actions run.
+
+---
+
+## Bot command cheat-sheet
+
+| Command | What it does |
+|---|---|
+| `/start` or `/help` | Show the welcome message and command list |
+| `/status` or `/heartbeat` | Vital signs: `skill_hit_rate` · `energy` · `disk` · `errors` · `queries` · `modules` · `buffs today` |
+| `/wallet` | Show Base L2 wallet balance (only meaningful if `WEB3_PRIVATE_KEY` set in 🔑 Secrets) |
+| `/skills` | List top-30 Skill DAG entries by call count |
+| `/gen <prompt>` | Generate an image via pollinations.ai and send it back |
+| `/say <text>` | Send a voice-note reply via edge-tts (en-US-AriaNeural) |
+| `/wiki <topic>` | Wikipedia REST summary (free, no key) — also auto-routed when the user prefixes the message with `wiki:` |
+| `/github <query>` | GitHub Code Search (free, no auth, daily cap 60 via `BuffsHub.github()`) |
+| `/ddg <query>` | DuckDuckGo Instant Answer (free, no key, daily cap 100) |
+| `/hf <model> <prompt>` | HF Inference API (free tier, daily cap 200, requires `HF_API_TOKEN` in 🔑 Secrets) |
+| `/list_modules` | AEON's mutable organs (modules under `MyDrive/aeon_alpha/modules/`) |
+| `/source <module>` | DM the current source of a module as a `.py` document |
+| `/seed_module <name>` | Create a minimal stub module so `/evolve` has something to improve |
+| `/evolve <module> <goal>` | Generate new module source via LLM → sandbox-promote → hot-reload (3 debug-loop attempts) |
+| `/debug <module> [traceback]` | Patch a module using the last traceback (errors auto-append to `tracebacks.jsonl`) |
+| `/rollback <module>` | Restore the most recent backup of a module |
+
+For ordinary chat just send a plain message. Photos with a caption exercise Gemini vision.
+Voice notes exercise Gemini multimodal audio. Videos exercise Gemini video-frame description.
 
 ---
 
