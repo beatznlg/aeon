@@ -1,41 +1,30 @@
-# AEON α — Python dependencies extracted from aeon.py
+# AEON v2.1 — Python dependencies
 #
 # Install with:
 #   pip install -r requirements.txt
 #
-# Note: AEON α is intended to run in Google Colab on a T4 GPU. llama-cpp-python
-# needs either prebuilt wheels matching your Python version, or a C++ toolchain.
-# openai-whisper pulls in PyTorch. Expect a multi-minute install on a fresh
-# Colab runtime.
+# Note: AEON v2.1 is intended to run in Google Colab on a T4 GPU.
+# transformers + bitsandbytes will download Qwen2.5-3B-Instruct on first boot.
+# Expect a multi-minute install on a fresh Colab runtime.
 
-# --- core LLM + retrieval ---
-llama-cpp-python==0.2.90
-sentence-transformers>=3.0
-faiss-cpu>=1.8
+# --- core LLM + embeddings ---
+transformers==4.44.2
+torch
+sentence-transformers==3.0.1
+bitsandbytes
+accelerate
 
-# --- Telegram surface ---
-pyTelegramBotAPI
-
-# --- HTTP / async ---
-httpx
+# --- web / parsing ---
 requests
+beautifulsoup4
 
-# --- data + config ---
-pydantic>=2.5
-zstandard
+# --- math / graph / tokenization ---
+sympy
+networkx
+tiktoken
+
+# --- numerics ---
 numpy
 
-# --- system / sandbox ---
-psutil
-
-# --- math / symbolic ---
-sympy
-
-# --- speech / images ---
-edge-tts
-opencv-python
-
-# --- optional / lazy ---
-google-generativeai   # Gemini multimodal (vision + audio transcription)
-web3                  # Base L2 wallet (only needed if WEB3_PRIVATE_KEY is set)
-openai-whisper        # explicitly imported in the script (transcription fallback)
+# --- optional / future ---
+flask>=3.0
