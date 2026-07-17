@@ -212,6 +212,110 @@ AEON's Python kernel or to `requirements.txt`.
 
 ---
 
+## Closed-loop deployment (three free services, one app)
+
+The repo is wired so **all four pieces** of the architecture can talk to
+each other end-to-end, each on a free tier:
+
+```
+┌────────────────┐    SSE    ┌────────────────┐  HTTP/WS  ┌─────────────────────────┐
+│ Browser        │ ────────▶ │ Vercel Edge    │ ────────▶ │ AEON kernel             │
+│ web/app/page   │           │ /api/chat route│           │ (HF Spaces, ZeroGPU)    │
+│ (useChat +     │           │   @gradio/     │           │  AeonKernel.tick()      │
+│  Supabase UI)  │           │   client +     │           │  + Qwen 3-bit on GPU    │
+└───────┬────────┘           │   fallback)    │           └────────────┬────────────┘
+        │                    └────────────────┘                        │
+        │                                                             │
+        │                  ┌────────────────┐                         │
+        └────────────────▶ │  Supabase      │ ◀───────────────────────┘
+                           │  episodes      │   EpisodicStore.append()
+                           │  + future      │   cloud mirror
+                           └────────────────┘
+```
+
+### Step 1. AEON brain on Hugging Face Spaces (the permanent GPU host)
+
+Equivalent to running your Colab session **permanently with a T4/A100**.
+
+1. Create a fresh Space: <https://huggingface.co/new-space> → SDK **Gradio**,
+   hardware **ZeroGPU** (free A100 slices on demand).
+2. Push these three files from the repo root into your Space:
+   - `aeon.py` (the kernel — unchanged)
+   - `aeon_app_gradio.py` (the Gradio wrapper created in this integration)
+   - `requirements.txt`
+3. In **Space Settings ▸ Variables and secrets**, add `HUGGINGFACE_TOKEN`
+   so the Qwen 3-bit download works on first request.
+4. Wait ~2 minutes for the Space to boot. Visit
+   `https://<your-username>-aeon-kernel.hf.space` and confirm
+   the chat works directly there.
+
+### Step 2. Vercel frontend setup
+
+```bash
+cd web
+npx vercel                 # one-time project creation
+```
+
+Then in **Project Settings ▸ Environment Variables**, paste these four
+keys (copy from `web/.env.example` for the right names):
+
+| Variable | Prefix | Required | Purpose |
+|---|---|---|---|
+| `HUGGINGFACE_TOKEN` | none (server) | yes | Used by `/api/chat` if it falls back to direct HF Inference API. |
+| `NEXT_PUBLIC_SUPABASE_URL` | `NEXT_PUBLIC_` | recommended | Browser's recent-episode panel + per-turn write through the UI. |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `NEXT_PUBLIC_` | recommended | Pairs with the URL above. |
+| `AEON_HF_SPACE_URL` | none (server) | recommended | **The closed-loop wire.** URL of your HF Space from Step 1, without trailing `/chat`. When set, the Vercel route proxies AEON's `tick()` from there. When unset, the route falls back to the HF Inference API directly. |
+| `SUPABASE_SERVICE_ROLE_KEY` | none (server) | optional | Server-side write log inside `/api/chat`. Do **NOT** add `NEXT_PUBLIC_` prefix — it grants DB override rights. |
+
+`npx vercel --prod` for the production deploy.
+
+### Step 3. Supabase one-time schema (you already did this in turn 9)
+
+Already documented under [Supabase integration](#supabase-integration)
+above. The `episodes` table already exists once the AEON Python side has
+written to it once; the web frontend will read from the same table.
+
+### Step 4. Verify the closed loop
+
+1. Visit `https://aeon-web-<hash>.vercel.app`
+2. Send a prompt; you should see it stream from the AEON HF Space.
+3. Refresh the page; your recent turn should appear in the **Memories**
+   panel (loaded from Supabase).
+4. Open the Supabase dashboard → **Table Editor ▸ episodes** — each turn
+   is there with `ref` like `web_ui` (sent from the browser) or
+   `web_api_aeon_kernel` (logged by the server route).
+
+### What runs where
+
+| Component | Runs on | Free tier? | Notes |
+|---|---|---|---|
+| `web/` Next.js app | Vercel Edge | ✅ | Static + Serverless, no time limit. |
+| `web/app/api/chat` route | Vercel Edge Function | ✅ | Talks to AEON via `@gradio/client` directly from Vercel — **no Vercel proxy buffering beyond ~30 s**. |
+| AEON kernel `tick()` | Hugging Face Spaces (Gradio SDK) | ✅ ZeroGPU | Real GPU on demand; same Qwen code path that previously only ran on Colab T4. |
+| AEON self-tests | Colab (dev surface) | ✅ | Used interactively while developing; not on the request path. |
+| AEON's EpisodicStore | Google Drive (dev) + Supabase `episodes` (prod) | ✅ | Cloud mirror is automatic whenever `SUPABASE_URL` + a key are set. |
+
+### Why this is better than Vercel-talks-to-HF-Inference-direct
+
+When `AEON_HF_SPACE_URL` is set, the call path is now:
+
+```
+Vercel Edge → AEON kernel → Qwen 3-bit model on real GPU
+   (Bypasses HF Inference API's strict rate limits.)
+```
+
+This means:
+
+- ✅ Every Vercel user gets a real GPU inference result, not a 503 "model loading" from the HF queue.
+- ✅ AEON's tools (`math`, `search`, `fetch`, `read_skill`, `write_skill`) actually run for every Vercel prompt — the inference path used to skip them.
+- ✅ Each prompt contributes a row to `episodes` regardless of which model backend served it.
+
+When `AEON_HF_SPACE_URL` is **not** set, the route gracefully falls back to
+the original HF Inference API direct call (still uses `HUGGINGFACE_TOKEN`).
+This keeps the Vercel deploy working even before you finish Step 1.
+
+---
+
 ## How to run
 
 The canonical way to run AEON v2.1 is to **click the "Open in Colab" badge at
