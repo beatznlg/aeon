@@ -370,6 +370,71 @@ def _tool_github_search(args, root):
         return True, "\n".join(summary)[:1000]
     return False, res.get("error", "github search failed")
 
+
+_API_CATALOG_CACHE = None
+
+@_register("api_catalog_search")
+def _tool_api_catalog_search(args, root):
+    """Search the public-apis catalog: args={query?, auth?}."""
+    global _API_CATALOG_CACHE
+    if _API_CATALOG_CACHE is None:
+        try:
+            r = requests.get(
+                "https://raw.githubusercontent.com/public-apis/public-apis/master/README.md",
+                timeout=10)
+            if r.status_code != 200:
+                return False, "catalog http " + str(r.status_code)
+            catalog = []
+            category = ""
+            for line in r.text.split("\n"):
+                if line.startswith("### "):
+                    category = line[4:].strip()
+                elif line.strip().startswith("|") and "---" not in line:
+                    parts = [p.strip() for p in line.split("|")][1:-1]
+                    if len(parts) >= 5 and parts[0].lower() != "api":
+                        catalog.append({
+                            "API": parts[0],
+                            "Description": parts[1],
+                            "Auth": parts[2],
+                            "HTTPS": parts[3],
+                            "CORS": parts[4],
+                            "Category": category,
+                        })
+            _API_CATALOG_CACHE = catalog
+        except Exception as e:
+            return False, "catalog fetch err " + type(e).__name__ + ": " + str(e)
+
+    q = args.get("query", "").lower()
+    auth = args.get("auth", "").lower()
+    res = []
+    for item in _API_CATALOG_CACHE:
+        if q and not any(q in item[k].lower() for k in ("API", "Description", "Category")):
+            continue
+        if auth and auth != item["Auth"].lower():
+            continue
+        res.append(item)
+
+    return True, json.dumps(res[:10], ensure_ascii=False)
+
+
+@_register("api_fetch")
+def _tool_api_fetch(args, root):
+    """Safely fetch a public URL: args={url}."""
+    url = args.get("url", "")
+    if not url.startswith(("http://", "https://")):
+        return False, "invalid scheme (requires http/https)"
+    try:
+        r = requests.get(url, stream=True, timeout=5)
+        r.raise_for_status()
+        ctype = r.headers.get("Content-Type", "").lower()
+        if not ("text/" in ctype or "application/json" in ctype):
+            return False, "unsupported content-type: " + ctype
+        content = r.raw.read(1024 * 100, decode_content=True)
+        return True, content.decode("utf-8", errors="replace")[:3000]
+    except Exception as e:
+        return False, "api_fetch err " + type(e).__name__ + ": " + str(e)
+
+
 def _with_timeout(sec):
     class Timeout(Exception): pass
     def handler(s, f): raise Timeout()
@@ -960,8 +1025,11 @@ class ReflectiveAgent:
             "Format tool calls ONLY as JSON: "
             '{"tool":"math","args":{"expr":"integrate(x**2, x)"}} '
             '{"tool":"github_search","args":{"query":"python retry decorator"}} '
+            '{"tool":"api_catalog_search","args":{"query":"weather","auth":"no"}} '
+            '{"tool":"api_fetch","args":{"url":"https://api.example.com/data"}} '
             "Available tools: math, search, fetch, read_skill, write_skill, "
-            "github_search, bounty_list, bounty_submit, service_quote. "
+            "github_search, api_catalog_search, api_fetch, "
+            "bounty_list, bounty_submit, service_quote. "
             "Always answer the question; do not refuse.")
         out = QW.generate(query, system=sys_prompt)
         body = out["text"]
@@ -1175,6 +1243,23 @@ def _test():
     assert _submit["ok"] is True
     assert _submit["reward"] == _b1["reward"]
     assert _rev_ledger.balance("ETH") > 0.4
+    print("  PASS")
+
+    print("self-test 11: api_catalog_search")
+    cat_res = _safe_run("api_catalog_search", {"query": "cat", "auth": "no"}, str(ROOT))
+    assert cat_res["ok"] is True
+    assert "cat" in cat_res["output"].lower()
+    print("  PASS")
+
+    print("self-test 12: api_fetch")
+    # Reject non-http schemes
+    bad_fetch = _safe_run("api_fetch", {"url": "file:///etc/passwd"}, str(ROOT))
+    assert bad_fetch["ok"] is False
+    assert "invalid scheme" in bad_fetch["output"]
+    # Fetch a known safe endpoint (public-apis README)
+    good_fetch = _safe_run("api_fetch", {"url": "https://raw.githubusercontent.com/public-apis/public-apis/master/README.md"}, str(ROOT))
+    assert good_fetch["ok"] is True
+    assert "public" in good_fetch["output"].lower()
     print("  PASS")
 
     print("all self-tests passed.")
