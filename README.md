@@ -208,7 +208,21 @@ source of truth in offline mode; the cloud sink is graceful-fire-and-forget
      for select using (auth.role() = 'anon');
    create policy "service write" on episodes
      for insert with check (auth.role() = 'service_role');
+
+   -- Index for the AEON "last N episodes" query pattern
+   -- (chat UI calls /api/memories/tail with .order('id', ascending=false).limit(N))
+   create index if not exists episodes_id_desc_idx on episodes (id desc);
+
+   -- Optional: cap the `text` column at the same 2000 chars the web client
+   -- trims to; prevents accidental junk uploads inflating the table.
+   -- Comment out if you'd rather keep it unbounded.
+   -- alter table episodes add constraint episodes_text_len check (length(text) <= 2000);
    ```
+
+4. (Verify step, last 30 seconds)  In the **Supabase ▸ Table Editor**,
+   confirm the `episodes` table appears with 5 columns: `id` (bigint,
+   auto-increment), `ts` (numeric), `kind` (text), `text` (text), `ref`
+   (text, nullable).  RLS should be "enabled" on the table.
 
 ### Programmatic usage (after the cell has run)
 
