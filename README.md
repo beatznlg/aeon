@@ -69,6 +69,9 @@ These are read via `os.getenv` (the launcher can also inject them). Marked as
 | --- | --- | --- |
 | `HUGGINGFACE_TOKEN` | Recommended | Hugging Face access token. Unlocks (a) Hub model downloads when `QwenPolicy` loads `Qwen/Qwen2.5-3B-Instruct` via `transformers`, and (b) the new `HFClient` serverless Inference API call used as a lightweight third backend. Create one for free at <https://huggingface.co/settings/tokens>. |
 | `AEON_HF_TOKEN` | Back-compat alias | Same effect as `HUGGINGFACE_TOKEN`; `HUGGINGFACE_TOKEN` takes precedence. Kept so older configs still work without edits. |
+| `SUPABASE_URL` | Optional | Project URL from your free Supabase dashboard, e.g. `https://xyz.supabase.co`. Activates the `SupabaseClient` and `EpisodicStore.append`'s optional cloud sink. Create one free at <https://supabase.com/dashboard>. |
+| `SUPABASE_ANON_KEY` | Optional | Public anon JWT issued by Supabase. Together with `SUPABASE_URL` activates the optional Postgres sync of every `EpisodicStore` row. Prefer the **service-role** key if you want server-only writes from a non-AEON CLI. |
+| `SUPABASE_SERVICE_ROLE_KEY` | Optional | Server-side admin JWT (treat as secret). Used only when `SUPABASE_ANON_KEY` is not set. |
 | `AEON_ROOT` | Optional | Override the state root path (defaults to `/content/aeon_state` on Colab). |
 | `GITHUB_TOKEN` | Optional | Fine-grained PAT with `Contents: Read` — only needed if this repo is private. |
 
@@ -96,6 +99,47 @@ HFC.generate("hi")   # -> {"ok": True, "output": "...!"}
 
 Be aware the Inference API is rate-limited and small models sometimes
 return HTTP 503 ("model loading") on first call — retry once.
+
+---
+
+## Supabase integration
+
+AEON also supports **optional Postgres persistence** via Supabase. When
+`SUPABASE_URL` plus an anon or service-role key are present, every
+`EpisodicStore.append(...)` is mirrored to a free Postgres table in
+addition to the local `history.jsonl`. The local file remains the
+source of truth in offline mode; the cloud sink is graceful-fire-and-forget
+(wrapped in a try/except so a Supabase outage never breaks the kernel).
+
+### One-time setup (≈ 90 seconds)
+
+1. Create a free project at <https://supabase.com/dashboard> (no card).
+2. In **Project Settings ▸ API**, copy:
+   - **Project URL** → set as `SUPABASE_URL`
+   - **anon public** key → set as `SUPABASE_ANON_KEY`
+3. In **SQL Editor**, run **once**:
+
+   ```sql
+   create table episodes (
+     id  bigint primary key generated always as identity,
+     ts  float8 not null,
+     kind text  not null,
+     text text  not null,
+     ref  text
+   );
+   ```
+
+### Programmatic usage (after the cell has run)
+
+```python
+SBC.whoami()        # -> {"ok": True, "url": "https://xyz.supabase.co"}  # auth OK
+SBC.ping()          # -> {"ok": True, "rows": 0}                         # table reachable
+SBC.tail(5)         # -> {"ok": True, "rows": [{...}, ...]}             # most recent 5 episodes
+```
+
+The `SupabaseClient` is built on `requests` against PostgREST
+(`<SUPABASE_URL>/rest/v1/episodes`) — no `supabase-py` SDK is added to
+`requirements.txt`, keeping the dep footprint identical to AEON v2.1.
 
 ---
 

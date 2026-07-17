@@ -55,6 +55,23 @@ def _resolve_hf_token():
             or None)
 
 
+# === Supabase creds resolution ============================================
+def _resolve_supabase_creds():
+    """
+    Returns {"url": ..., "key": ...} if both URL and a key are set, else None.
+    Accepts SUPABASE_ANON_KEY (preferred for browser/demo use) or
+    SUPABASE_SERVICE_ROLE_KEY (server-side writes; treat as secret).
+    """
+    url = os.environ.get("SUPABASE_URL")
+    if not url:
+        return None
+    key = (os.environ.get("SUPABASE_ANON_KEY")
+           or os.environ.get("SUPABASE_SERVICE_ROLE_KEY"))
+    if not key:
+        return None
+    return {"url": url, "key": key}
+
+
 # === IBC (deterministic continuous to symbolic binding) ================
 class IBC:
     def __init__(self, dim=64, scale=64, eps=0.05):
@@ -119,6 +136,10 @@ class EpisodicStore:
         with self.path.open("a") as f:
             f.write(json.dumps(rec) + "\n")
         self.window.append(json.dumps(rec))
+        # Optional cloud sink; never raise (degrades gracefully when offline).
+        if SBC.creds:
+            try: SBC.insert_episode(rec)
+            except Exception: pass
         return rec
 
     def window_bytes(self):
@@ -282,6 +303,116 @@ class HFClient:
             return {"ok": False, "error": type(e).__name__}
 
 HFC = HFClient()
+
+
+# === SupabaseClient (Postgres persistence via PostgREST) =================
+class SupabaseClient:
+    """
+    Thin wrapper over the Supabase PostgREST endpoint
+    (<SUPABASE_URL>/rest/v1). Lets AEON optionally persist its
+    EpisodicStore rows to a free Postgres database without pulling in the
+    supabase-py SDK stack (gotrue, postgrest, httpx, pydantic).
+
+    Activates when SUPABASE_URL + (SUPABASE_ANON_KEY or
+    SUPABASE_SERVICE_ROLE_KEY) are in env. Otherwise `creds is None`,
+    and all methods behave as no-ops returning {"ok": False, "error":
+    "creds-not-set"}.
+
+    The one-time schema (run once in supabase.com dashboard SQL editor):
+      create table episodes (
+        id  bigint primary key generated always as identity,
+        ts  float8 not null,
+        kind text  not null,
+        text text  not null,
+        ref  text
+      );
+    """
+    def __init__(self, table="episodes"):
+        self.creds = _resolve_supabase_creds()
+        self.table = table
+        if self.creds:
+            self.base = self.creds["url"].rstrip("/") + "/rest/v1"
+            self.headers = {
+                "apikey": self.creds["key"],
+                "Authorization": "Bearer " + self.creds["key"],
+                "Content-Type": "application/json",
+                "Prefer": "return=minimal",
+            }
+
+    def _check_set(self):
+        if not self.creds:
+            return {"ok": False, "error": "SUPABASE_URL + (SUPABASE_ANON_KEY or SUPABASE_SERVICE_ROLE_KEY) not set"}
+        return None
+
+    def insert_episode(self, record):
+        """Insert one episode row (dict with 'ts','kind','text' keys; 'ref' optional)."""
+        bad = self._check_set()
+        if bad: return bad
+        try:
+            import requests as _r
+            body = [{"ts": float(record.get("ts", time.time())),
+                     "kind": str(record.get("kind", "obs")),
+                     "text": str(record.get("text", ""))[:2000],
+                     "ref": (str(record["ref"])[:200]
+                             if "ref" in record and record["ref"] is not None
+                             else None)}]
+            r = _r.post(self.base + "/" + self.table,
+                headers=self.headers, json=body, timeout=10)
+            if r.status_code not in (200, 201, 204):
+                return {"ok": False, "error": "HTTP " + str(r.status_code) +
+                        ": " + r.text[:200]}
+            return {"ok": True, "status": r.status_code}
+        except Exception as e:
+            return {"ok": False, "error": type(e).__name__ + ": " + str(e)}
+
+    def tail(self, n=5):
+        """Return the last n episode rows (most recent first)."""
+        bad = self._check_set()
+        if bad: return bad
+        try:
+            import requests as _r
+            r = _r.get(self.base + "/" + self.table +
+                       "?select=id,ts,kind,text,ref&order=id.desc&limit=" + str(n),
+                headers=self.headers, timeout=10)
+            if r.status_code != 200:
+                return {"ok": False, "error": "HTTP " + str(r.status_code),
+                        "rows": []}
+            return {"ok": True, "rows": r.json()}
+        except Exception as e:
+            return {"ok": False, "error": type(e).__name__, "rows": []}
+
+    def ping(self):
+        """Cheap liveness: query one row by id."""
+        bad = self._check_set()
+        if bad: return bad
+        try:
+            import requests as _r
+            r = _r.get(self.base + "/" + self.table + "?select=id&limit=1",
+                headers=self.headers, timeout=10)
+            if r.status_code == 200:
+                return {"ok": True, "rows": len(r.json())}
+            return {"ok": False, "error": "HTTP " + str(r.status_code)}
+        except Exception as e:
+            return {"ok": False, "error": type(e).__name__}
+
+    def whoami(self):
+        """
+        Validate auth without needing any table: hit the PostgREST root,
+        which returns the OpenAPI spec on success.
+        """
+        bad = self._check_set()
+        if bad: return bad
+        try:
+            import requests as _r
+            r = _r.get(self.base + "/", headers=self.headers, timeout=10)
+            if r.status_code == 200 and "openapi" in r.text[:200].lower():
+                return {"ok": True, "url": self.creds["url"]}
+            return {"ok": False, "error": "HTTP " + str(r.status_code),
+                    "snippet": r.text[:120]}
+        except Exception as e:
+            return {"ok": False, "error": type(e).__name__}
+
+SBC = SupabaseClient()
 
 
 # === Tool registry (sandboxed with SIGALRM timeout) ====================
@@ -482,6 +613,48 @@ def _test():
     hfc = HFClient()
     # HFC should not raise; even without a real token, __init__ is safe.
     assert isinstance(hfc.token, (str, type(None)))
+    print("  PASS")
+
+    print("self-test 6: Supabase env wiring & safe init (zero network)")
+    saved_url = os.environ.get("SUPABASE_URL")
+    saved_anon = os.environ.get("SUPABASE_ANON_KEY")
+    saved_role = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+    try:
+        for k in ("SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY"):
+            os.environ.pop(k, None)
+        assert _resolve_supabase_creds() is None, "creds should be None when both unset"
+
+        os.environ["SUPABASE_URL"] = "https://mock.supabase.co"
+        os.environ["SUPABASE_ANON_KEY"] = "anon_mock"
+        c1 = _resolve_supabase_creds()
+        assert c1 == {"url": "https://mock.supabase.co", "key": "anon_mock"}, \
+            "URL+anon must resolve"
+
+        del os.environ["SUPABASE_ANON_KEY"]
+        os.environ["SUPABASE_SERVICE_ROLE_KEY"] = "service_mock"
+        c2 = _resolve_supabase_creds()
+        assert c2 == {"url": "https://mock.supabase.co", "key": "service_mock"}, \
+            "URL+service_role must resolve when anon absent"
+
+        os.environ["SUPABASE_ANON_KEY"] = "anon_mock"
+        c3 = _resolve_supabase_creds()
+        assert c3["key"] == "anon_mock", "anon must win when both keys set"
+
+        os.environ.pop("SUPABASE_URL", None)
+        sbc_mock = SupabaseClient()
+        assert sbc_mock.creds is None, "client must be inert without creds"
+        bad = sbc_mock.insert_episode({"ts": 1.0, "kind": "obs", "text": "x"})
+        assert bad is not None and bad.get("ok") is False, \
+            "insert_episode must short-circuit when creds missing"
+        assert sbc_mock._check_set() is not None, "check_set must surface error"
+    finally:
+        for k, saved in (("SUPABASE_URL", saved_url),
+                         ("SUPABASE_ANON_KEY", saved_anon),
+                         ("SUPABASE_SERVICE_ROLE_KEY", saved_role)):
+            if saved is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = saved
     print("  PASS")
 
     print("all self-tests passed.")
