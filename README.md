@@ -1,4 +1,4 @@
-# AEON v2.1
+# AEON v3.0
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/beatznlg/aeon/blob/main/colab_runner.ipynb)
 
@@ -7,12 +7,13 @@
 > [`aeon.py`](./aeon.py). Push to `main` → re-run the cell → AEON is on the new
 > code. See [GitHub → Colab workflow](#github-→-colab-workflow) below.
 
-AEON v2.1 is a minimal-but-complete autonomous kernel in one Python file. It
-combines a deterministic **IBC** symbolic-binding layer, a typed **knowledge
-graph**, an causal-credit eligibility-trace learner, an episodic store, and a
-lazy-loading **Qwen2.5-3B-Instruct** policy (via `transformers` + `bitsandbytes`
-on GPU, stub fallback on CPU). A small tool registry (`math`, `search`, `fetch`,
-`read_skill`, `write_skill`) is sandboxed with `SIGALRM` timeouts.
+AEON v3.0 is a self-improving autonomous agent in one Python file. It builds on
+the v2.1 kernel (IBC, KG, CausalCredit, episodic store, Qwen2.5-3B-Instruct)
+and adds a **ReflectiveAgent** with triad memory, persistent goals, a
+self-model, a **CodeSandbox/CodeEvolver** for generating new tools, a
+**Web3Client** hot wallet on Base testnet, and a **revenue/service layer**
+(ledger, service registry, mock bounty board). All tools run under
+`SIGALRM` timeouts and the whole file self-tests on load.
 
 The whole thing is one Python file: [`aeon.py`](./aeon.py). On first run it
 self-tests, then runs a short demo, then exits. It is designed to be executed

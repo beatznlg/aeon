@@ -28,3 +28,4 @@ numpy
 
 # --- optional / future ---
 flask>=3.0
+web3

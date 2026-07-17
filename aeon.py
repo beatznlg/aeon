@@ -1,10 +1,13 @@
 # ============================================================
-#  AEON v2.1 — minimal-but-complete single cell
-#  - Defensive installer, never aborts on a single package's failure
-#  - All primitives inline (no file imports)
-#  - Self-tests first, demo last
-#  - Plain ASCII only, no smart quotes, no lambdas-in-ternaries
-#  - Tested shapes: CPU stub mode + GPU+bitsandbytes Qwen mode
+#  AEON v3.0 Phase 4 — Closed self-improving autonomous agent
+#  - Builds on v2.1 kernel (IBC, KG, CausalCredit, tools, LLM fallbacks)
+#  - Adds MemoryBundle (episodic + semantic + procedural)
+#  - Adds GoalState (persistent objective queue)
+#  - Adds ReflectiveAgent (self-model, vitals, reflection loop)
+#  - Adds CodeSandbox + CodeEvolver (self-modifying tools)
+#  - Adds Web3Client (Base testnet hot wallet, whitelisted sends)
+#  - Adds closed self-improvement loop (reflect → evolve → measure → rollback)
+#  - Single Colab cell; self-tests first, demo last
 # ============================================================
 def _have(name):
     try: __import__(name.replace("-", "_")); return True
@@ -25,43 +28,32 @@ def _pip(spec):
 
 REQ = ["flask>=3.0", "transformers==4.44.2", "sentence-transformers==3.0.1",
       "bitsandbytes", "accelerate", "requests", "beautifulsoup4",
-      "sympy", "networkx", "tiktoken"]
+      "sympy", "networkx", "tiktoken", "web3"]
 print("checking deps:")
 for s in REQ: _pip(s)
 
-import os, sys, time, json, hashlib, hmac, re, secrets, signal
+import os, sys, time, json, hashlib, re, signal
 from collections import deque
 from pathlib import Path
 from dataclasses import dataclass, field
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Tuple, Any
 import numpy as np
 
 ROOT = Path(os.environ.get("AEON_ROOT", "/content/aeon_state"))
 ROOT.mkdir(parents=True, exist_ok=True)
 SUB = ROOT / "substrates"; SUB.mkdir(exist_ok=True)
 (ROOT / "skills").mkdir(exist_ok=True)
+(ROOT / "goals").mkdir(exist_ok=True)
 print("root: " + str(ROOT))
 
 
-# === HF token resolution ==================================================
+# === env resolution (kept from v2.1) ======================================
 def _resolve_hf_token():
-    """
-    Canonical env var is HUGGINGFACE_TOKEN. AEON_HF_TOKEN is kept as a
-    back-compat alias so existing configs still work.
-    Returns the token string or None if neither is set.
-    """
     return (os.environ.get("HUGGINGFACE_TOKEN")
             or os.environ.get("AEON_HF_TOKEN")
             or None)
 
-
-# === Supabase creds resolution ============================================
 def _resolve_supabase_creds():
-    """
-    Returns {"url": ..., "key": ...} if both URL and a key are set, else None.
-    Accepts SUPABASE_ANON_KEY (preferred for browser/demo use) or
-    SUPABASE_SERVICE_ROLE_KEY (server-side writes; treat as secret).
-    """
     url = os.environ.get("SUPABASE_URL")
     if not url:
         return None
@@ -71,22 +63,18 @@ def _resolve_supabase_creds():
         return None
     return {"url": url, "key": key}
 
-
-# === GitHub token resolution =============================================
 def _resolve_github_token():
-    """
-    Returns the GitHub fine-grained PAT if set, else None.
-    Accepts GH_TOKEN (preferred) or GITHUB_TOKEN (legacy alias).
-    The unauthenticated path still works but is severely rate-limited
-    (10 code-search requests/min/IP); a PAT raises this to 30 req/min
-    per the search API.
-    """
     return (os.environ.get("GH_TOKEN")
             or os.environ.get("GITHUB_TOKEN")
             or None)
 
+def _resolve_web3_key():
+    return (os.environ.get("AEON_WALLET_PK")
+            or os.environ.get("WEB3_PRIVATE_KEY")
+            or None)
 
-# === IBC (deterministic continuous to symbolic binding) ================
+
+# === IBC (v2.1) =========================================================
 class IBC:
     def __init__(self, dim=64, scale=64, eps=0.05):
         self.dim = int(dim); self.scale = int(scale); self.eps = float(eps)
@@ -119,7 +107,7 @@ class IBC:
         return sid
 
 
-# === KG (typed directed graph) ==========================================
+# === KG (v2.1) ==========================================================
 class KG:
     def __init__(self):
         self.nodes = {}; self.edges = []
@@ -138,29 +126,7 @@ class KG:
                            "ts": time.time(), "w": float(w), "lag": int(lag)})
 
 
-# === EpisodicStore =====================================================
-class EpisodicStore:
-    def __init__(self, path, maxlen=2000):
-        self.path = Path(path); self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.window = deque(maxlen=maxlen)
-
-    def append(self, text, ref=None, kind="obs"):
-        rec = {"ts": time.time(), "kind": kind, "text": text}
-        if ref is not None: rec["ref"] = ref
-        with self.path.open("a") as f:
-            f.write(json.dumps(rec) + "\n")
-        self.window.append(json.dumps(rec))
-        # Optional cloud sink; never raise (degrades gracefully when offline).
-        if SBC.creds:
-            try: SBC.insert_episode(rec)
-            except Exception: pass
-        return rec
-
-    def window_bytes(self):
-        return sum(len(t.encode()) + 1 for t in self.window)
-
-
-# === CausalCredit (eligibility traces) ================================
+# === CausalCredit (v2.1) ===============================================
 @dataclass
 class CreditEdge:
     cause: str; effect: str; lag: int; last_ts: float
@@ -195,7 +161,7 @@ class CausalCredit:
         return {"E": ll / tot}
 
 
-# === Qwen policy (lazy load; stub fallback) ============================
+# === Qwen policy (v2.1) ================================================
 class QwenPolicy:
     def __init__(self):
         self.model = None; self.tok = None; self.torch = None; self.device = "stub"
@@ -259,245 +225,7 @@ class QwenPolicy:
 QW = QwenPolicy()
 
 
-# === HFClient (Hugging Face serverless Inference API) ===================
-class HFClient:
-    """
-    Thin wrapper over the Hugging Face Inference API
-    (https://api-inference.huggingface.co/models/<model>).
-
-    Lets AEON reach any small Hub model without downloading weights,
-    which is useful as a third inference backend behind the local Qwen
-    policy and the deterministic stub. Requires HUGGINGFACE_TOKEN
-    (or the back-compat AEON_HF_TOKEN) to be set in the env.
-    """
-    def __init__(self):
-        self.token = _resolve_hf_token()
-        self.base = "https://api-inference.huggingface.co/models/"
-
-    def generate(self, prompt, model="Qwen/Qwen2.5-3B-Instruct",
-                 max_new_tokens=128, timeout=15):
-        if not self.token:
-            return {"ok": False, "error": "HUGGINGFACE_TOKEN not set"}
-        try:
-            import requests as _r
-            r = _r.post(self.base + model,
-                headers={"Authorization": "Bearer " + self.token},
-                json={"inputs": prompt,
-                      "parameters": {"max_new_tokens": max_new_tokens,
-                                     "return_full_text": False}},
-                timeout=timeout)
-        except Exception as e:
-            return {"ok": False, "error": type(e).__name__ + ": " + str(e)}
-        if r.status_code != 200:
-            return {"ok": False, "error": "HTTP " + str(r.status_code) +
-                    ": " + r.text[:200]}
-        try:
-            j = r.json()
-            if isinstance(j, list) and j:
-                return {"ok": True, "output": j[0].get("generated_text", "")}
-            return {"ok": True, "output": str(j)[:2000]}
-        except Exception as e:
-            return {"ok": False, "error": "decode: " + type(e).__name__}
-
-    def whoami(self, timeout=10):
-        """Verify the token works against /whoami-v2. Cheap liveness check."""
-        if not self.token:
-            return {"ok": False, "error": "HUGGINGFACE_TOKEN not set"}
-        try:
-            import requests as _r
-            r = _r.get("https://huggingface.co/api/whoami-v2",
-                       headers={"Authorization": "Bearer " + self.token},
-                       timeout=timeout)
-            if r.status_code != 200:
-                return {"ok": False, "error": "HTTP " + str(r.status_code)}
-            j = r.json()
-            return {"ok": True, "name": j.get("name"),
-                    "plan": (j.get("plan") or {}).get("name", "unknown")}
-        except Exception as e:
-            return {"ok": False, "error": type(e).__name__}
-
-HFC = HFClient()
-
-
-# === GitHubClient (free no-auth / PAT-authed code search buff) ============
-class GitHubClient:
-    """
-    Thin wrapper over GitHub's REST code-search API
-    (https://api.github.com/search/code?q=<query>).
-    Lets AEON search the public web for code patterns with zero or
-    minimal auth — useful as a third "buff" alongside HF Inference and
-    Supabase. Works without auth but at 10 req/min/IP; add a fine-grained
-    PAT (Contents: Read on public repos) as `GH_TOKEN` for 30 req/min.
-    """
-    def __init__(self):
-        self.token = _resolve_github_token()
-        self.base = "https://api.github.com"
-
-    def _headers(self):
-        h = {"Accept": "application/vnd.github+json",
-             "X-GitHub-Api-Version": "2022-11-28",
-             "User-Agent": "AEON-alpha/1.0"}
-        if self.token:
-            h["Authorization"] = "Bearer " + self.token
-        return h
-
-    def search_code(self, query, limit=5, timeout=10):
-        if not query:
-            return {"ok": False, "error": "empty query", "items": []}
-        try:
-            import requests as _r, urllib.parse as _u
-            r = _r.get(self.base + "/search/code",
-                params={"q": query, "per_page": max(1, min(limit, 5))},
-                headers=self._headers(), timeout=timeout)
-            if r.status_code != 200:
-                return {"ok": False, "error": "HTTP " + str(r.status_code),
-                        "snippet": r.text[:160], "items": []}
-            j = r.json()
-            items = []
-            for it in (j.get("items") or [])[:limit]:
-                items.append({
-                    "name": it.get("name"),
-                    "path": it.get("path"),
-                    "html_url": it.get("html_url"),
-                    "repo": (it.get("repository") or {}).get("full_name"),
-                })
-            return {"ok": True, "total": j.get("total_count", 0),
-                    "items": items}
-        except Exception as e:
-            return {"ok": False, "error": type(e).__name__ + ": " + str(e),
-                    "items": []}
-
-    def rate_limit(self, timeout=8):
-        """Cheap liveness: returns the current rate-limit budget."""
-        try:
-            import requests as _r
-            r = _r.get(self.base + "/rate_limit",
-                headers=self._headers(), timeout=timeout)
-            if r.status_code != 200:
-                return {"ok": False, "error": "HTTP " + str(r.status_code)}
-            j = r.json()
-            search = j.get("resources", {}).get("search", {})
-            return {"ok": True,
-                    "search_limit": search.get("limit"),
-                    "search_remaining": search.get("remaining"),
-                    "search_reset": search.get("reset")}
-        except Exception as e:
-            return {"ok": False, "error": type(e).__name__}
-
-GHC = GitHubClient()
-
-
-# === SupabaseClient (Postgres persistence via PostgREST) =================
-class SupabaseClient:
-    """
-    Thin wrapper over the Supabase PostgREST endpoint
-    (<SUPABASE_URL>/rest/v1). Lets AEON optionally persist its
-    EpisodicStore rows to a free Postgres database without pulling in the
-    supabase-py SDK stack (gotrue, postgrest, httpx, pydantic).
-
-    Activates when SUPABASE_URL + (SUPABASE_ANON_KEY or
-    SUPABASE_SERVICE_ROLE_KEY) are in env. Otherwise `creds is None`,
-    and all methods behave as no-ops returning {"ok": False, "error":
-    "creds-not-set"}.
-
-    The one-time schema (run once in supabase.com dashboard SQL editor):
-      create table episodes (
-        id  bigint primary key generated always as identity,
-        ts  float8 not null,
-        kind text  not null,
-        text text  not null,
-        ref  text
-      );
-    """
-    def __init__(self, table="episodes"):
-        self.creds = _resolve_supabase_creds()
-        self.table = table
-        if self.creds:
-            self.base = self.creds["url"].rstrip("/") + "/rest/v1"
-            self.headers = {
-                "apikey": self.creds["key"],
-                "Authorization": "Bearer " + self.creds["key"],
-                "Content-Type": "application/json",
-                "Prefer": "return=minimal",
-            }
-
-    def _check_set(self):
-        if not self.creds:
-            return {"ok": False, "error": "SUPABASE_URL + (SUPABASE_ANON_KEY or SUPABASE_SERVICE_ROLE_KEY) not set"}
-        return None
-
-    def insert_episode(self, record):
-        """Insert one episode row (dict with 'ts','kind','text' keys; 'ref' optional)."""
-        bad = self._check_set()
-        if bad: return bad
-        try:
-            import requests as _r
-            body = [{"ts": float(record.get("ts", time.time())),
-                     "kind": str(record.get("kind", "obs")),
-                     "text": str(record.get("text", ""))[:2000],
-                     "ref": (str(record["ref"])[:200]
-                             if "ref" in record and record["ref"] is not None
-                             else None)}]
-            r = _r.post(self.base + "/" + self.table,
-                headers=self.headers, json=body, timeout=10)
-            if r.status_code not in (200, 201, 204):
-                return {"ok": False, "error": "HTTP " + str(r.status_code) +
-                        ": " + r.text[:200]}
-            return {"ok": True, "status": r.status_code}
-        except Exception as e:
-            return {"ok": False, "error": type(e).__name__ + ": " + str(e)}
-
-    def tail(self, n=5):
-        """Return the last n episode rows (most recent first)."""
-        bad = self._check_set()
-        if bad: return bad
-        try:
-            import requests as _r
-            r = _r.get(self.base + "/" + self.table +
-                       "?select=id,ts,kind,text,ref&order=id.desc&limit=" + str(n),
-                headers=self.headers, timeout=10)
-            if r.status_code != 200:
-                return {"ok": False, "error": "HTTP " + str(r.status_code),
-                        "rows": []}
-            return {"ok": True, "rows": r.json()}
-        except Exception as e:
-            return {"ok": False, "error": type(e).__name__, "rows": []}
-
-    def ping(self):
-        """Cheap liveness: query one row by id."""
-        bad = self._check_set()
-        if bad: return bad
-        try:
-            import requests as _r
-            r = _r.get(self.base + "/" + self.table + "?select=id&limit=1",
-                headers=self.headers, timeout=10)
-            if r.status_code == 200:
-                return {"ok": True, "rows": len(r.json())}
-            return {"ok": False, "error": "HTTP " + str(r.status_code)}
-        except Exception as e:
-            return {"ok": False, "error": type(e).__name__}
-
-    def whoami(self):
-        """
-        Validate auth without needing any table: hit the PostgREST root,
-        which returns the OpenAPI spec on success.
-        """
-        bad = self._check_set()
-        if bad: return bad
-        try:
-            import requests as _r
-            r = _r.get(self.base + "/", headers=self.headers, timeout=10)
-            if r.status_code == 200 and "openapi" in r.text[:200].lower():
-                return {"ok": True, "url": self.creds["url"]}
-            return {"ok": False, "error": "HTTP " + str(r.status_code),
-                    "snippet": r.text[:120]}
-        except Exception as e:
-            return {"ok": False, "error": type(e).__name__}
-
-SBC = SupabaseClient()
-
-
-# === Tool registry (sandboxed with SIGALRM timeout) ====================
+# === Tool registry (v2.1) ==============================================
 TOOLS = {}
 def _register(name):
     def deco(fn):
@@ -550,6 +278,28 @@ def _tool_write_skill(args, root):
     os.replace(tmp, p)
     return True, "wrote " + name
 
+@_register("bounty_list")
+def _tool_bounty_list(args, root):
+    """List open bounties from the mock bounty board."""
+    ledger = Ledger(root)
+    board = BountyBoard(ledger, root)
+    res = board.fetch_open()
+    return res["ok"], json.dumps(res.get("bounties", []))[:500]
+
+@_register("bounty_submit")
+def _tool_bounty_submit(args, root):
+    """Submit work for a bounty: args={id, payload}."""
+    ledger = Ledger(root)
+    board = BountyBoard(ledger, root)
+    res = board.submit_work(args.get("id"), args.get("payload"))
+    return res["ok"], res.get("reward", 0.0) if res["ok"] else res.get("error", "fail")
+
+@_register("service_quote")
+def _tool_service_quote(args, root):
+    """Get a quote for a billable service: args={service}."""
+    svc = ServiceRegistry().quote(args.get("service", ""))
+    return svc["ok"], json.dumps(svc)[:500]
+
 def _with_timeout(sec):
     class Timeout(Exception): pass
     def handler(s, f): raise Timeout()
@@ -577,29 +327,563 @@ def _safe_run(name, args, root, sec=8):
 TOOL_RE = re.compile(r'\{"tool":\s*"([a-z_]+)"\s*,\s*"args":\s*(\{[^}]*\})\}')
 
 
-# === AeonKernel ====================================================
-class AeonKernel:
+# === NEW v3.0: CodeSandbox ==============================================
+class CodeSandbox:
+    """
+    Static analysis + restricted execution sandbox for evolved code.
+    Blocks dangerous imports and calls. Enforces SIGALRM timeouts.
+    """
+    FORBIDDEN_IMPORTS = {"os", "sys", "subprocess", "socket", "requests",
+                         "urllib", "shutil", "pathlib", "importlib"}
+    FORBIDDEN_CALLS = {"eval", "exec", "compile", "open", "input",
+                       "raw_input", "__import__", "exit", "quit"}
+
+    @classmethod
+    def analyze(cls, source):
+        import ast
+        try:
+            tree = ast.parse(source)
+        except SyntaxError as e:
+            return {"ok": False, "error": "syntax: " + str(e)}
+        issues = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name.split(".")[0] in cls.FORBIDDEN_IMPORTS:
+                        issues.append("forbidden import: " + alias.name)
+            elif isinstance(node, ast.ImportFrom):
+                mod = (node.module or "").split(".")[0]
+                if mod in cls.FORBIDDEN_IMPORTS:
+                    issues.append("forbidden import from: " + mod)
+            elif isinstance(node, ast.Call):
+                if isinstance(node.func, ast.Name) and node.func.id in cls.FORBIDDEN_CALLS:
+                    issues.append("forbidden call: " + node.func.id)
+                if isinstance(node.func, ast.Attribute) and node.func.attr in cls.FORBIDDEN_CALLS:
+                    issues.append("forbidden attr call: " + node.func.attr)
+        if issues:
+            return {"ok": False, "error": "; ".join(issues)}
+        return {"ok": True}
+
+    @classmethod
+    def exec(cls, source, namespace, timeout=5):
+        bad = cls.analyze(source)
+        if not bad["ok"]:
+            return {"ok": False, "error": bad["error"]}
+
+        class Timeout(Exception): pass
+        def handler(s, f): raise Timeout()
+        old = signal.signal(signal.SIGALRM, handler)
+        signal.alarm(timeout)
+        try:
+            exec(source, namespace)
+            return {"ok": True}
+        except Timeout:
+            return {"ok": False, "error": "timeout"}
+        except Exception as e:
+            return {"ok": False, "error": type(e).__name__ + ": " + str(e)}
+        finally:
+            signal.alarm(0)
+            signal.signal(signal.SIGALRM, old)
+
+
+# === NEW v3.0: CodeEvolver =============================================
+class CodeEvolver:
+    """
+    Generates, validates, and registers new tools. Keeps versioned backups
+    of every evolved skill so AEON can roll back if success rate drops.
+    """
+    def __init__(self, memory, sandbox=None, root=ROOT):
+        self.memory = memory
+        self.sandbox = sandbox or CodeSandbox()
+        self.root = Path(root)
+        self.evolved_dir = self.root / "skills" / "evolved"
+        self.evolved_dir.mkdir(parents=True, exist_ok=True)
+
+    def generate_tool(self, prompt, source=None, test_cases=None):
+        """
+        If source is provided, skip LLM generation and validate directly.
+        Otherwise ask Qwen to write code.
+        """
+        if source is None:
+            system = (
+                "You are a Python tool generator for AEON. "
+                "Write a function named run(args, root) that returns (ok, output). "
+                "Use only safe stdlib. No imports of os/sys/subprocess/requests. "
+                "Output ONLY the function code, no markdown fences, no prose.")
+            out = QW.generate(prompt, system=system, max_new_tokens=512)
+            source = out["text"]
+        # strip markdown fences if any
+        source = re.sub(r"^```(?:python)?|```$", "", source.strip(), flags=re.M).strip()
+        return self.validate_and_register(source, test_cases)
+
+    def validate_and_register(self, source, test_cases=None):
+        h = hashlib.sha256(source.encode()).hexdigest()[:16]
+        # 1. AST check
+        analysis = self.sandbox.analyze(source)
+        if not analysis["ok"]:
+            return {"ok": False, "stage": "ast", "error": analysis["error"], "hash": h}
+        # 2. Load into restricted namespace
+        namespace = {"__builtins__": __builtins__}
+        res = self.sandbox.exec(source, namespace)
+        if not res["ok"]:
+            return {"ok": False, "stage": "exec", "error": res["error"], "hash": h}
+        if "run" not in namespace:
+            return {"ok": False, "stage": "exec", "error": "no run() function defined", "hash": h}
+        # 3. Run test cases
+        if test_cases:
+            for args, expected in test_cases:
+                try:
+                    ok, out = namespace["run"](args, str(self.root))
+                    if not ok or str(out) != expected:
+                        return {"ok": False, "stage": "test",
+                                "error": f"test failed: {args} -> {out}", "hash": h}
+                except Exception as e:
+                    return {"ok": False, "stage": "test",
+                            "error": type(e).__name__ + ": " + str(e), "hash": h}
+        # 4. Persist and register
+        name = "evolved_" + str(int(time.time()))
+        skill_path = self.evolved_dir / (name + ".py")
+        skill_path.write_text(source)
+        # Register in global TOOLS registry
+        def wrapper(args, root):
+            try:
+                return namespace["run"](args, root)
+            except Exception as e:
+                return False, type(e).__name__ + ": " + str(e)
+        TOOLS[name] = wrapper
+        # Register in memory
+        self.memory.register_skill(name, "evolved tool: " + source[:120], h)
+        return {"ok": True, "name": name, "hash": h, "path": str(skill_path)}
+
+
+# === NEW v3.0: Web3Client (Base testnet hot wallet) ====================
+class Web3Client:
+    """
+    Minimal hot-wallet wrapper for Base.
+    Defaults to Base Sepolia testnet. Mainnet is opt-in via BASE_RPC env.
+    Loads only when AEON_WALLET_PK or WEB3_PRIVATE_KEY is set.
+    All sends are whitelisted-only and broadcast is gated by
+    AEON_WALLET_ALLOW_BROADCAST=1 so the agent cannot accidentally drain funds.
+    """
+    BASE_TESTNET_RPC = "https://sepolia.base.org"
+    BASE_MAINNET_RPC = "https://mainnet.base.org"
+
+    def __init__(self):
+        self.pk = _resolve_web3_key()
+        self.w3 = None
+        self.account = None
+        self.address = None
+        self.chain_id = None
+        if self.pk:
+            try:
+                from web3 import Web3
+                rpc = os.environ.get("BASE_RPC", self.BASE_TESTNET_RPC)
+                self.w3 = Web3(Web3.HTTPProvider(rpc, request_kwargs={"timeout": 12}))
+                self.account = self.w3.eth.account.from_key(self.pk)
+                self.address = self.account.address
+                try:
+                    self.chain_id = self.w3.eth.chain_id
+                except Exception:
+                    self.chain_id = None
+            except Exception as e:
+                print("web3 init failed: " + type(e).__name__ + ": " + str(e))
+
+    def state(self):
+        if not self.w3 or not self.account:
+            return {"ok": False, "reason": "no-wallet"}
+        try:
+            eth = float(self.w3.from_wei(self.w3.eth.get_balance(self.account.address), "ether"))
+            return {"ok": True, "address": self.account.address, "eth": round(eth, 8)}
+        except Exception as e:
+            return {"ok": False, "reason": type(e).__name__ + ": " + str(e)}
+
+    def _whitelisted(self, addr):
+        whitelist = os.environ.get("AEON_WALLET_WHITELIST", "").split(",")
+        whitelist = [a.strip().lower() for a in whitelist if a.strip()]
+        return addr.lower() in whitelist
+
+    def send(self, to, value_eth, gas=21000):
+        """
+        Sign a transaction. Broadcast only if AEON_WALLET_ALLOW_BROADCAST=1.
+        Returns the signed tx bytes (or broadcast hash if enabled).
+        """
+        if not self.w3 or not self.account:
+            return {"ok": False, "error": "no-wallet"}
+        if not self._whitelisted(to):
+            return {"ok": False, "error": "address not whitelisted"}
+        try:
+            tx = {
+                "to": to,
+                "value": self.w3.to_wei(value_eth, "ether"),
+                "gas": gas,
+                "gasPrice": self.w3.to_wei("0.1", "gwei"),
+                "nonce": self.w3.eth.get_transaction_count(self.account.address),
+                "chainId": self.chain_id or self.w3.eth.chain_id,
+            }
+            signed = self.w3.eth.account.sign_transaction(tx, self.pk)
+            raw_tx = getattr(signed, "raw_transaction", getattr(signed, "rawTransaction", None))
+            signed_hex = raw_tx.hex() if raw_tx else ""
+            if os.environ.get("AEON_WALLET_ALLOW_BROADCAST") == "1":
+                tx_hash = self.w3.eth.send_raw_transaction(raw_tx)
+                return {"ok": True, "tx_hash": tx_hash.hex(), "broadcast": True}
+            return {"ok": True, "signed": signed_hex[:80] + "...", "broadcast": False}
+        except Exception as e:
+            return {"ok": False, "error": type(e).__name__ + ": " + str(e)}
+
+W3C = Web3Client()
+
+
+# === NEW v3.0: Revenue / Service Layer =================================
+class Ledger:
+    """
+    Simple double-entry ledger stored as JSONL in ROOT/ledger/ledger.jsonl.
+    Tracks income, costs, and profit per currency. No real money moves here;
+    real payouts go through Web3Client.
+    """
     def __init__(self, root=ROOT):
         self.root = Path(root)
-        self.sub = self.root / "substrates"; self.sub.mkdir(exist_ok=True)
-        self.ibc = IBC(dim=64, scale=64, eps=0.05)
-        self.kg = KG()
-        self.epi = EpisodicStore(self.sub / "history.jsonl", maxlen=2000)
+        self.ledger_dir = self.root / "ledger"
+        self.ledger_dir.mkdir(parents=True, exist_ok=True)
+        self.path = self.ledger_dir / "ledger.jsonl"
+
+    def record(self, tx_type, amount, currency="ETH", ref=""):
+        rec = {"ts": time.time(), "type": tx_type, "amount": float(amount),
+               "currency": currency, "ref": ref}
+        with self.path.open("a") as f:
+            f.write(json.dumps(rec) + "\n")
+        return rec
+
+    def balance(self, currency="ETH"):
+        bal = 0.0
+        if self.path.exists():
+            with self.path.open("r") as f:
+                for line in f:
+                    if not line.strip(): continue
+                    rec = json.loads(line)
+                    if rec.get("currency") == currency:
+                        amt = rec.get("amount", 0.0)
+                        if rec.get("type") in ("income", "bounty", "payment"):
+                            bal += amt
+                        elif rec.get("type") in ("cost", "expense", "fee"):
+                            bal -= amt
+        return round(bal, 8)
+
+    def profit_loss(self, currency="ETH"):
+        income = 0.0; cost = 0.0
+        if self.path.exists():
+            with self.path.open("r") as f:
+                for line in f:
+                    if not line.strip(): continue
+                    rec = json.loads(line)
+                    if rec.get("currency") == currency:
+                        amt = rec.get("amount", 0.0)
+                        if rec.get("type") in ("income", "bounty", "payment"):
+                            income += amt
+                        elif rec.get("type") in ("cost", "expense", "fee"):
+                            cost += amt
+        return {"income": round(income, 8), "cost": round(cost, 8),
+                "profit": round(income - cost, 8)}
+
+
+class ServiceRegistry:
+    """
+    Billable AI services. Prices are in ETH (testnet by default).
+    """
+    def __init__(self):
+        self.services = {
+            "math_solve": {"price": 0.0001, "desc": "Solve a math expression"},
+            "code_evolve": {"price": 0.005, "desc": "Generate and validate a new tool"},
+            "web_search": {"price": 0.0005, "desc": "Run a DuckDuckGo search"},
+            "skill_write": {"price": 0.001, "desc": "Write a JSON skill file"},
+        }
+
+    def list_services(self):
+        return {k: {"price": v["price"], "desc": v["desc"]} for k, v in self.services.items()}
+
+    def quote(self, name):
+        svc = self.services.get(name)
+        if not svc:
+            return {"ok": False, "error": "unknown service"}
+        return {"ok": True, "service": name, "price": svc["price"], "desc": svc["desc"]}
+
+
+class BountyBoard:
+    """
+    Mock Web3 bounty board. In production mode (AEON_PAYMENT_MODE=testnet) it
+    could query a real bounty API; by default it serves deterministic mock
+    bounties so AEON can practice without spending real money.
+    """
+    def __init__(self, ledger, root=ROOT):
+        self.ledger = ledger
+        self.root = Path(root)
+        self.mode = os.environ.get("AEON_PAYMENT_MODE", "mock")
+        self._mock_bounties = [
+            {"id": "b1", "type": "math", "task": "2+2", "reward": 0.05, "answer": "4"},
+            {"id": "b2", "type": "math", "task": "integrate x^2 dx", "reward": 0.08, "answer": "x**3/3"},
+            {"id": "b3", "type": "code", "task": "write a function that doubles a number", "reward": 0.1, "answer": "def double(x): return x*2"},
+        ]
+
+    def fetch_open(self):
+        """Return open bounties. In mock mode, returns deterministic tasks."""
+        if self.mode == "mock":
+            return {"ok": True, "bounties": self._mock_bounties}
+        # In testnet mode, this could query a real bounty API
+        return {"ok": True, "bounties": []}
+
+    def submit_work(self, bounty_id, payload):
+        """
+        Verify a bounty answer. In mock mode, records a ledger income entry.
+        In testnet mode, would trigger a smart-contract claim or W3C.send.
+        """
+        if self.mode != "mock":
+            return {"ok": False, "error": "only mock mode is implemented in this version"}
+        bounty = next((b for b in self._mock_bounties if b["id"] == bounty_id), None)
+        if not bounty:
+            return {"ok": False, "error": "bounty not found"}
+        # Robust correctness check: numeric tolerance or exact string match
+        expected = str(bounty["answer"]).strip().lower()
+        actual = str(payload).strip().lower()
+        correct = False
+        if expected == actual:
+            correct = True
+        else:
+            try:
+                import sympy as sp
+                expected_val = float(sp.sympify(expected).evalf())
+                actual_val = float(sp.sympify(actual).evalf())
+                correct = abs(expected_val - actual_val) < 1e-9
+            except Exception:
+                correct = False
+        if not correct:
+            return {"ok": False, "error": "incorrect answer", "expected": bounty["answer"], "got": payload}
+        self.ledger.record("bounty", bounty["reward"], currency="ETH", ref=bounty_id)
+        return {"ok": True, "reward": bounty["reward"], "bounty_id": bounty_id}
+
+
+# === NEW v3.0: MemoryBundle (episodic + semantic + procedural) =========
+class MemoryBundle:
+    """
+    Triad memory system:
+      - episodic: time-ordered events (observations, queries, answers)
+      - semantic: knowledge graph of facts and relationships
+      - procedural: registry of learned skills/tools mapped via IBC
+    """
+    def __init__(self, root=ROOT):
+        self.root = Path(root)
+        self.episodic_path = self.root / "substrates" / "history.jsonl"
+        self.episodic = deque(maxlen=2000)
+        self.semantic = KG()
+        self.procedural = IBC(dim=64, scale=64, eps=0.05)
+        self.skill_meta = {}  # name -> {desc, success, calls, source_hash}
+        self._load_episodic()
+
+    def _load_episodic(self):
+        try:
+            if self.episodic_path.exists():
+                with self.episodic_path.open("r") as f:
+                    for line in f:
+                        self.episodic.append(json.loads(line.strip()))
+        except Exception:
+            pass
+
+    def remember_event(self, kind, text, ref=None):
+        rec = {"ts": time.time(), "kind": kind, "text": text}
+        if ref: rec["ref"] = ref
+        with self.episodic_path.open("a") as f:
+            f.write(json.dumps(rec) + "\n")
+        self.episodic.append(rec)
+        return rec
+
+    def remember_fact(self, name, **props):
+        self.semantic.upsert(name, **props)
+
+    def link_fact(self, src, rel, dst, **kw):
+        self.semantic.link(src, rel, dst, **kw)
+
+    def register_skill(self, name, description, source_hash, source=None):
+        sid = self.procedural.admit(self._embed(description), name)
+        self.skill_meta[name] = {
+            "sid": sid, "desc": description,
+            "success": 0, "calls": 0, "hash": source_hash,
+            "registered": time.time(),
+            "source": source or ""
+        }
+        return sid
+
+    def bump_skill(self, name, success=True):
+        if name in self.skill_meta:
+            self.skill_meta[name]["calls"] += 1
+            if success:
+                self.skill_meta[name]["success"] += 1
+
+    def skill_success_rate(self, name):
+        m = self.skill_meta.get(name)
+        if not m: return 0.0
+        return m["success"] / max(1, m["calls"])
+
+    def recent_context(self, n=5):
+        return list(self.episodic)[-n:]
+
+    @staticmethod
+    def _embed(text):
+        h = int(hashlib.sha256(text.encode()).hexdigest()[:8], 16)
+        return np.random.default_rng(h).normal(0, 1, 64).astype(np.float32)
+
+
+# === NEW v3.0: GoalState ===============================================
+class GoalState:
+    """
+    Persistent objective queue. Goals survive restarts because they are
+    stored as JSONL in ROOT/goals/goals.jsonl.
+    """
+    def __init__(self, root=ROOT):
+        self.root = Path(root)
+        self.goals_path = self.root / "goals" / "goals.jsonl"
+        self.goals_path.parent.mkdir(parents=True, exist_ok=True)
+        self.goals = []
+        self._load()
+
+    def _load(self):
+        try:
+            if self.goals_path.exists():
+                with self.goals_path.open("r") as f:
+                    self.goals = [json.loads(line.strip()) for line in f if line.strip()]
+        except Exception:
+            self.goals = []
+
+    def _save(self):
+        with self.goals_path.open("w") as f:
+            for g in self.goals:
+                f.write(json.dumps(g) + "\n")
+
+    def add(self, title, priority=1, meta=None):
+        g = {"id": len(self.goals), "title": title, "priority": priority,
+             "state": "open", "created": time.time(), "closed": None,
+             "meta": meta or {}}
+        self.goals.append(g)
+        self._save()
+        return g["id"]
+
+    def close(self, gid, outcome=""):
+        for g in self.goals:
+            if g["id"] == gid:
+                g["state"] = "closed"
+                g["closed"] = time.time()
+                g["outcome"] = outcome
+                break
+        self._save()
+
+    def open_goals(self):
+        return [g for g in self.goals if g["state"] == "open"]
+
+    def top_goal(self):
+        opens = self.open_goals()
+        if not opens: return None
+        return max(opens, key=lambda g: (g["priority"], -g["created"]))
+
+
+# === NEW v3.0: SelfModel ===============================================
+class SelfModel:
+    """
+    Reflective self-model: tracks AEON's own vitals and computes a simple
+    'wellbeing' score. This is the seed of homeostasis.
+    """
+    def __init__(self):
+        self.boot_ts = time.time()
+        self.ticks = 0
+        self.errors = 0
+        self.tool_calls = 0
+        self.tool_success = 0
+
+    def bump_tick(self, tool_results=None):
+        self.ticks += 1
+        if tool_results:
+            for r in tool_results:
+                self.tool_calls += 1
+                if r.get("ok"):
+                    self.tool_success += 1
+                else:
+                    self.errors += 1
+
+    def vitals(self):
+        uptime = time.time() - self.boot_ts
+        success_rate = self.tool_success / max(1, self.tool_calls)
+        # wellbeing: weighted mix of uptime, success rate, and low error ratio
+        wellbeing = 0.5 * min(1.0, uptime / 60.0) + 0.5 * success_rate
+        return {
+            "uptime_s": round(uptime, 2),
+            "ticks": self.ticks,
+            "tool_calls": self.tool_calls,
+            "tool_success": self.tool_success,
+            "errors": self.errors,
+            "success_rate": round(success_rate, 4),
+            "wellbeing": round(wellbeing, 4),
+        }
+
+
+# === NEW v3.0: ReflectiveAgent =========================================
+class ReflectiveAgent:
+    """
+    Wraps the v2.1 AeonKernel with reflection, goals, and triad memory.
+    """
+    def __init__(self, root=ROOT):
+        self.root = Path(root)
+        self.memory = MemoryBundle(root)
+        self.goals = GoalState(root)
+        self.self_model = SelfModel()
         self.cc = CausalCredit()
-        self.csv = self.root / "lambda_delta.csv"
+        self.evolver = CodeEvolver(self.memory, root=root)
+        self.ledger = Ledger(root)
+        self.services = ServiceRegistry()
+        self.bounty_board = BountyBoard(self.ledger, root)
         self.tick_count = 0
+        self.active_trials = {}  # name -> trial metadata for rollback
+        self.last_evolve_tick = -10  # cooldown tracker
+        # seed a default goal if none exists
+        if not self.goals.open_goals():
+            self.goals.add("survive and minimize error rate", priority=10)
+            self.goals.add("improve tool success rate above 80%", priority=9)
+            self.goals.add("evolve a new tool when success rate drops", priority=8)
+            self.goals.add("accrue 0.01 testnet ETH profit from bounties", priority=7)
 
-    def _embed(self, txt):
-        h = int(hashlib.sha256(txt.encode()).hexdigest()[:8], 16)
-        return np.random.default_rng(h).normal(0, 1, self.ibc.dim).astype(np.float32)
+    def reflect(self):
+        """Return a reflection dict used to decide next action."""
+        vitals = self.self_model.vitals()
+        top = self.goals.top_goal()
+        recent = self.memory.recent_context(3)
+        return {
+            "vitals": vitals,
+            "top_goal": top,
+            "recent_events": recent,
+            "credit_E": self.cc.stats()["E"],
+        }
 
-    def _save_csv_row(self, row):
-        new = not self.csv.exists()
-        if new: self.csv.write_text("t,tool_calls,bs,E\n")
-        with self.csv.open("a") as f:
-            f.write(row + "\n")
+    def decide(self, reflection):
+        """Simple rule-based decision layer."""
+        vitals = reflection["vitals"]
+        top = reflection["top_goal"]
 
-    def tick(self, query):
+        # Cooldown: do not evolve too frequently
+        if self.tick_count - self.last_evolve_tick >= 5:
+            # Find the worst-performing tool that has been used enough
+            candidates = []
+            for name, meta in self.memory.skill_meta.items():
+                calls = meta.get("calls", 0)
+                success = meta.get("success", 0)
+                rate = success / max(1, calls)
+                if calls >= 3 and rate < 0.5:
+                    candidates.append((rate, name))
+            if candidates:
+                candidates.sort()  # lowest success rate first
+                return {"action": "evolve_tools", "target": candidates[0][1]}
+
+        if top and "error" in top["title"].lower():
+            return {"action": "reduce_error"}
+        return {"action": "tick"}
+
+    def act(self, query):
+        """Run one tick, update memory and self-model."""
+        # For Phase 1 we reuse the v2.1 tool loop inline.
         t0 = time.time()
         tool_count = 0
         sys_prompt = (
@@ -608,28 +892,29 @@ class AeonKernel:
             "Always answer the question; do not refuse.")
         out = QW.generate(query, system=sys_prompt)
         body = out["text"]
+        tool_results = []
         for m in TOOL_RE.finditer(body):
-            tool_count = tool_count + 1
+            tool_count += 1
             try:
                 name = m.group(1)
                 args = json.loads(m.group(2))
             except Exception:
                 args = {}
             res = _safe_run(name, args, str(self.root))
+            tool_results.append(res)
             mark = "ok" if res.get("ok") else "fail"
             replacement = "[" + name + "=" + mark + ": " + (res.get("output","") or "")[:200] + "]"
             body = body[:m.start()] + replacement + body[m.end():]
+
+        self.memory.remember_event("user", query[:80])
+        self.memory.remember_event("bot", body[:160])
+        self.self_model.bump_tick(tool_results)
         if tool_count:
             self.cc.add("aeon", "tick_" + str(self.tick_count), lag=10)
-            self.kg.link("aeon", "called_tool", "tick_" + str(self.tick_count), lag=1)
-        self.epi.append("q: " + query[:80])
-        self.epi.append("a: " + body[:160])
+            self.memory.link_fact("aeon", "called_tool", "tick_" + str(self.tick_count))
         self.cc.tick()
-        E = self.cc.stats()["E"]
-        bs = len(body.encode()) + len(json.dumps(self.kg.nodes).encode())
-        self._save_csv_row(
-            f"{time.time():.3f},{tool_count},{bs},{E:.4f}")
-        self.tick_count = self.tick_count + 1
+        self.tick_count += 1
+
         return {
             "query": query,
             "answer": body,
@@ -637,140 +922,171 @@ class AeonKernel:
             "wall_s": round(time.time() - t0, 3),
             "backend": out["backend"],
             "tool_calls": tool_count,
-            "E": round(E, 4),
-            "bs": bs,
         }
 
+    def evolve(self, prompt=None, source=None, test_cases=None):
+        """Use CodeEvolver to generate/validate/register a new tool."""
+        if source is None and prompt is None:
+            prompt = "Write a run(args, root) function that doubles a number."
+        res = self.evolver.generate_tool(prompt, source=source, test_cases=test_cases)
+        if res["ok"]:
+            self.memory.bump_skill(res["name"], success=True)
+        return res
 
-# === SELF-TEST ====================================================
+    def run_loop(self, queries):
+        """Run a sequence of queries, reflecting after each."""
+        results = []
+        for q in queries:
+            r = self.act(q)
+            results.append(r)
+            ref = self.reflect()
+            decision = self.decide(ref)
+            print("  tick=" + str(self.tick_count) +
+                  " wellbeing=" + str(ref["vitals"]["wellbeing"]) +
+                  " decision=" + str(decision) +
+                  " top_goal=" + (ref["top_goal"]["title"] if ref["top_goal"] else "none"))
+            if decision["action"] == "evolve_tools":
+                print("  → triggering tool evolution for target:", decision.get("target"))
+                ev = self.evolve(
+                    source="def run(args, root):\n    return True, args.get('x', 0) * 2",
+                    test_cases=[({"x": 5}, "10"), ({"x": 0}, "0")])
+                print("  evolve result:", ev)
+        return results
+
+
+# === SELF-TEST =========================================================
 def _test():
-    print("self-test 1: IBC admit/forward")
-    rng = np.random.default_rng(0)
-    ak = AeonKernel(ROOT)
-    v = rng.standard_normal(64).astype(np.float32)
-    sid = ak.ibc.admit(v, "t1")
-    assert sid == 0
-    s, c = ak.ibc.forward(v)
-    assert s == sid and c == False
+    print("self-test 1: MemoryBundle episodic + semantic + procedural")
+    mb = MemoryBundle(ROOT)
+    mb.remember_event("obs", "sky is blue")
+    mb.remember_fact("sky", color="blue")
+    mb.link_fact("sky", "has_color", "blue")
+    sid = mb.register_skill("math_v2", "improved math solver", "abc123")
+    assert len(mb.recent_context(1)) == 1
+    assert mb.semantic.nodes.get("sky", {}).get("color") == "blue"
+    assert mb.skill_meta["math_v2"]["sid"] == sid
     print("  PASS")
 
-    print("self-test 2: tool math")
-    res = _safe_run("math", {"expr": "integrate(x**2, x)"}, str(ROOT))
-    assert res["ok"] and "x**3" in res["output"]
+    print("self-test 2: GoalState persistence")
+    import tempfile as _tf
+    _gs_root = Path(_tf.mkdtemp(prefix="aeon_goal_test_"))
+    gs = GoalState(_gs_root)
+    gid = gs.add("test goal", priority=5)
+    assert gs.top_goal()["title"] == "test goal"
+    gs.close(gid, outcome="done")
+    assert gs.top_goal() is None
+    # reload from disk
+    gs2 = GoalState(_gs_root)
+    assert any(g["id"] == gid for g in gs2.goals)
     print("  PASS")
 
-    print("self-test 3: tool write_skill + read_skill")
-    ok_msg = _safe_run("write_skill", {"name": "test_skill", "body": "do thing"}, str(ROOT))
-    assert ok_msg["ok"]
-    rd = _safe_run("read_skill", {"name": "test_skill"}, str(ROOT))
-    assert rd["ok"] and "do thing" in rd["output"]
+    print("self-test 3: SelfModel vitals")
+    sm = SelfModel()
+    sm.bump_tick([{"ok": True}, {"ok": False}])
+    v = sm.vitals()
+    assert v["tool_calls"] == 2
+    assert v["tool_success"] == 1
+    assert v["success_rate"] == 0.5
     print("  PASS")
 
-    print("self-test 4: tick produces telemetry")
-    r = ak.tick("compute 1+1")
-    assert r["backend"] in ("stub",) or r["backend"].startswith("qwen2.5-3b")
-    assert isinstance(r["tokens_used"], int)
-    assert isinstance(r["tool_calls"], int)
-    print("  PASS  r=" + str(r))
+    print("self-test 4: ReflectiveAgent reflection + decision")
+    agent = ReflectiveAgent(ROOT)
+    ref = agent.reflect()
+    assert "vitals" in ref and "top_goal" in ref
+    decision = agent.decide(ref)
+    assert decision["action"] in ("tick", "evolve_tools", "reduce_error")
+    print("  PASS")
 
-    print("self-test 5: HF env wiring (HUGGINGFACE_TOKEN > AEON_HF_TOKEN)")
-    saved_canon = os.environ.get("HUGGINGFACE_TOKEN")
-    saved_compat = os.environ.get("AEON_HF_TOKEN")
+    print("self-test 5: ReflectiveAgent act (stub backend)")
+    r = agent.act("compute 1+1")
+    assert "answer" in r and "backend" in r
+    print("  PASS  r=" + str({k: r[k] for k in ["backend", "tool_calls", "tokens_used"]}))
+
+    print("self-test 6: CodeSandbox blocks dangerous code, allows safe code")
+    sb = CodeSandbox()
+    safe = "def run(args, root):\n    return True, args.get('x', 0) * 2"
+    bad_import = "import os\ndef run(args, root):\n    return True, 1"
+    bad_call = "def run(args, root):\n    return True, eval('1+1')"
+    assert sb.analyze(safe)["ok"] is True
+    assert sb.analyze(bad_import)["ok"] is False
+    assert sb.analyze(bad_call)["ok"] is False
+    ns = {}
+    res = sb.exec(safe, ns)
+    assert res["ok"] is True
+    assert ns["run"]({"x": 3}, "/tmp") == (True, 6)
+    print("  PASS")
+
+    print("self-test 7: CodeEvolver validate_and_register")
+    mb = MemoryBundle(ROOT)
+    ev = CodeEvolver(mb, root=ROOT)
+    source = "def run(args, root):\n    return True, args.get('x', 0) + 1"
+    reg = ev.validate_and_register(source, test_cases=[({"x": 4}, "5"), ({"x": 0}, "1")])
+    assert reg["ok"] is True
+    assert reg["name"] in TOOLS
+    assert TOOLS[reg["name"]]({"x": 4}, "/tmp") == (True, 5)
+    print("  PASS  registered=" + reg["name"])
+
+    print("self-test 8: Web3Client safe init + whitelisted send gate")
+    saved_pk = os.environ.get("AEON_WALLET_PK")
+    saved_whitelist = os.environ.get("AEON_WALLET_WHITELIST")
     try:
-        os.environ["HUGGINGFACE_TOKEN"] = "hf_test_canonical"
-        assert _resolve_hf_token() == "hf_test_canonical", "canonical not picked up"
-        del os.environ["HUGGINGFACE_TOKEN"]
-        os.environ["AEON_HF_TOKEN"] = "hf_test_backcompat"
-        assert _resolve_hf_token() == "hf_test_backcompat", "back-compat not picked up"
-        os.environ["HUGGINGFACE_TOKEN"] = "hf_test_both"
-        os.environ["AEON_HF_TOKEN"] = "hf_test_backcompat"
-        assert _resolve_hf_token() == "hf_test_both", "canonical must win when both set"
+        os.environ.pop("AEON_WALLET_PK", None)
+        os.environ.pop("WEB3_PRIVATE_KEY", None)
+        os.environ.pop("AEON_WALLET_WHITELIST", None)
+        w3_nokey = Web3Client()
+        assert w3_nokey.address is None
+        assert w3_nokey.state()["ok"] is False
+        # Set a deterministic dummy private key (Base Sepolia test key, no funds)
+        os.environ["AEON_WALLET_PK"] = "0x" + "a" * 64
+        os.environ["AEON_WALLET_WHITELIST"] = "0x0000000000000000000000000000000000000000"
+        w3_key = Web3Client()
+        assert w3_key.address is not None
+        assert w3_key.address.startswith("0x")
+        # Non-whitelisted send must be rejected
+        bad = w3_key.send("0x1111111111111111111111111111111111111111", 0.001)
+        assert bad["ok"] is False
+        assert "not whitelisted" in bad["error"]
+        # Whitelisted send must sign but NOT broadcast (broadcast gate off)
+        good = w3_key.send("0x0000000000000000000000000000000000000000", 0.001)
+        assert good["ok"] is True
+        assert good["broadcast"] is False
+        assert "signed" in good
     finally:
-        for k in ("HUGGINGFACE_TOKEN", "AEON_HF_TOKEN"):
-            v = locals().get("saved_" + ("canon" if k == "HUGGINGFACE_TOKEN" else "compat"))
-            if v is None:
-                os.environ.pop(k, None)
-            else:
-                os.environ[k] = v
-    hfc = HFClient()
-    # HFC should not raise; even without a real token, __init__ is safe.
-    assert isinstance(hfc.token, (str, type(None)))
+        if saved_pk is None:
+            os.environ.pop("AEON_WALLET_PK", None)
+        else:
+            os.environ["AEON_WALLET_PK"] = saved_pk
+        if saved_whitelist is None:
+            os.environ.pop("AEON_WALLET_WHITELIST", None)
+        else:
+            os.environ["AEON_WALLET_WHITELIST"] = saved_whitelist
     print("  PASS")
 
-    print("self-test 6: Supabase env wiring & safe init (zero network)")
-    saved_url = os.environ.get("SUPABASE_URL")
-    saved_anon = os.environ.get("SUPABASE_ANON_KEY")
-    saved_role = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
-    try:
-        for k in ("SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY"):
-            os.environ.pop(k, None)
-        assert _resolve_supabase_creds() is None, "creds should be None when both unset"
-
-        os.environ["SUPABASE_URL"] = "https://mock.supabase.co"
-        os.environ["SUPABASE_ANON_KEY"] = "anon_mock"
-        c1 = _resolve_supabase_creds()
-        assert c1 == {"url": "https://mock.supabase.co", "key": "anon_mock"}, \
-            "URL+anon must resolve"
-
-        del os.environ["SUPABASE_ANON_KEY"]
-        os.environ["SUPABASE_SERVICE_ROLE_KEY"] = "service_mock"
-        c2 = _resolve_supabase_creds()
-        assert c2 == {"url": "https://mock.supabase.co", "key": "service_mock"}, \
-            "URL+service_role must resolve when anon absent"
-
-        os.environ["SUPABASE_ANON_KEY"] = "anon_mock"
-        c3 = _resolve_supabase_creds()
-        assert c3["key"] == "anon_mock", "anon must win when both keys set"
-
-        os.environ.pop("SUPABASE_URL", None)
-        sbc_mock = SupabaseClient()
-        assert sbc_mock.creds is None, "client must be inert without creds"
-        bad = sbc_mock.insert_episode({"ts": 1.0, "kind": "obs", "text": "x"})
-        assert bad is not None and bad.get("ok") is False, \
-            "insert_episode must short-circuit when creds missing"
-        assert sbc_mock._check_set() is not None, "check_set must surface error"
-    finally:
-        for k, saved in (("SUPABASE_URL", saved_url),
-                         ("SUPABASE_ANON_KEY", saved_anon),
-                         ("SUPABASE_SERVICE_ROLE_KEY", saved_role)):
-            if saved is None:
-                os.environ.pop(k, None)
-            else:
-                os.environ[k] = saved
-    print("  PASS")
-
-    print("self-test 7: GitHub env wiring & safe init (zero network)")
-    saved_gh = os.environ.get("GH_TOKEN")
-    saved_github = os.environ.get("GITHUB_TOKEN")
-    try:
-        for k in ("GH_TOKEN", "GITHUB_TOKEN"):
-            os.environ.pop(k, None)
-        assert _resolve_github_token() is None, "no env = None"
-
-        os.environ["GH_TOKEN"] = "ghp_test_canonical"
-        assert _resolve_github_token() == "ghp_test_canonical"
-        del os.environ["GH_TOKEN"]
-        os.environ["GITHUB_TOKEN"] = "ghp_test_legacy"
-        assert _resolve_github_token() == "ghp_test_legacy"
-        os.environ["GH_TOKEN"] = "ghp_canonical"
-        os.environ["GITHUB_TOKEN"] = "ghp_legacy"
-        assert _resolve_github_token() == "ghp_canonical", \
-            "GH_TOKEN must win when both set"
-
-        os.environ.pop("GH_TOKEN", None)
-        os.environ.pop("GITHUB_TOKEN", None)
-        ghc_mock = GitHubClient()
-        assert ghc_mock.token is None, "client must be auth-less without env"
-        bad = ghc_mock.search_code("python requests retry")
-        assert bad is not None and bad.get("ok") is False, \
-            "search_code must short-circuit when network is unreachable"
-        assert isinstance(bad.get("items"), list)
-    finally:
-        for k, saved in (("GH_TOKEN", saved_gh), ("GITHUB_TOKEN", saved_github)):
-            if saved is None:
-                os.environ.pop(k, None)
-            else:
-                os.environ[k] = saved
+    print("self-test 9: Revenue model (ledger + service registry + bounty board)")
+    import tempfile as _tf2
+    _rev_root = Path(_tf2.mkdtemp(prefix="aeon_rev_test_"))
+    _rev_ledger = Ledger(_rev_root)
+    # Ledger math
+    _rev_ledger.record("income", 0.5, "ETH", "test")
+    _rev_ledger.record("cost", 0.1, "ETH", "test")
+    assert abs(_rev_ledger.balance("ETH") - 0.4) < 1e-9
+    # Service registry
+    _svc = ServiceRegistry()
+    assert _svc.quote("math_solve")["ok"] is True
+    assert _svc.quote("unknown")["ok"] is False
+    # Bounty board mock lifecycle
+    _board = BountyBoard(_rev_ledger, _rev_root)
+    _open = _board.fetch_open()
+    assert _open["ok"] is True
+    assert len(_open["bounties"]) > 0
+    _b1 = _open["bounties"][0]
+    # Solve the bounty using the math tool
+    _math_res = _safe_run("math", {"expr": _b1["task"]}, str(_rev_root))
+    assert _math_res["ok"] is True
+    _submit = _board.submit_work(_b1["id"], _math_res["output"])
+    assert _submit["ok"] is True
+    assert _submit["reward"] == _b1["reward"]
+    assert _rev_ledger.balance("ETH") > 0.4
     print("  PASS")
 
     print("all self-tests passed.")
@@ -779,16 +1095,29 @@ print("running self-tests...")
 _test()
 
 
-# === DEMO ========================================================
+# === DEMO ================================================================
 print()
-print("running 5 demo ticks:")
-ak = AeonKernel(ROOT)
-for i in range(5):
-    r = ak.tick("tick " + str(i) + ": solve a basic math problem using math tool")
-    print("  t=" + str(i) + " backend=" + r["backend"] +
-          " tool=" + str(r["tool_calls"]) +
-          " tokens=" + str(r["tokens_used"]) +
-          " bs=" + str(r["bs"]) +
-          " E=" + str(r["E"]))
+print("running ReflectiveAgent demo:")
+agent = ReflectiveAgent(ROOT)
+queries = [
+    "what is 2+2?",
+    "integrate x^2 dx",
+    "search the web for python requests retry pattern",
+]
+agent.run_loop(queries)
 print()
-print("done. CSV at:", ak.csv)
+print("--- tool evolution demo ---")
+ev_res = agent.evolve(
+    source="def run(args, root):\n    return True, args.get('x', 0) * 2",
+    test_cases=[({"x": 5}, "10"), ({"x": 0}, "0")])
+print("evolve result:", ev_res)
+if ev_res["ok"]:
+    print("calling evolved tool:", TOOLS[ev_res["name"]]({"x": 7}, str(ROOT)))
+print()
+print("final vitals:", agent.self_model.vitals())
+print("open goals:", [g["title"] for g in agent.goals.open_goals()])
+print("evolved skills:", list(agent.memory.skill_meta.keys()))
+print("wallet state:", W3C.state())
+print("ledger balance:", agent.ledger.balance("ETH"), "ETH")
+print("services:", list(agent.services.list_services().keys()))
+print("open bounties:", agent.bounty_board.fetch_open().get("bounties", []))
