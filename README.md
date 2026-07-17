@@ -143,6 +143,75 @@ The `SupabaseClient` is built on `requests` against PostgREST
 
 ---
 
+## Vercel AI SDK frontend (optional companion)
+
+For a real chat UI, AEON ships with a minimal **[Vercel AI SDK](https://sdk.vercel.ai)**
+Next.js app under [`web/`](./web). It is **independent** of the Python
+kernel — `aeon.py` itself is untouched — but it reuses the same
+`HUGGINGFACE_TOKEN` you already provide to AEON for Hub model downloads,
+now routed through `@ai-sdk/huggingface` on the server side for
+streaming responses in the browser.
+
+### What's in `web/`
+
+```
+web/
+├── package.json              Next.js + ai + @ai-sdk/huggingface + @ai-sdk/react
+├── tsconfig.json
+├── app/
+│   ├── layout.tsx            Root layout + global styles
+│   ├── page.tsx              Chat UI using useChat() from @ai-sdk/react
+│   ├── globals.css           Dark-themed minimal styling
+│   └── api/chat/route.ts     Edge route that calls streamText() → HF Inference
+```
+
+### Run locally (≈ 30 seconds)
+
+```bash
+cd web
+npm install
+echo "HUGGINGFACE_TOKEN=hf_..." > .env.local
+npm run dev                  # → http://localhost:3000
+```
+
+### Deploy on Vercel (1-click, free tier)
+
+```bash
+cd web
+npx vercel                   # follow prompts; pick "Next.js" preset
+# then in Vercel dashboard:
+#   Settings ▸ Environment Variables
+#   Add: HUGGINGFACE_TOKEN = hf_...
+```
+
+The deployed URL is `https://aeon-web-<hash>.vercel.app`.
+
+### What this does *not* do
+
+- It does not call `aeon.py` directly. The `useChat` hook hits the local
+  route at `/api/chat`, which calls the Hugging Face Inference API.
+  Wasting a route handler here keeps AEON's Python kernel unchanged
+  and lets you swap providers (Anthropic, OpenAI, local Qwen endpoint)
+  by editing ONE file — `web/app/api/chat/route.ts`.
+- It is **not required** for AEON to run. The Python kernel is the
+  whole product; `web/` is just a friendlier surface when you want one.
+
+### Risks (read before deploying)
+
+- **Token is server-side.** `HUGGINGFACE_TOKEN` in `web/.env.local`
+  must NEVER be prefixed `NEXT_PUBLIC_` — otherwise it ships in the
+  browser bundle. The included `route.ts` correctly reads it on the
+  server only. If you fork this and accidentally re-export the token
+  to a `*.client.ts` or to `NEXT_PUBLIC_*`, **rotate the token**.
+- **Hub rate limits.** Hugging Face's free Inference API is shared
+  across all free users; the first call to a small model can return
+  HTTP 503 ("model loading") for ~20 s. Retry once.
+
+The full deployable build is ~50 KB of source — it adds nothing to
+AEON's Python kernel or to `requirements.txt`.
+
+---
+
 ## How to run
 
 The canonical way to run AEON v2.1 is to **click the "Open in Colab" badge at
@@ -256,6 +325,7 @@ print(result["backend"])   # "stub" or "qwen2.5-3b_cuda"/"qwen2.5-3b_cpu"
 ├── README.md             ← this file
 ├── aeon.py               ← the entire single-cell kernel
 ├── colab_runner.ipynb    ← Open-in-Colab launchpad (clone + pip + exec)
-├── .gitignore            ← Python cache, virtualenv, aeon state, editor cruft
-└── requirements.txt      ← pip install -r requirements.txt
+├── .gitignore            ← Python cache, virtualenv, aeon state, JS frontend build artifacts
+├── requirements.txt      ← pip install -r requirements.txt
+└── web/                  ← (optional) Vercel AI SDK chat UI — Next.js + TypeScript
 ```

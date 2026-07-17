@@ -32,3 +32,10 @@ aeon_drive/
 
 # Sandbox artifacts (only if you ever run something throwaway here)
 .cache/
+
+# web/ frontend (Next.js): exclude build artifacts + node_modules
+web/node_modules/
+web/.next/
+web/out/
+web/.env.local
+!-web/.env.example
