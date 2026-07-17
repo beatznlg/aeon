@@ -1,0 +1,86 @@
+version: 2
+
+# Dependabot version updates — weekly scan for the Python kernel
+# (aeon.py + scripts/*.py via requirements.txt) and the Node.js
+# web frontend (web/package.json). Vulnerability alerts are surfaced
+# on the repo Security tab and (for free public repos) on Dependabot
+# PRs are auto-opened with the bump.
+#
+# Note: Dependabot is FREE for public repos. For private repos it
+# requires GitHub Advanced Security entitlement OR a paid GH plan.
+
+updates:
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "04:00"
+      timezone: "UTC"
+    labels:
+      - "dependencies"
+      - "python"
+    # Skip auto-PRs for AEON-kernel core LLM stack (large version bumps
+    # often require manual review). AEON tolerates minor + patch bumps.
+    ignore:
+      - dependency-name: "transformers"
+        update-types: [ "version-update:semver-major" ]
+      - dependency-name: "torch"
+        update-types: [ "version-update:semver-major" ]
+      - dependency-name: "bitsandbytes"
+        update-types: [ "version-update:semver-major" ]
+      - dependency-name: "sentence-transformers"
+        update-types: [ "version-update:semver-major" ]
+    # Group most pip bumps into single PRs to reduce noise
+    groups:
+      python-minor:
+        applies-to: version-updates
+        patterns: [ "*" ]
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "npm"
+    directory: "/web"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "04:30"
+      timezone: "UTC"
+    labels:
+      - "dependencies"
+      - "web"
+    # Don't bump over major versions of Next.js or ai-sdk — they often
+    # break Vercel's cache; bump them by hand.
+    ignore:
+      - dependency-name: "next"
+        update-types: [ "version-update:semver-major" ]
+      - dependency-name: "@ai-sdk/*"
+        update-types: [ "version-update:semver-major" ]
+      - dependency-name: "@gradio/client"
+        update-types: [ "version-update:semver-major" ]
+    groups:
+      web-minor:
+        applies-to: version-updates
+        patterns: [ "*" ]
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "tuesday"
+      time: "04:00"
+      timezone: "UTC"
+    labels:
+      - "dependencies"
+      - "ci"
+    groups:
+      actions-minor:
+        applies-to: version-updates
+        patterns: [ "*" ]
+        update-types:
+          - "minor"
+          - "patch"

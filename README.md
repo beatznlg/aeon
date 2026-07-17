@@ -538,6 +538,81 @@ GHC.rate_limit()                              # GitHub API quota probe
 
 ---
 
+---
+
+## 🛡️ Security (GitHub Advanced Security)
+
+AEON ships with GitHub Advanced Security enabled at the workflow / config
+level. **It is FREE for public repositories** — every built-in component
+(CodeQL code scanning, secret scanning, Dependabot alerts, Dependabot
+version updates) is included at no cost on `beatznlg/aeon`. For private
+repos the same features require a GitHub Enterprise + GHAS entitlement.
+
+### What's running automatically on every push
+
+| Tool | Trigger | What it does | Where alerts land |
+|---|---|---|---|
+| **CodeQL** (`.github/workflows/codeql.yml`) | push to `main`, every PR, weekly Sunday 04:00 UTC | Static analysis on Python (`aeon.py`, `scripts/*.py`) and JS/TS (`web/`) using the `security-extended` query pack | [Security tab ▸ Code scanning](https://github.com/beatznlg/aeon/security/code-scanning) |
+| **Dependabot** (`.github/dependabot.yml`) | weekly (Mon 04:00 UTC) | Watches `requirements.txt`, `web/package.json`, and `/.github/workflows/*` for outdated or vulnerable deps. Auto-opens PRs for safe bumps. LLM kernel majors + Next.js + AI-SDK majors are ignored (bump manually). | [Security tab ▸ Dependabot alerts](https://github.com/beatznlg/aeon/security/dependabot) + Dependabot PRs |
+| **Secret scanning** | every push | Built into GitHub for public repos — detects tokens matching known partner patterns (GitHub PATs, OpenAI keys, Hugging Face tokens, Supabase keys, etc.). New patterns auto-added by GitHub over time. | [Security tab ▸ Secret scanning alerts](https://github.com/beatznlg/aeon/security/secret-scanning) |
+| **Push protection** | every push | (if enabled) blocks a push that would expose a known-pattern secret. **Strongly recommended.** | [Settings ▸ Code security and analysis](https://github.com/beatznlg/aeon/settings/security_analysis) |
+| **`aeon-ci.yml`** (existing) | every push | Compile check + 7 self-tests + JSON + TS lint. Non-blocking web TS job. | Actions tab |
+
+### One-time clicks in GitHub UI (≈ 2 minutes; free for public repos)
+
+1. Open <https://github.com/beatznlg/aeon/settings/security_analysis>
+2. Under **Code security and analysis** enable these:
+   - **Code scanning → CodeQL analysis** ▸ **Default** (uses workflow we just shipped)
+   - **Dependabot → Dependabot security updates** ▸ **Enable**
+   - **Dependabot → Dependabot version updates** ▸ **Enable** (auto-enabled by `dependabot.yml`)
+   - **Secret scanning** ▸ **Enable**
+   - **Push protection** ▸ **Enable** (blocks known-pattern secrets, won't block source code)
+3. (Optional later) Add a `.github/CODEOWNERS` file for review-required-from-owner on `web/` and `scripts/`.
+
+### URLs that surface alerts
+
+| URL | What it shows |
+|---|---|
+| <https://github.com/beatznlg/aeon/security> | All advisories in one feed |
+| <https://github.com/beatznlg/aeon/security/code-scanning> | CodeQL findings — open one to see the data-flow graph |
+| <https://github.com/beatznlg/aeon/security/dependabot> | Vulnerable deps + auto-fix PRs |
+| <https://github.com/beatznlg/aeon/security/secret-scanning> | Tokens pushed into history. **If anything appears here, rotate IMMEDIATELY and consider `git filter-repo` to scrub history.** |
+
+### Free vs Paid in GHAS
+
+| Feature | Public repo | Private repo |
+|---|---|---|
+| Code scanning (CodeQL) | ✅ Free | Requires GitHub Enterprise + GHAS |
+| Secret scanning | ✅ Free | Requires GHAS |
+| Push protection | ✅ Free | Requires GHAS |
+| Dependabot alerts | ✅ Free | ✅ Free (no GHAS needed) |
+| Dependabot version updates | ✅ Free | ✅ Free |
+| CodeQL custom query packs | ✅ Free | Requires GHAS |
+
+Conclusion: if `beatznlg/aeon` stays public, every warning surfaced above
+is at no monetary cost.
+
+### Keys to add — ⛔ none new for the workflow itself
+
+This is the part where the integration is unusual: **GHAS at the
+workflow level requires no new PAT or API key**. The CodeQL + Dependabot
+workflows rely on GitHub's auto-injected `${{ secrets.GITHUB_TOKEN }}`,
+with the narrowest principle-of-least-privilege permissions declared
+per job (`contents: read`, `security-events: write`).
+
+If you later want to surface CodeQL alerts **inside the Vercel chat UI**
+(an in-app Security tab), you would add one optional fine-grained PAT:
+- `GITHUB_SECURITY_TOKEN` — fine-grained PAT with `security_events: read` scope,
+  to wire a `/api/security` Vercel route. **Not required for the workflow to run.**
+
+### What I am NOT changing
+
+- **No new PATs in the workflow.** CodeQL + Dependabot use the auto-injected token only.
+- **No new files in `web/` or `scripts/`.** GHAS runs on the existing pipeline; the web frontend stays untouched.
+- **`aeon.py` kernel is untouched.** The 7 self-tests + behavior are unchanged.
+
+---
+
 ## File listing
 
 ```

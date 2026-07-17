@@ -1,0 +1,65 @@
+name: "CodeQL"
+
+on:
+  push:
+    branches: [ "main" ]
+    paths-ignore:
+      - "**/*.md"
+      - "**/*.mdx"
+      - "**/*.txt"
+      - "**/*.ipynb"
+      - "scripts/**"
+  pull_request:
+    branches: [ "main" ]
+    paths-ignore:
+      - "**/*.md"
+      - "**/*.mdx"
+      - "**/*.txt"
+      - "**/*.ipynb"
+      - "scripts/**"
+  schedule:
+    # Weekly, Sunday 04:00 UTC (off-peak for runner capacity)
+    - cron: "0 4 * * 0"
+
+permissions:
+  # Auto-injected GITHUB_TOKEN. Required scopes:
+  #   contents: read     (clone private deps if ever added)
+  #   security-events: write (publish SARIF back to repo)
+  contents: read
+  security-events: write
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # AEON = Python kernel (aeon.py, scripts/*.py) + JS/TS web app (web/)
+        language: [ "python", "javascript-typescript" ]
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      # Initializes the CodeQL tools for the chosen matrix language
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          # Pin to a query pack — gives reproducible alert diffs across weeks
+          queries: security-extended
+          # Avoid analyzing build outputs / vendored deps
+          paths-ignore:
+            - "web/node_modules"
+            - "web/.next"
+            - "web/out"
+            - ".venv"
+            - "**/__pycache__"
+            - "**/*.pyc"
+            - "aeon_state"
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"
