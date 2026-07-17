@@ -120,11 +120,11 @@ and you still have to pick the T4 GPU runtime + tick "Notebook access" on each
 | **CausalCredit** | Eligibility-trace credit assignment with exponential decay |
 | **QwenPolicy** | Lazy-loads `Qwen/Qwen2.5-3B-Instruct` with 4-bit bitsandbytes on CUDA; falls back to a deterministic stub on CPU/missing deps |
 | **HFClient** | Serverless Hugging Face Inference API fallback (no weights) |
-| **GitHubClient** | Free code-search buff (no-auth or fine-grained PAT) |
+| **GitHubClient** | Code-search buff via GitHub REST API (no-auth or fine-grained PAT) |
 | **SupabaseClient** | Optional Postgres mirror of every `EpisodicStore.append` |
 | **Tool registry** | `math`, `search`, `fetch`, `read_skill`, `write_skill` — each run under a `SIGALRM` timeout |
 | **AeonKernel** | Orchestrates: prompt → LLM → tool-call extraction → execution → telemetry CSV |
-| **Self-test + demo** | Runs on module load: 7 self-tests (ibmit-forward, math, skill I/O, tick, HF wiring, Supabase wiring, GitHub wiring), then 5 demo ticks |
+| **Self-test + demo** | Runs on module load: 10 self-tests (memory, goals, self-model, reflection, action, sandbox, evolver, web3, github, revenue), then demo ticks |
 
 ---
 
@@ -254,11 +254,12 @@ Defaults: works with zero env vars but at the cost of strict rate limits
 (60 requests/IP/hour across the whole GitHub API). Set `GH_TOKEN`
 (Contents: Read on public repos only) for ~30× headroom.
 
-### Self-test 7 (zero network)
+### Self-test 9 (network call)
 
-The kernel's stub-mode self-test now covers GitHub wiring too. No network
-call: `_resolve_github_token()`, class init safety, `search_code` short-circuit
-shape — all verified without a real GitHub token.
+The kernel's self-test now probes the GitHub `/rate_limit` endpoint and
+validates the shape of `search_code`. Without a token the rate-limit check
+still works; the search call returns a structured `{"ok": False, "error": ...}`
+response because GitHub code search now requires authentication.
 
 ---
 
@@ -547,8 +548,9 @@ SBC.tail(5)                                   # Recent Supabase episodes
 SBC.insert_episode({"ts": time.time(),        # Manual episode write
                     "kind": "bot", "text": "...",
                     "ref": "my-tool"})
-GHC.search_code("python retry decorator")     # GitHub code search (no-auth)
-GHC.rate_limit()                              # GitHub API quota probe
+GHC.search_code("python retry decorator")     # GitHub code search (requires token)
+GHC.rate_limit()                              # GitHub API quota probe (works without token)
+GHC.whoami()                                  # GitHub authenticated user info
 ```
 
 ---

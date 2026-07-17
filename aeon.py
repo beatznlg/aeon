@@ -38,6 +38,7 @@ from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Optional, Dict, List, Tuple, Any
 import numpy as np
+import requests
 
 ROOT = Path(os.environ.get("AEON_ROOT", "/content/aeon_state"))
 ROOT.mkdir(parents=True, exist_ok=True)
@@ -72,6 +73,61 @@ def _resolve_web3_key():
     return (os.environ.get("AEON_WALLET_PK")
             or os.environ.get("WEB3_PRIVATE_KEY")
             or None)
+
+
+# === GitHubClient (free code-search buff) ===============================
+class GitHubClient:
+    """
+    Lightweight GitHub code-search client.
+    Works without auth (10 req/min/IP) or with a fine-grained PAT
+    (30 req/min). Reads GH_TOKEN first, then GITHUB_TOKEN.
+    """
+    def __init__(self):
+        self.token = _resolve_github_token()
+        self.base = "https://api.github.com"
+        self._headers = {"Accept": "application/vnd.github+json"}
+        if self.token:
+            self._headers["Authorization"] = f"Bearer {self.token}"
+
+    def _get(self, path, params=None):
+        try:
+            r = requests.get(self.base + path, headers=self._headers,
+                             params=params, timeout=10)
+            return {"ok": r.status_code == 200, "status": r.status_code,
+                    "json": r.json() if r.text else {}}
+        except Exception as e:
+            return {"ok": False, "error": type(e).__name__ + ": " + str(e)}
+
+    def rate_limit(self):
+        """Return current GitHub API rate-limit status."""
+        res = self._get("/rate_limit")
+        if not res["ok"]:
+            return res
+        rate = res["json"].get("rate", {})
+        return {"ok": True, "limit": rate.get("limit"), "remaining": rate.get("remaining"),
+                "reset": rate.get("reset"), "authenticated": bool(self.token)}
+
+    def search_code(self, query, per_page=5):
+        """Search public code on GitHub."""
+        if not query:
+            return {"ok": False, "error": "empty query"}
+        res = self._get("/search/code", params={"q": query, "per_page": per_page})
+        if not res["ok"]:
+            error_msg = res.get("error") or res["json"].get("message") or f"http {res.get('status')}"
+            return {"ok": False, "error": error_msg, "status": res.get("status")}
+        items = res["json"].get("items", [])[:per_page]
+        return {"ok": True, "items": items, "total_count": res["json"].get("total_count", 0)}
+
+    def whoami(self):
+        """Return authenticated user info, or None if no token."""
+        if not self.token:
+            return {"ok": True, "user": None, "note": "no token"}
+        res = self._get("/user")
+        if not res["ok"]:
+            return res
+        return {"ok": True, "user": res["json"].get("login"), "id": res["json"].get("id")}
+
+GHC = GitHubClient()
 
 
 # === IBC (v2.1) =========================================================
@@ -299,6 +355,20 @@ def _tool_service_quote(args, root):
     """Get a quote for a billable service: args={service}."""
     svc = ServiceRegistry().quote(args.get("service", ""))
     return svc["ok"], json.dumps(svc)[:500]
+
+@_register("github_search")
+def _tool_github_search(args, root):
+    """Search public code on GitHub: args={query, per_page?}."""
+    query = args.get("query", "")
+    if not query:
+        return False, "missing query"
+    per_page = int(args.get("per_page", 5))
+    res = GHC.search_code(query, per_page=per_page)
+    if res["ok"]:
+        items = res.get("items", [])
+        summary = [f"{i['repository']['full_name']}: {i['name']}" for i in items[:per_page]]
+        return True, "\n".join(summary)[:1000]
+    return False, res.get("error", "github search failed")
 
 def _with_timeout(sec):
     class Timeout(Exception): pass
@@ -889,6 +959,9 @@ class ReflectiveAgent:
         sys_prompt = (
             "Format tool calls ONLY as JSON: "
             '{"tool":"math","args":{"expr":"integrate(x**2, x)"}} '
+            '{"tool":"github_search","args":{"query":"python retry decorator"}} '
+            "Available tools: math, search, fetch, read_skill, write_skill, "
+            "github_search, bounty_list, bounty_submit, service_quote. "
             "Always answer the question; do not refuse.")
         out = QW.generate(query, system=sys_prompt)
         body = out["text"]
@@ -1062,7 +1135,22 @@ def _test():
             os.environ["AEON_WALLET_WHITELIST"] = saved_whitelist
     print("  PASS")
 
-    print("self-test 9: Revenue model (ledger + service registry + bounty board)")
+    print("self-test 9: GitHubClient rate-limit probe + search shape")
+    ghc = GitHubClient()
+    rate = ghc.rate_limit()
+    assert rate["ok"] is True
+    assert "remaining" in rate
+    search = ghc.search_code("python retry decorator", per_page=1)
+    # GitHub code search now requires auth; without a token the call is still
+    # well-formed and returns a structured response.
+    assert "ok" in search
+    if search["ok"]:
+        assert "items" in search
+    else:
+        assert "error" in search
+    print("  PASS  remaining=" + str(rate.get("remaining")) + " search_ok=" + str(search["ok"]))
+
+    print("self-test 10: Revenue model (ledger + service registry + bounty board)")
     import tempfile as _tf2
     _rev_root = Path(_tf2.mkdtemp(prefix="aeon_rev_test_"))
     _rev_ledger = Ledger(_rev_root)
