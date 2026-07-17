@@ -1,6 +1,3 @@
-import { streamText } from "ai";
-import { huggingface } from "@ai-sdk/huggingface";
-import { Client } from "@gradio/client";
 import { createClient } from "@supabase/supabase-js";
 
 export const maxDuration = 60;
@@ -37,67 +34,114 @@ function logTurn(sb: ReturnType<typeof getSb>, text: string, backend: string) {
     .then(() => {}, () => {});
 }
 
+/**
+ * Wrap a single final string into a Vercel AI Data Stream response so the
+ * browser-side useChat renders it as streamed text. We send a single chunk;
+ * the SDK still treats it as "finished" once the stream closes.
+ */
+function singleTextStream(text: string): Response {
+  const enc = new TextEncoder();
+  const readable = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(enc.encode("0:" + JSON.stringify(text) + "\n"));
+      controller.close();
+    },
+  });
+  return new Response(readable, {
+    headers: {
+      "Content-Type": "text/plain; charset=utf-8",
+      "x-vercel-ai-data-stream": "v1",
+    },
+  });
+}
+
+/**
+ * AEON kernel closed-loop (Vercel → HF Space → AeonKernel) status:
+ * temporarily disabled — see README for the migration plan.
+ * `AEON_HF_SPACE_URL` is still accepted from env so the DeployGuidePanel
+ * can confirm wiring; we just hand off to the HF Inference fallback until
+ * the raw SSE client is shipped.
+ */
+function aeonSpaceReachable(): boolean {
+  return !!process.env.AEON_HF_SPACE_URL;
+}
+
 export async function POST(req: Request) {
-  const { messages } = await req.json();
+  const { messages } = await req.json().catch(() => ({}));
   const last = messages?.[messages.length - 1];
   const prompt: string = last?.content ?? "";
 
   const sb = getSb();
+  const hfToken = process.env.HUGGINGFACE_TOKEN;
 
-  // ── 1. AEON kernel proxy (preferred when AEON_HF_SPACE_URL is set) ──
-  const spaceUrl = process.env.AEON_HF_SPACE_URL;
-  if (spaceUrl) {
-    try {
-      const cleanUrl = spaceUrl.replace(/\/$/, "");
-      const client = await Client.connect(cleanUrl);
-      // /chat is the Gradio ChatInterface endpoint auto-created for fn=chat_fn.
-      const stream = await client.submit("/chat", [prompt, []]);
-
-      let fullText = "";
-      const readable = new ReadableStream<Uint8Array>({
-        async start(controller) {
-          const enc = new TextEncoder();
-          try {
-            for await (const msg of stream) {
-              // Gradio yields cumulative snapshots in msg.data[0]; slice off
-              // the new tail and emit it as a Vercel AI SDK text part.
-              if (msg.type === "data" && Array.isArray(msg.data) && msg.data[0]) {
-                const next = String(msg.data[0]);
-                const tail = next.slice(fullText.length);
-                if (tail.length > 0) {
-                  controller.enqueue(
-                    enc.encode("0:" + JSON.stringify(tail) + "\n"),
-                  );
-                  fullText = next;
-                }
-              }
-            }
-            logTurn(sb, fullText, "aeon_kernel");
-            controller.close();
-          } catch (e) {
-            controller.error(e);
-          }
-        },
-      });
-
-      return new Response(readable, {
-        headers: {
-          "Content-Type": "text/plain; charset=utf-8",
-          "x-vercel-ai-data-stream": "v1",
-        },
-      });
-    } catch (err) {
-      // Fall through to HF Inference fallback below.
-      console.error("[chat] GradIO proxy failed:", err);
-    }
+  // Closed-loop was wired through @gradio/client but the npm package version
+  // we pinned (^0.6.0) is no longer the active line; the `Client` named export
+  // was removed. Until we ship a raw-SSE replacement, fall through to the
+  // HF Inference fallback rather than throw a 500.
+  if (aeonSpaceReachable() && !hfToken) {
+    // Both set: closed loop desired, but the client package is broken. We pick
+    // the most useful surface: log that the closed loop is offline and use the
+    // HF Inference API as the chat backend.
+    console.warn(
+      "[chat] AEON_HF_SPACE_URL is set but @gradio/client is currently " +
+        "unavailable in this build; falling back to HF Inference API. " +
+        "Set HUGGINGFACE_TOKEN or wait for the raw-SSE rewrite.",
+    );
   }
 
-  // ── 2. Fallback: HF Inference API direct via @ai-sdk/huggingface ────
-  const result = streamText({
-    model: huggingface("Qwen/Qwen2.5-3B-Instruct"),
-    prompt,
-    onFinish: (ev) => logTurn(sb, ev.text, "hf_inference"),
-  });
+  // No backend wired → graceful 503 so the UI shows the DeployGuidePanel
+  // instead of a hard 500.
+  if (!hfToken) {
+    return new Response(
+      JSON.stringify({
+        ok: false,
+        error:
+          "No inference backend wired. Set AEON_HF_SPACE_URL (closed-loop) and/or HUGGINGFACE_TOKEN (HF Inference).",
+      }),
+      { status: 503, headers: { "Content-Type": "application/json" } },
+    );
+  }
 
-  return result.toAIStreamResponse();
+  // ── Fallback: raw fetch to HF Inference API ─────────────────────────
+  try {
+    const res = await fetch(
+      "https://api-inference.huggingface.co/models/Qwen/Qwen2.5-3B-Instruct",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${hfToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ inputs: prompt }),
+      },
+    );
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "");
+      return new Response(
+        JSON.stringify({
+          ok: false,
+          error: `HF Inference HTTP ${res.status}: ${errText.slice(0, 400)}`,
+        }),
+        { status: 503, headers: { "Content-Type": "application/json" } },
+      );
+    }
+
+    const data =
+      (await res.json()) as Array<{ generated_text?: string }> | any;
+    const generated =
+      Array.isArray(data) && data[0]?.generated_text
+        ? String(data[0].generated_text)
+        : "(empty response from Qwen-3B HF Inference)";
+    logTurn(sb, generated, "hf_inference");
+    return singleTextStream(generated);
+  } catch (err: any) {
+    return new Response(
+      JSON.stringify({
+        ok: false,
+        error: `HF fallback crashed: ${err?.message || err}`,
+      }),
+      { status: 503, headers: { "Content-Type": "application/json" } },
+    );
+  }
 }
