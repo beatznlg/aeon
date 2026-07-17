@@ -3,7 +3,7 @@ import { huggingface } from "@ai-sdk/huggingface";
 import { Client } from "@gradio/client";
 import { createClient } from "@supabase/supabase-js";
 
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 /**
  * Server-side Supabase client for write-side logging.

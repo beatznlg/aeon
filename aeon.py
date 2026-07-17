@@ -72,6 +72,20 @@ def _resolve_supabase_creds():
     return {"url": url, "key": key}
 
 
+# === GitHub token resolution =============================================
+def _resolve_github_token():
+    """
+    Returns the GitHub fine-grained PAT if set, else None.
+    Accepts GH_TOKEN (preferred) or GITHUB_TOKEN (legacy alias).
+    The unauthenticated path still works but is severely rate-limited
+    (10 code-search requests/min/IP); a PAT raises this to 30 req/min
+    per the search API.
+    """
+    return (os.environ.get("GH_TOKEN")
+            or os.environ.get("GITHUB_TOKEN")
+            or None)
+
+
 # === IBC (deterministic continuous to symbolic binding) ================
 class IBC:
     def __init__(self, dim=64, scale=64, eps=0.05):
@@ -303,6 +317,74 @@ class HFClient:
             return {"ok": False, "error": type(e).__name__}
 
 HFC = HFClient()
+
+
+# === GitHubClient (free no-auth / PAT-authed code search buff) ============
+class GitHubClient:
+    """
+    Thin wrapper over GitHub's REST code-search API
+    (https://api.github.com/search/code?q=<query>).
+    Lets AEON search the public web for code patterns with zero or
+    minimal auth — useful as a third "buff" alongside HF Inference and
+    Supabase. Works without auth but at 10 req/min/IP; add a fine-grained
+    PAT (Contents: Read on public repos) as `GH_TOKEN` for 30 req/min.
+    """
+    def __init__(self):
+        self.token = _resolve_github_token()
+        self.base = "https://api.github.com"
+
+    def _headers(self):
+        h = {"Accept": "application/vnd.github+json",
+             "X-GitHub-Api-Version": "2022-11-28",
+             "User-Agent": "AEON-alpha/1.0"}
+        if self.token:
+            h["Authorization"] = "Bearer " + self.token
+        return h
+
+    def search_code(self, query, limit=5, timeout=10):
+        if not query:
+            return {"ok": False, "error": "empty query", "items": []}
+        try:
+            import requests as _r, urllib.parse as _u
+            r = _r.get(self.base + "/search/code",
+                params={"q": query, "per_page": max(1, min(limit, 5))},
+                headers=self._headers(), timeout=timeout)
+            if r.status_code != 200:
+                return {"ok": False, "error": "HTTP " + str(r.status_code),
+                        "snippet": r.text[:160], "items": []}
+            j = r.json()
+            items = []
+            for it in (j.get("items") or [])[:limit]:
+                items.append({
+                    "name": it.get("name"),
+                    "path": it.get("path"),
+                    "html_url": it.get("html_url"),
+                    "repo": (it.get("repository") or {}).get("full_name"),
+                })
+            return {"ok": True, "total": j.get("total_count", 0),
+                    "items": items}
+        except Exception as e:
+            return {"ok": False, "error": type(e).__name__ + ": " + str(e),
+                    "items": []}
+
+    def rate_limit(self, timeout=8):
+        """Cheap liveness: returns the current rate-limit budget."""
+        try:
+            import requests as _r
+            r = _r.get(self.base + "/rate_limit",
+                headers=self._headers(), timeout=timeout)
+            if r.status_code != 200:
+                return {"ok": False, "error": "HTTP " + str(r.status_code)}
+            j = r.json()
+            search = j.get("resources", {}).get("search", {})
+            return {"ok": True,
+                    "search_limit": search.get("limit"),
+                    "search_remaining": search.get("remaining"),
+                    "search_reset": search.get("reset")}
+        except Exception as e:
+            return {"ok": False, "error": type(e).__name__}
+
+GHC = GitHubClient()
 
 
 # === SupabaseClient (Postgres persistence via PostgREST) =================
@@ -651,6 +733,40 @@ def _test():
         for k, saved in (("SUPABASE_URL", saved_url),
                          ("SUPABASE_ANON_KEY", saved_anon),
                          ("SUPABASE_SERVICE_ROLE_KEY", saved_role)):
+            if saved is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = saved
+    print("  PASS")
+
+    print("self-test 7: GitHub env wiring & safe init (zero network)")
+    saved_gh = os.environ.get("GH_TOKEN")
+    saved_github = os.environ.get("GITHUB_TOKEN")
+    try:
+        for k in ("GH_TOKEN", "GITHUB_TOKEN"):
+            os.environ.pop(k, None)
+        assert _resolve_github_token() is None, "no env = None"
+
+        os.environ["GH_TOKEN"] = "ghp_test_canonical"
+        assert _resolve_github_token() == "ghp_test_canonical"
+        del os.environ["GH_TOKEN"]
+        os.environ["GITHUB_TOKEN"] = "ghp_test_legacy"
+        assert _resolve_github_token() == "ghp_test_legacy"
+        os.environ["GH_TOKEN"] = "ghp_canonical"
+        os.environ["GITHUB_TOKEN"] = "ghp_legacy"
+        assert _resolve_github_token() == "ghp_canonical", \
+            "GH_TOKEN must win when both set"
+
+        os.environ.pop("GH_TOKEN", None)
+        os.environ.pop("GITHUB_TOKEN", None)
+        ghc_mock = GitHubClient()
+        assert ghc_mock.token is None, "client must be auth-less without env"
+        bad = ghc_mock.search_code("python requests retry")
+        assert bad is not None and bad.get("ok") is False, \
+            "search_code must short-circuit when network is unreachable"
+        assert isinstance(bad.get("items"), list)
+    finally:
+        for k, saved in (("GH_TOKEN", saved_gh), ("GITHUB_TOKEN", saved_github)):
             if saved is None:
                 os.environ.pop(k, None)
             else:
