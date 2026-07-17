@@ -5,10 +5,12 @@ import { useEffect, useState } from "react";
 export default function Topbar({
   backend,        // "auto" | "aeon-kernel" | "hf-inference"
   onBackend,
+  onToggleSidebar,
   version = "v2.1",
 }: {
   backend: string;
   onBackend: (b: string) => void;
+  onToggleSidebar?: () => void;
   version?: string;
 }) {
   const [theme, setTheme] = useState<"dark" | "light">("dark");
@@ -33,9 +35,17 @@ export default function Topbar({
 
   return (
     <div className="topbar">
+      <button
+        className="hamburger"
+        onClick={onToggleSidebar}
+        aria-label="Toggle sidebar"
+        title="Toggle sidebar"
+      >
+        ≡
+      </button>
       <h2>AEON α</h2>
       <span className="badge">{version}</span>
-      <span className="badge">{backend === "auto" ? "auto -route" : backend}</span>
+      <span className="badge">{backend === "auto" ? "auto · route" : backend}</span>
       <div className="spacer"></div>
       <select
         className="select-backend"

@@ -26,8 +26,14 @@ def chat_fn(message, history):  # history arg is required by Gradio ChatInterfac
     history = history or []
     # AEON's EpisodicStore keeps its own internal state across requests;
     # the `history` list from Gradio is intentionally ignored.
-    res = kernel.tick(message or "")
-    return res.get("answer", "[kernel returned empty answer]")
+    msg = (message or "").strip()
+    if not msg:
+        return "(empty message — try asking something)"
+    try:
+        res = kernel.tick(msg)
+    except Exception as e:  # don't let a kernel crash kill the HF Space
+        return f"[kernel error: {type(e).__name__}: {e}]"
+    return res.get("answer", "") or "[kernel returned empty answer]"
 
 
 app = gr.ChatInterface(
