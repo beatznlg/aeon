@@ -67,12 +67,35 @@ These are read via `os.getenv` (the launcher can also inject them). Marked as
 
 | Variable | Required? | What it unlocks |
 | --- | --- | --- |
-| `AEON_HF_TOKEN` | Optional | Hugging Face token, passed to `AutoTokenizer.from_pretrained` / `AutoModelForCausalLM.from_pretrained`. Only needed if the model is gated. |
+| `HUGGINGFACE_TOKEN` | Recommended | Hugging Face access token. Unlocks (a) Hub model downloads when `QwenPolicy` loads `Qwen/Qwen2.5-3B-Instruct` via `transformers`, and (b) the new `HFClient` serverless Inference API call used as a lightweight third backend. Create one for free at <https://huggingface.co/settings/tokens>. |
+| `AEON_HF_TOKEN` | Back-compat alias | Same effect as `HUGGINGFACE_TOKEN`; `HUGGINGFACE_TOKEN` takes precedence. Kept so older configs still work without edits. |
 | `AEON_ROOT` | Optional | Override the state root path (defaults to `/content/aeon_state` on Colab). |
 | `GITHUB_TOKEN` | Optional | Fine-grained PAT with `Contents: Read` — only needed if this repo is private. |
 
 The launcher cell **also** reads `GITHUB_TOKEN` so it can clone/pull a private
 repo. If the repo is public, leave `GITHUB_TOKEN` blank.
+
+---
+
+## Hugging Face integration
+
+AEON v2.1 uses Hugging Face for **two distinct things**, both gated by
+`HUGGINGFACE_TOKEN`:
+
+| Layer | Purpose | When it kicks in |
+| --- | --- | --- |
+| **Hub download** (via `transformers`) | Downloads `Qwen/Qwen2.5-3B-Instruct` (≈ 1.5 GB in 4-bit) on the first GPU runtime boot. | First `QwenPolicy._try_load()` call after picking a T4 runtime. |
+| **Serverless Inference API** (new `HFClient`) | Bare `requests.post` against `https://api-inference.huggingface.co/models/<model>`. Lets AEON reach *any* Hub model without downloading weights — useful as a third fallback behind local Qwen and the deterministic stub. | When `HFC.generate(prompt)` is called explicitly, or wired into the `ask()` decision tree. |
+
+A working `HFC.whoami()` call is the cheapest way to confirm the token is alive:
+
+```python
+HFC.whoami()         # -> {"ok": True, "name": "...", "plan": "free"}
+HFC.generate("hi")   # -> {"ok": True, "output": "...!"}
+```
+
+Be aware the Inference API is rate-limited and small models sometimes
+return HTTP 503 ("model loading") on first call — retry once.
 
 ---
 

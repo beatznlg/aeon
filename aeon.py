@@ -43,6 +43,18 @@ SUB = ROOT / "substrates"; SUB.mkdir(exist_ok=True)
 print("root: " + str(ROOT))
 
 
+# === HF token resolution ==================================================
+def _resolve_hf_token():
+    """
+    Canonical env var is HUGGINGFACE_TOKEN. AEON_HF_TOKEN is kept as a
+    back-compat alias so existing configs still work.
+    Returns the token string or None if neither is set.
+    """
+    return (os.environ.get("HUGGINGFACE_TOKEN")
+            or os.environ.get("AEON_HF_TOKEN")
+            or None)
+
+
 # === IBC (deterministic continuous to symbolic binding) ================
 class IBC:
     def __init__(self, dim=64, scale=64, eps=0.05):
@@ -165,7 +177,7 @@ class QwenPolicy:
             except ImportError:
                 bnb = None
             import transformers
-            hf = os.environ.get("AEON_HF_TOKEN") or None
+            hf = _resolve_hf_token()
             cfg = None
             if bnb and torch.cuda.is_available():
                 cfg = transformers.BitsAndBytesConfig(
@@ -210,6 +222,66 @@ class QwenPolicy:
                 "backend": "qwen2.5-3b_" + self.device}
 
 QW = QwenPolicy()
+
+
+# === HFClient (Hugging Face serverless Inference API) ===================
+class HFClient:
+    """
+    Thin wrapper over the Hugging Face Inference API
+    (https://api-inference.huggingface.co/models/<model>).
+
+    Lets AEON reach any small Hub model without downloading weights,
+    which is useful as a third inference backend behind the local Qwen
+    policy and the deterministic stub. Requires HUGGINGFACE_TOKEN
+    (or the back-compat AEON_HF_TOKEN) to be set in the env.
+    """
+    def __init__(self):
+        self.token = _resolve_hf_token()
+        self.base = "https://api-inference.huggingface.co/models/"
+
+    def generate(self, prompt, model="Qwen/Qwen2.5-3B-Instruct",
+                 max_new_tokens=128, timeout=15):
+        if not self.token:
+            return {"ok": False, "error": "HUGGINGFACE_TOKEN not set"}
+        try:
+            import requests as _r
+            r = _r.post(self.base + model,
+                headers={"Authorization": "Bearer " + self.token},
+                json={"inputs": prompt,
+                      "parameters": {"max_new_tokens": max_new_tokens,
+                                     "return_full_text": False}},
+                timeout=timeout)
+        except Exception as e:
+            return {"ok": False, "error": type(e).__name__ + ": " + str(e)}
+        if r.status_code != 200:
+            return {"ok": False, "error": "HTTP " + str(r.status_code) +
+                    ": " + r.text[:200]}
+        try:
+            j = r.json()
+            if isinstance(j, list) and j:
+                return {"ok": True, "output": j[0].get("generated_text", "")}
+            return {"ok": True, "output": str(j)[:2000]}
+        except Exception as e:
+            return {"ok": False, "error": "decode: " + type(e).__name__}
+
+    def whoami(self, timeout=10):
+        """Verify the token works against /whoami-v2. Cheap liveness check."""
+        if not self.token:
+            return {"ok": False, "error": "HUGGINGFACE_TOKEN not set"}
+        try:
+            import requests as _r
+            r = _r.get("https://huggingface.co/api/whoami-v2",
+                       headers={"Authorization": "Bearer " + self.token},
+                       timeout=timeout)
+            if r.status_code != 200:
+                return {"ok": False, "error": "HTTP " + str(r.status_code)}
+            j = r.json()
+            return {"ok": True, "name": j.get("name"),
+                    "plan": (j.get("plan") or {}).get("name", "unknown")}
+        except Exception as e:
+            return {"ok": False, "error": type(e).__name__}
+
+HFC = HFClient()
 
 
 # === Tool registry (sandboxed with SIGALRM timeout) ====================
@@ -387,6 +459,30 @@ def _test():
     assert isinstance(r["tokens_used"], int)
     assert isinstance(r["tool_calls"], int)
     print("  PASS  r=" + str(r))
+
+    print("self-test 5: HF env wiring (HUGGINGFACE_TOKEN > AEON_HF_TOKEN)")
+    saved_canon = os.environ.get("HUGGINGFACE_TOKEN")
+    saved_compat = os.environ.get("AEON_HF_TOKEN")
+    try:
+        os.environ["HUGGINGFACE_TOKEN"] = "hf_test_canonical"
+        assert _resolve_hf_token() == "hf_test_canonical", "canonical not picked up"
+        del os.environ["HUGGINGFACE_TOKEN"]
+        os.environ["AEON_HF_TOKEN"] = "hf_test_backcompat"
+        assert _resolve_hf_token() == "hf_test_backcompat", "back-compat not picked up"
+        os.environ["HUGGINGFACE_TOKEN"] = "hf_test_both"
+        os.environ["AEON_HF_TOKEN"] = "hf_test_backcompat"
+        assert _resolve_hf_token() == "hf_test_both", "canonical must win when both set"
+    finally:
+        for k in ("HUGGINGFACE_TOKEN", "AEON_HF_TOKEN"):
+            v = locals().get("saved_" + ("canon" if k == "HUGGINGFACE_TOKEN" else "compat"))
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+    hfc = HFClient()
+    # HFC should not raise; even without a real token, __init__ is safe.
+    assert isinstance(hfc.token, (str, type(None)))
+    print("  PASS")
 
     print("all self-tests passed.")
 
