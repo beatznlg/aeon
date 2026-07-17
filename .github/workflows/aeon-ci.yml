@@ -23,6 +23,26 @@ jobs:
           python -m py_compile aeon.py
           echo "✅ aeon.py compiles cleanly."
 
+      - name: Run AEON 7 self-tests (stub mode)
+        run: |
+          python - <<'PY'
+          import tempfile, os, sys, subprocess, re
+          src = open("aeon.py").read()
+          src = src.replace("for s in REQ: _pip(s)", "for s in REQ: print(\"  skip\", s)")
+          m = re.search(r"\n# === DEMO", src)
+          if m: src = src[:m.start()]
+          src += '\nprint("smoke: self-tests only, no demo")\n'
+          with tempfile.TemporaryDirectory() as td:
+              p = os.path.join(td, "aeon.py"); open(p, "w").write(src)
+              env = {**os.environ, "AEON_ROOT": td}
+              # Force stub-mode: zero network calls.
+              for k in ("HUGGINGFACE_TOKEN","SUPABASE_URL","SUPABASE_ANON_KEY",
+                        "SUPABASE_SERVICE_ROLE_KEY","GH_TOKEN","GITHUB_TOKEN"):
+                  env.pop(k, None)
+              r = subprocess.run([sys.executable, p], cwd=td, timeout=60, env=env)
+          sys.exit(0 if r.returncode == 0 else 1)
+          PY
+
       - name: Validate colab_runner.ipynb
         run: |
           python -c "
@@ -34,11 +54,18 @@ jobs:
           print('✅ colab_runner.ipynb: nbformat 4,', len(nb['cells']), 'cell(s)')
           "
 
+      - name: Validate web/package.json is valid JSON
+        run: |
+          python -c "
+          import json, sys
+          p = json.load(open('web/package.json'))
+          assert 'dependencies' in p and 'scripts' in p, 'missing fields'
+          print('✅ web/package.json: deps =', ', '.join(sorted(p['dependencies'].keys())))
+          "
+
       - name: Re-validate launcher URL builders
         run: |
           python - <<'PY'
-          # Mirror the launcher's URL composition in isolation, assert it
-          # round-trips through urlparse the way the Colab cell will use it.
           from urllib.parse import urlparse
           REPO = "beatznlg/aeon"
           for tag, tok in [("anon", None), ("token_env", "ghp_FAKE_FOR_TEST")]:
@@ -57,3 +84,22 @@ jobs:
           echo "🚀 Commit $SHA is on origin/main."
           echo "👉 Run on free Colab (T4 GPU required for Qwen 7B):"
           echo "   https://colab.research.google.com/github/beatznlg/aeon/blob/main/colab_runner.ipynb"
+
+  web-build-check:
+    name: Web TS type-check (non-blocking)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install web deps
+        working-directory: web
+        run: npm install --no-audit --no-fund --prefer-offline
+
+      - name: Type-check web/ (no emit)
+        working-directory: web
+        run: npx tsc --noEmit

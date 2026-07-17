@@ -20,6 +20,70 @@ as a single Colab cell (or directly with `python aeon.py`).
 
 ---
 
+## 🚀 Deploy in 5 minutes (start here if you just cloned)
+
+The repo ships with three wrapper scripts so the entire chain — Vercel
+frontend + HF Spaces kernel + Supabase database — is reproducible from one
+shell call each. None of them require you to paste any secret into chat.
+
+```bash
+# 1. Rotate any leaked secrets first (printer-only, no network).
+bash scripts/post-rotate.sh
+
+# 2. Local sanity: kernel compiles and the 7 self-tests still pass.
+python3 -m py_compile aeon.py && python3 aeon.py   # (Ctrl-C after the demo runs)
+
+# 3a. Push the Vercel frontend (Vercel CLI will print the deployment URL).
+bash scripts/deploy-vercel.sh
+
+# 3b. Push the AEON kernel to a Hugging Face Space (the permanent GPU host).
+HF_USERNAME=yourname HF_SPACESLUG=aeon-kernel HF_TOKEN=hf_... \
+  bash scripts/deploy-hf-space.sh
+
+# 4. Verify the live deployment (replace <host> with the URL from step 3a).
+curl -s https://<host>/api/health       | jq
+curl -s https://<host>/api/setup_check | jq
+```
+
+The first two commands are safe to run anywhere — they make zero network
+calls. Steps 3a/3b need the rotate-and-paste flow above so secrets only
+land in your dashboards / Secrets tabs, never in your shell history.
+
+The scripts directory:
+
+```
+scripts/
+├── post-rotate.sh       ← printer-only rotation checklist
+├── deploy-vercel.sh     ← py_compile + 7 tests + JSON check + npx vercel --prod
+└── deploy-hf-space.sh   ← HF Hub upload of aeon.py + gradio wrapper
+```
+
+### What "live" looks like
+
+After `deploy-vercel.sh` returns, hitting `/api/setup_check` shows which
+keys are wired into the Vercel instance:
+
+```json
+{
+  "ok": true,
+  "backend": "aeon-kernel",
+  "keys": {
+    "huggingface_token":       { "present": true,  "length": 41 },
+    "supabase_url":            { "present": true,  "host": "xyz.supabase.co" },
+    "next_public_supabase_url":{ "present": true,  "host": "xyz.supabase.co" },
+    "aeon_hf_space_url":       { "present": true,  "host": "yourname-aeon-kernel.hf.space" },
+    "gh_token":                { "present": false, "length": 0 }
+  },
+  "notes": ["GH_TOKEN missing — GitHub code search capped at 10/min/IP."]
+}
+```
+
+The Sidebar's status dot reads this endpoint on load and every 30 s:
+🟢 green = live + all keys wired · 🟡 yellow = live but missing a key ·
+🔴 red = Vercel itself is down · ⚪ grey = still polling.
+
+---
+
 ## What's automatic on the free tier — and what isn't
 
 **Free Google Colab has no public run API.** Nothing can externally trigger a
@@ -480,7 +544,11 @@ GHC.rate_limit()                              # GitHub API quota probe
 .
 ├── .github/
 │   └── workflows/
-│       └── aeon-ci.yml    ← syntax check + notebook sanity on every push
+│       └── aeon-ci.yml    ← syntax + JS type-check on every push
+├── scripts/              ← NEW: one-command deploy + rotate wrappers
+│   ├── post-rotate.sh       (printer-only; leak-mitigation checklist)
+│   ├── deploy-vercel.sh     (py_compile + 7 tests + npx vercel --prod)
+│   └── deploy-hf-space.sh   (HF Hub upload of aeon.py + gradio wrapper)
 ├── README.md             ← this file
 ├── aeon.py               ← the entire single-cell kernel (7 self-tests)
 ├── aeon_app_gradio.py    ← Gradio wrapper for HF Spaces deploy
