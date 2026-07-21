@@ -1,0 +1,258 @@
+# ============================================================
+#  AEON LLM Provider Bridge
+#  Pluggable backend for OpenAI, Anthropic, Ollama,
+#  Hugging Face Inference, local Qwen, and a stub fallback.
+# ============================================================
+import os
+import time
+import json
+import requests
+
+
+class LLMProvider:
+    """Common interface for all AEON LLM backends."""
+
+    def generate(self, prompt: str, system: str = None, max_new_tokens: int = 512) -> dict:
+        """
+        Generate a text completion.
+        Returns a dict with keys: text, tokens_used, wallclock_s, backend.
+        """
+        raise NotImplementedError
+
+
+class StubProvider(LLMProvider):
+    """Deterministic fallback used when no backend is configured or loading fails."""
+
+    def generate(self, prompt: str, system: str = None, max_new_tokens: int = 512) -> dict:
+        return {
+            "text": "stub(" + prompt[:32] + ")",
+            "tokens_used": 0,
+            "wallclock_s": 0.0,
+            "backend": "stub",
+        }
+
+
+class OpenAIProvider(LLMProvider):
+    def __init__(self, model: str = None):
+        self.model = model or os.environ.get("AEON_LLM_MODEL") or "gpt-4o-mini"
+        self.api_key = os.environ.get("OPENAI_API_KEY")
+        self.base_url = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
+
+    def generate(self, prompt: str, system: str = None, max_new_tokens: int = 512) -> dict:
+        if not self.api_key:
+            return {"text": "OpenAI: missing OPENAI_API_KEY", "tokens_used": 0,
+                    "wallclock_s": 0.0, "backend": "openai_error"}
+        try:
+            messages = []
+            if system:
+                messages.append({"role": "system", "content": system})
+            messages.append({"role": "user", "content": prompt})
+            t0 = time.time()
+            r = requests.post(
+                f"{self.base_url}/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": self.model,
+                    "messages": messages,
+                    "max_tokens": max_new_tokens,
+                    "temperature": 0.4,
+                    "top_p": 0.9,
+                },
+                timeout=60,
+            )
+            r.raise_for_status()
+            data = r.json()
+            choice = data.get("choices", [{}])[0]
+            text = choice.get("message", {}).get("content", "")
+            usage = data.get("usage", {})
+            return {
+                "text": text,
+                "tokens_used": usage.get("total_tokens", 0),
+                "wallclock_s": round(time.time() - t0, 4),
+                "backend": f"openai:{self.model}",
+            }
+        except Exception as e:
+            return {
+                "text": f"OpenAI error: {type(e).__name__}: {e}"[:500],
+                "tokens_used": 0,
+                "wallclock_s": 0.0,
+                "backend": "openai_error",
+            }
+
+
+class AnthropicProvider(LLMProvider):
+    def __init__(self, model: str = None):
+        self.model = model or os.environ.get("AEON_LLM_MODEL") or "claude-3-5-sonnet-20240620"
+        self.api_key = os.environ.get("ANTHROPIC_API_KEY")
+        self.base_url = os.environ.get("ANTHROPIC_BASE_URL", "https://api.anthropic.com")
+
+    def generate(self, prompt: str, system: str = None, max_new_tokens: int = 512) -> dict:
+        if not self.api_key:
+            return {"text": "Anthropic: missing ANTHROPIC_API_KEY", "tokens_used": 0,
+                    "wallclock_s": 0.0, "backend": "anthropic_error"}
+        try:
+            t0 = time.time()
+            r = requests.post(
+                f"{self.base_url}/v1/messages",
+                headers={
+                    "x-api-key": self.api_key,
+                    "anthropic-version": "2023-06-01",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": self.model,
+                    "max_tokens": max_new_tokens,
+                    "temperature": 0.4,
+                    "top_p": 0.9,
+                    "system": system or "You are a helpful assistant.",
+                    "messages": [{"role": "user", "content": prompt}],
+                },
+                timeout=60,
+            )
+            r.raise_for_status()
+            data = r.json()
+            content_blocks = data.get("content", [])
+            text = ""
+            for block in content_blocks:
+                if block.get("type") == "text":
+                    text += block.get("text", "")
+            return {
+                "text": text,
+                "tokens_used": data.get("usage", {}).get("input_tokens", 0)
+                            + data.get("usage", {}).get("output_tokens", 0),
+                "wallclock_s": round(time.time() - t0, 4),
+                "backend": f"anthropic:{self.model}",
+            }
+        except Exception as e:
+            return {
+                "text": f"Anthropic error: {type(e).__name__}: {e}"[:500],
+                "tokens_used": 0,
+                "wallclock_s": 0.0,
+                "backend": "anthropic_error",
+            }
+
+
+class OllamaProvider(LLMProvider):
+    def __init__(self, model: str = None):
+        self.model = model or os.environ.get("AEON_LLM_MODEL") or "llama3"
+        self.base_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+
+    def generate(self, prompt: str, system: str = None, max_new_tokens: int = 512) -> dict:
+        try:
+            t0 = time.time()
+            r = requests.post(
+                f"{self.base_url}/api/generate",
+                json={
+                    "model": self.model,
+                    "prompt": prompt,
+                    "system": system or "",
+                    "stream": False,
+                    "options": {"temperature": 0.4, "top_p": 0.9, "num_predict": max_new_tokens},
+                },
+                timeout=120,
+            )
+            r.raise_for_status()
+            data = r.json()
+            return {
+                "text": data.get("response", ""),
+                "tokens_used": data.get("eval_count", 0),
+                "wallclock_s": round(time.time() - t0, 4),
+                "backend": f"ollama:{self.model}",
+            }
+        except Exception as e:
+            return {
+                "text": f"Ollama error: {type(e).__name__}: {e}"[:500],
+                "tokens_used": 0,
+                "wallclock_s": 0.0,
+                "backend": "ollama_error",
+            }
+
+
+class HFInferenceProvider(LLMProvider):
+    """Hugging Face Inference API for text-generation models."""
+
+    def __init__(self, model: str = None):
+        self.model = model or os.environ.get("AEON_LLM_MODEL") or "Qwen/Qwen2.5-3B-Instruct"
+        self.token = os.environ.get("HUGGINGFACE_TOKEN") or os.environ.get("AEON_HF_TOKEN")
+
+    def generate(self, prompt: str, system: str = None, max_new_tokens: int = 512) -> dict:
+        if not self.token:
+            return {"text": "HF: missing HUGGINGFACE_TOKEN", "tokens_used": 0,
+                    "wallclock_s": 0.0, "backend": "hf_error"}
+        try:
+            t0 = time.time()
+            # Use chat template if available; otherwise simple text input
+            payload = {"inputs": prompt, "parameters": {"max_new_tokens": max_new_tokens}}
+            r = requests.post(
+                f"https://api-inference.huggingface.co/models/{self.model}",
+                headers={"Authorization": f"Bearer {self.token}"},
+                json=payload,
+                timeout=90,
+            )
+            r.raise_for_status()
+            data = r.json()
+            text = ""
+            if isinstance(data, list):
+                text = data[0].get("generated_text", "")
+            elif isinstance(data, dict):
+                text = data.get("generated_text", "")
+            return {
+                "text": text,
+                "tokens_used": 0,
+                "wallclock_s": round(time.time() - t0, 4),
+                "backend": f"hf:{self.model}",
+            }
+        except Exception as e:
+            return {
+                "text": f"HF error: {type(e).__name__}: {e}"[:500],
+                "tokens_used": 0,
+                "wallclock_s": 0.0,
+                "backend": "hf_error",
+            }
+
+
+class QwenLocalProvider(LLMProvider):
+    """Wrap the existing local Qwen2.5-3B policy from aeon.py."""
+
+    def __init__(self, model: str = None):
+        # model is ignored; aeon.py's QwenPolicy always loads Qwen2.5-3B-Instruct
+        self.model = model or "Qwen/Qwen2.5-3B-Instruct"
+        self._qw = None
+
+    def generate(self, prompt: str, system: str = None, max_new_tokens: int = 512) -> dict:
+        # Lazy import to avoid circular dependency with aeon.py
+        from aeon import QwenPolicy
+        if self._qw is None:
+            self._qw = QwenPolicy()
+        return self._qw.generate(prompt, system=system, max_new_tokens=max_new_tokens)
+
+
+def get_llm_provider(provider: str = None, model: str = None) -> LLMProvider:
+    """
+    Factory that returns the configured AEON LLM provider.
+    Env: AEON_LLM_PROVIDER in {stub, qwen, qwen_local, openai, anthropic, ollama, hf, huggingface}
+         AEON_LLM_MODEL, plus provider-specific API keys.
+    """
+    p = (provider or os.environ.get("AEON_LLM_PROVIDER", "stub")).lower()
+    if p in ("qwen", "qwen_local"):
+        return QwenLocalProvider(model)
+    if p == "openai":
+        return OpenAIProvider(model)
+    if p == "anthropic":
+        return AnthropicProvider(model)
+    if p == "ollama":
+        return OllamaProvider(model)
+    if p in ("hf", "huggingface"):
+        return HFInferenceProvider(model)
+    return StubProvider()
+
+
+if __name__ == "__main__":
+    # CLI quick test: python aeon_llm.py "hello"
+    import sys
+    q = sys.argv[1] if len(sys.argv) > 1 else "hello"
+    p = get_llm_provider()
+    print(json.dumps(p.generate(q, system="You are AEON.")))

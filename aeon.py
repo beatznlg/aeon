@@ -40,6 +40,8 @@ from typing import Optional, Dict, List, Tuple, Any
 import numpy as np
 import requests
 
+from aeon_llm import get_llm_provider
+
 ROOT = Path(os.environ.get("AEON_ROOT", "/content/aeon_state"))
 ROOT.mkdir(parents=True, exist_ok=True)
 SUB = ROOT / "substrates"; SUB.mkdir(exist_ok=True)
@@ -278,7 +280,7 @@ class QwenPolicy:
         return {"text": text, "tokens_used": n, "wallclock_s": round(time.time()-t0, 4),
                 "backend": "qwen2.5-3b_" + self.device}
 
-QW = QwenPolicy()
+QW = get_llm_provider()
 
 
 # === Tool registry (v2.1) ==============================================
@@ -1260,6 +1262,22 @@ def _test():
     good_fetch = _safe_run("api_fetch", {"url": "https://raw.githubusercontent.com/public-apis/public-apis/master/README.md"}, str(ROOT))
     assert good_fetch["ok"] is True
     assert "public" in good_fetch["output"].lower()
+    print("  PASS")
+
+    print("self-test 13: pluggable LLM provider bridge")
+    from aeon_llm import get_llm_provider, StubProvider, OpenAIProvider, AnthropicProvider, OllamaProvider, HFInferenceProvider, QwenLocalProvider
+    assert isinstance(get_llm_provider("stub"), StubProvider)
+    assert isinstance(get_llm_provider("openai"), OpenAIProvider)
+    assert isinstance(get_llm_provider("anthropic"), AnthropicProvider)
+    assert isinstance(get_llm_provider("ollama"), OllamaProvider)
+    assert isinstance(get_llm_provider("hf"), HFInferenceProvider)
+    assert isinstance(get_llm_provider("qwen"), QwenLocalProvider)
+    # default is stub
+    assert isinstance(get_llm_provider(), StubProvider)
+    # stub generation works
+    stub_res = get_llm_provider("stub").generate("hello")
+    assert "stub(" in stub_res["text"]
+    assert "backend" in stub_res
     print("  PASS")
 
     print("all self-tests passed.")

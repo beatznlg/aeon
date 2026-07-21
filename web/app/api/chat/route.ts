@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
+import { spawn } from "child_process";
 
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 /**
  * Server-side Supabase client for write-side logging.
@@ -39,11 +40,13 @@ function logTurn(sb: ReturnType<typeof getSb>, text: string, backend: string) {
  * browser-side useChat renders it as streamed text. We send a single chunk;
  * the SDK still treats it as "finished" once the stream closes.
  */
-function singleTextStream(text: string): Response {
+function singleTextStream(text: string, backend: string): Response {
   const enc = new TextEncoder();
   const readable = new ReadableStream<Uint8Array>({
     start(controller) {
-      controller.enqueue(enc.encode("0:" + JSON.stringify(text) + "\n"));
+      controller.enqueue(
+        enc.encode("0:" + JSON.stringify(text) + "\n"),
+      );
       controller.close();
     },
   });
@@ -51,19 +54,45 @@ function singleTextStream(text: string): Response {
     headers: {
       "Content-Type": "text/plain; charset=utf-8",
       "x-vercel-ai-data-stream": "v1",
+      "x-aeon-backend": backend,
     },
   });
 }
 
 /**
- * AEON kernel closed-loop (Vercel → HF Space → AeonKernel) status:
- * temporarily disabled — see README for the migration plan.
- * `AEON_HF_SPACE_URL` is still accepted from env so the DeployGuidePanel
- * can confirm wiring; we just hand off to the HF Inference fallback until
- * the raw SSE client is shipped.
+ * Spawn the AEON chat CLI and return its JSON output.
+ * All LLM routing and provider selection is handled inside aeon_chat.py
+ * based on the AEON_LLM_PROVIDER environment variable.
  */
-function aeonSpaceReachable(): boolean {
-  return !!process.env.AEON_HF_SPACE_URL;
+function runAeonChat(query: string, system?: string): Promise<{ text: string; backend: string }> {
+  return new Promise((resolve, reject) => {
+    const args = ["aeon_chat.py", query, "--max-tokens", "512"];
+    if (system) {
+      args.push("--system", system);
+    }
+    const proc = spawn("python3", args, {
+      cwd: process.cwd(),
+      env: { ...process.env },
+    });
+    let stdout = "";
+    let stderr = "";
+    proc.stdout.on("data", (d) => { stdout += d.toString(); });
+    proc.stderr.on("data", (d) => { stderr += d.toString(); });
+    proc.on("close", (code) => {
+      if (code !== 0) {
+        return reject(new Error(stderr || "aeon chat process failed"));
+      }
+      // The CLI prints JSON as the last non-empty line.
+      const lastLine = stdout.trim().split("\n").pop() || "";
+      try {
+        const parsed = JSON.parse(lastLine);
+        resolve({ text: String(parsed.answer || parsed.text || ""), backend: String(parsed.backend || "unknown") });
+      } catch (e) {
+        reject(new Error("invalid JSON from aeon chat: " + lastLine));
+      }
+    });
+    proc.on("error", reject);
+  });
 }
 
 export async function POST(req: Request) {
@@ -71,76 +100,23 @@ export async function POST(req: Request) {
   const last = messages?.[messages.length - 1];
   const prompt: string = last?.content ?? "";
 
+  if (!prompt.trim()) {
+    return new Response(
+      JSON.stringify({ ok: false, error: "empty prompt" }),
+      { status: 400, headers: { "Content-Type": "application/json" } },
+    );
+  }
+
   const sb = getSb();
-  const hfToken = process.env.HUGGINGFACE_TOKEN;
 
-  // Closed-loop was wired through @gradio/client but the npm package version
-  // we pinned (^0.6.0) is no longer the active line; the `Client` named export
-  // was removed. Until we ship a raw-SSE replacement, fall through to the
-  // HF Inference fallback rather than throw a 500.
-  if (aeonSpaceReachable() && !hfToken) {
-    // Both set: closed loop desired, but the client package is broken. We pick
-    // the most useful surface: log that the closed loop is offline and use the
-    // HF Inference API as the chat backend.
-    console.warn(
-      "[chat] AEON_HF_SPACE_URL is set but @gradio/client is currently " +
-        "unavailable in this build; falling back to HF Inference API. " +
-        "Set HUGGINGFACE_TOKEN or wait for the raw-SSE rewrite.",
-    );
-  }
-
-  // No backend wired → graceful 503 so the UI shows the DeployGuidePanel
-  // instead of a hard 500.
-  if (!hfToken) {
-    return new Response(
-      JSON.stringify({
-        ok: false,
-        error:
-          "No inference backend wired. Set AEON_HF_SPACE_URL (closed-loop) and/or HUGGINGFACE_TOKEN (HF Inference).",
-      }),
-      { status: 503, headers: { "Content-Type": "application/json" } },
-    );
-  }
-
-  // ── Fallback: raw fetch to HF Inference API ─────────────────────────
   try {
-    const res = await fetch(
-      "https://api-inference.huggingface.co/models/Qwen/Qwen2.5-3B-Instruct",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${hfToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ inputs: prompt }),
-      },
-    );
-
-    if (!res.ok) {
-      const errText = await res.text().catch(() => "");
-      return new Response(
-        JSON.stringify({
-          ok: false,
-          error: `HF Inference HTTP ${res.status}: ${errText.slice(0, 400)}`,
-        }),
-        { status: 503, headers: { "Content-Type": "application/json" } },
-      );
-    }
-
-    const data =
-      (await res.json()) as Array<{ generated_text?: string }> | any;
-    const generated =
-      Array.isArray(data) && data[0]?.generated_text
-        ? String(data[0].generated_text)
-        : "(empty response from Qwen-3B HF Inference)";
-    logTurn(sb, generated, "hf_inference");
-    return singleTextStream(generated);
+    const { text, backend } = await runAeonChat(prompt);
+    logTurn(sb, text, backend);
+    return singleTextStream(text, backend);
   } catch (err: any) {
+    const message = err?.message || String(err);
     return new Response(
-      JSON.stringify({
-        ok: false,
-        error: `HF fallback crashed: ${err?.message || err}`,
-      }),
+      JSON.stringify({ ok: false, error: message }),
       { status: 503, headers: { "Content-Type": "application/json" } },
     );
   }
