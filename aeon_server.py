@@ -31,6 +31,7 @@ from flask import Flask, request, jsonify
 from aeon import ReflectiveAgent
 from aeon_os import AeonOS
 import aeon_workflows  # patches AeonOS with workflow/swarm helpers
+from aeon_integrations import IntegrationManager, IntegrationConfig, WebhookDelivery
 
 app = Flask(__name__)
 
@@ -294,6 +295,99 @@ def swarm_run():
         return jsonify(result)
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
+
+
+# ── Integration / API Gateway endpoints ────────────────────────────────────
+_integration_manager: Optional[IntegrationManager] = None
+
+
+def get_integration_manager() -> IntegrationManager:
+    global _integration_manager
+    if _integration_manager is None:
+        _integration_manager = IntegrationManager(AEON_ROOT)
+    return _integration_manager
+
+
+@app.route("/integrations", methods=["GET", "POST"])
+def integrations_index():
+    mgr = get_integration_manager()
+    if request.method == "GET":
+        return jsonify({"ok": True, "integrations": mgr.list_integrations(mask=True)})
+
+    data = request.json or {}
+    integration_id = data.get("id")
+    cfg = mgr.save(data, integration_id=integration_id)
+    return jsonify({"ok": True, "integration": cfg.to_dict(mask=True)})
+
+
+@app.route("/integrations/<integration_id>", methods=["GET", "DELETE"])
+def integration_detail(integration_id: str):
+    mgr = get_integration_manager()
+    if request.method == "GET":
+        cfg = mgr.get(integration_id)
+        if cfg is None:
+            return jsonify({"ok": False, "error": "integration not found"}), 404
+        return jsonify({"ok": True, "integration": cfg.to_dict(mask=True)})
+
+    if mgr.delete(integration_id):
+        return jsonify({"ok": True})
+    return jsonify({"ok": False, "error": "integration not found"}), 404
+
+
+@app.route("/integrations/<integration_id>/run", methods=["POST"])
+def integration_run(integration_id: str):
+    data = request.json or {}
+    endpoint = data.get("endpoint", "")
+    method = data.get("method", "GET")
+    payload = data.get("payload")
+    try:
+        result = get_integration_manager().run(integration_id, endpoint=endpoint, method=method, payload=payload)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/proxy", methods=["POST"])
+def proxy_request():
+    data = request.json or {}
+    integration_id = data.get("integration_id")
+    if not integration_id:
+        return jsonify({"ok": False, "error": "integration_id required"}), 400
+    endpoint = data.get("endpoint", "")
+    method = data.get("method", "GET")
+    payload = data.get("payload")
+    try:
+        result = get_integration_manager().proxy(integration_id, endpoint=endpoint, method=method, payload=payload)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/webhooks/receive/<integration_id>", methods=["POST"])
+def webhook_receive(integration_id: str):
+    mgr = get_integration_manager()
+    raw = request.get_data()
+    signature = request.headers.get("X-Hub-Signature-256") or request.headers.get("X-Webhook-Signature")
+    verified = mgr.verify_webhook(integration_id, signature, raw)
+    delivery = WebhookDelivery(
+        id=f"wh-{int(time.time() * 1000)}-{id(request)}",
+        integration_id=integration_id,
+        timestamp=time.time(),
+        payload=request.json or {},
+        response_status=200 if verified else 401,
+        error_message=None if verified else "webhook signature verification failed",
+    )
+    mgr.record_delivery(delivery)
+    if not verified:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+
+    return jsonify({"ok": True, "delivery_id": delivery.id})
+
+
+@app.route("/webhooks/deliveries", methods=["GET"])
+def webhook_deliveries():
+    limit = min(100, max(1, request.args.get("limit", 100, type=int)))
+    return jsonify({"ok": True, "deliveries": get_integration_manager().list_deliveries(limit=limit)})
 
 
 # ── Main entrypoint ──────────────────────────────────────────────────────────

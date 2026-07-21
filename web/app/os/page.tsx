@@ -66,9 +66,14 @@ export default function OSPage() {
             Deploy autonomous AI command centers across your enterprise
           </p>
         </div>
-        <Link href="/os/workflows" className="btn btn-primary">
-          🕸️ Workflow Builder
-        </Link>
+        <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+          <Link href="/os/integrations" className="btn btn-primary">
+            🔗 API Gateway
+          </Link>
+          <Link href="/os/workflows" className="btn btn-primary">
+            🕸️ Workflow Builder
+          </Link>
+        </div>
       </header>
 
       {error && <div className="module-alert danger">{error}</div>}
