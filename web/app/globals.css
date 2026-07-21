@@ -1440,6 +1440,232 @@ ul { list-style: none; }
 .live-status-indicator.warn { background: var(--warning); }
 .live-status-indicator.danger { background: var(--danger); }
 
+/* =================== ALERT PANEL ====================== */
+.alert-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  border-radius: var(--radius);
+  margin-bottom: 20px;
+  animation: alertSlideDown 0.3s ease;
+}
+
+@keyframes alertSlideDown {
+  from { opacity: 0; transform: translateY(-12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.alert-banner.critical {
+  background: rgba(239,68,68,0.1);
+  border: 1px solid rgba(239,68,68,0.35);
+  color: var(--fg);
+}
+
+.alert-banner.warning {
+  background: rgba(245,158,11,0.1);
+  border: 1px solid rgba(245,158,11,0.35);
+  color: var(--fg);
+}
+
+.alert-banner-icon {
+  font-size: 1.2rem;
+  flex-shrink: 0;
+}
+
+.alert-banner-content {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  flex-wrap: wrap;
+}
+
+.alert-banner-content strong {
+  font-weight: 700;
+  font-size: 0.88rem;
+}
+
+.alert-banner-count {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  background: rgba(255,255,255,0.1);
+  color: var(--fg-soft);
+}
+
+/* ── Alert Panel ──────────────────────── */
+.alert-panel {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 22px;
+  margin-bottom: 28px;
+}
+
+.alert-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.alert-panel-title-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.alert-panel-title-row h3 {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.alert-panel-counts {
+  display: flex;
+  gap: 8px;
+}
+
+.alert-count-badge {
+  font-size: 0.7rem;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-weight: 700;
+}
+.alert-count-badge.critical {
+  background: rgba(239,68,68,0.15);
+  color: var(--danger);
+}
+.alert-count-badge.warning {
+  background: rgba(245,158,11,0.15);
+  color: var(--warning);
+}
+
+.alert-panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.alert-refresh-note {
+  font-size: 0.65rem;
+  color: var(--fg-mute);
+}
+
+.alert-empty {
+  text-align: center;
+  padding: 32px 20px;
+}
+
+.alert-empty-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(16,185,129,0.12);
+  color: var(--success);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.3rem;
+  font-weight: 700;
+  margin: 0 auto 14px;
+}
+
+.alert-empty-text {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--fg);
+  margin-bottom: 4px;
+}
+
+.alert-empty-sub {
+  font-size: 0.85rem;
+  color: var(--fg-mute);
+}
+
+/* ── Alert List ───────────────────────── */
+.alert-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.alert-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 14px 16px;
+  transition: all 0.15s ease;
+  animation: alertSlideDown 0.25s ease;
+}
+
+.alert-item:hover {
+  border-color: var(--border-strong);
+}
+
+.alert-item.critical {
+  border-left: 3px solid var(--danger);
+  background: rgba(239,68,68,0.04);
+}
+
+.alert-item.warning {
+  border-left: 3px solid var(--warning);
+}
+
+.alert-item-left {
+  display: flex;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+.alert-item-icon {
+  flex-shrink: 0;
+  font-size: 1rem;
+  margin-top: 2px;
+}
+
+.alert-item-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.alert-item-title {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--fg);
+  margin-bottom: 4px;
+}
+
+.alert-item-message {
+  font-size: 0.82rem;
+  color: var(--fg-soft);
+  margin-bottom: 8px;
+  line-height: 1.45;
+}
+
+.alert-item-meta {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  font-size: 0.7rem;
+  color: var(--fg-mute);
+}
+
+.alert-item-module {
+  font-weight: 600;
+  color: var(--fg-soft);
+}
+
+.alert-item-time {
+  font-family: ui-monospace, monospace;
+}
+
 /* ── System Health Panel ────────────── */
 .live-system-panel {
   background: var(--bg-card);

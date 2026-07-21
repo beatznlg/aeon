@@ -20,6 +20,7 @@ import {
 import {
   LiveMonitorBar,
   LiveMonitorWidget,
+  AlertBanner,
 } from "../../../components/LiveMonitor";
 
 type TickResult = {
@@ -141,6 +142,9 @@ export default function AppPage() {
           )}
         </div>
       </header>
+
+      {/* ── Alerts ──────────────────────────────────── */}
+      <AlertBanner />
 
       {/* ── Live Monitoring Bar ──────────────────────── */}
       <LiveMonitorBar appId={appId} />

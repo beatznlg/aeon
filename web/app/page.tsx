@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { SystemHealthPanel } from "../components/LiveMonitor";
+import { SystemHealthPanel, AlertBanner, AlertPanel } from "../components/LiveMonitor";
 
 const MODULES = [
   { id: "cybersecurity", name: "Security Command", icon: "🛡️", color: "#ef4444", status: "active", tools: 12, desc: "Threat intelligence, vulnerability scanning, and compliance monitoring" },
@@ -60,6 +60,10 @@ export default function DashboardPage() {
           </Link>
         </div>
       </div>
+
+      {/* ═══ Alerts ═══ */}
+      <AlertBanner />
+      <AlertPanel />
 
       {/* System Status Bar */}
       <div className="system-bar">

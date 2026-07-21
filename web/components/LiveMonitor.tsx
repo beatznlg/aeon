@@ -226,6 +226,240 @@ export function LiveMonitorWidget({
   );
 }
 
+// ── Alert Types ──────────────────────────────────────────────────────
+
+export interface Alert {
+  id: string;
+  module_id: string;
+  module_name: string;
+  severity: "critical" | "warning" | "info";
+  title: string;
+  message: string;
+  metric: string;
+  value: number;
+  threshold: number;
+  detected_at: number;
+}
+
+export interface AlertsResponse {
+  ok: boolean;
+  ts: number;
+  total: number;
+  critical_count: number;
+  warning_count: number;
+  alerts: Alert[];
+  summary: {
+    has_critical: boolean;
+    has_warning: boolean;
+    highest_severity: string;
+  };
+}
+
+// ── Alert Hook ────────────────────────────────────────────────────────
+
+export function useAlerts(intervalMs = 8000) {
+  const [data, setData] = useState<AlertsResponse | null>(null);
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const res = await fetch("/api/os/apps/alerts", { cache: "no-store" });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const d: AlertsResponse = await res.json();
+        if (!cancelled) {
+          setData(d);
+          setError(null);
+        }
+      } catch (e: any) {
+        if (!cancelled) setError(e.message ?? "poll failed");
+      }
+    };
+    load();
+    const timer = setInterval(load, intervalMs);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [intervalMs]);
+
+  const dismissAlert = useCallback((id: string) => {
+    setDismissed((prev) => new Set(prev).add(id));
+  }, []);
+
+  const dismissAll = useCallback(() => {
+    if (!data) return;
+    setDismissed(new Set(data.alerts.map((a) => a.id)));
+  }, [data]);
+
+  const activeAlerts = (data?.alerts ?? []).filter((a) => !dismissed.has(a.id));
+  const activeCritical = activeAlerts.filter((a) => a.severity === "critical");
+  const activeWarning = activeAlerts.filter((a) => a.severity === "warning");
+  const activeInfo = activeAlerts.filter((a) => a.severity === "info");
+
+  return {
+    data,
+    error,
+    activeAlerts,
+    activeCritical,
+    activeWarning,
+    activeInfo,
+    dismissAlert,
+    dismissAll,
+    hasCritical: activeCritical.length > 0,
+    totalActive: activeAlerts.length,
+  };
+}
+
+// ── Alert Components ──────────────────────────────────────────────────
+
+/** Banner shown at the top of the page for critical alerts */
+export function AlertBanner() {
+  const { activeCritical, activeWarning, dismissAlert, hasCritical } = useAlerts(10000);
+
+  if (activeCritical.length === 0 && activeWarning.length === 0) return null;
+
+  const topAlert = activeCritical.length > 0 ? activeCritical[0] : activeWarning[0];
+
+  return (
+    <div className={`alert-banner ${hasCritical ? "critical" : "warning"}`}>
+      <span className="alert-banner-icon">{hasCritical ? "🚨" : "⚠️"}</span>
+      <div className="alert-banner-content">
+        <strong>{topAlert.title}</strong>
+        <span>{topAlert.message}</span>
+        {activeCritical.length > 1 && (
+          <span className="alert-banner-count">
+            +{activeCritical.length + activeWarning.length - 1} more
+          </span>
+        )}
+      </div>
+      <button className="btn btn-sm" onClick={() => dismissAlert(topAlert.id)}>
+        Dismiss
+      </button>
+    </div>
+  );
+}
+
+/** Full alert center panel */
+export function AlertPanel() {
+  const {
+    activeAlerts,
+    activeCritical,
+    activeWarning,
+    activeInfo,
+    dismissAlert,
+    dismissAll,
+    totalActive,
+    error,
+  } = useAlerts(8000);
+
+  return (
+    <div className="alert-panel">
+      <div className="alert-panel-header">
+        <div className="alert-panel-title-row">
+          <h3>
+            {totalActive > 0 ? "🔔 Active Alerts" : "✅ All Clear"}
+          </h3>
+          {(activeCritical.length > 0 || activeWarning.length > 0) && (
+            <div className="alert-panel-counts">
+              {activeCritical.length > 0 && (
+                <span className="alert-count-badge critical">
+                  {activeCritical.length} Critical
+                </span>
+              )}
+              {activeWarning.length > 0 && (
+                <span className="alert-count-badge warning">
+                  {activeWarning.length} Warning
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+        <div className="alert-panel-actions">
+          <span className="alert-refresh-note">
+            Auto-refreshes every 8s
+          </span>
+          {totalActive > 0 && (
+            <button className="btn btn-sm" onClick={dismissAll}>
+              Dismiss All
+            </button>
+          )}
+        </div>
+      </div>
+
+      {error && (
+        <div className="alert-empty">
+          Unable to fetch alerts: {error}
+        </div>
+      )}
+
+      {!error && activeAlerts.length === 0 && (
+        <div className="alert-empty">
+          <div className="alert-empty-icon">✓</div>
+          <div className="alert-empty-text">All modules operating normally</div>
+          <div className="alert-empty-sub">No warnings or critical alerts detected.</div>
+        </div>
+      )}
+
+      {activeAlerts.length > 0 && (
+        <div className="alert-list">
+          {/* Critical alerts first */}
+          {activeCritical.map((alert) => (
+            <AlertItem key={alert.id} alert={alert} onDismiss={dismissAlert} />
+          ))}
+          {activeWarning.map((alert) => (
+            <AlertItem key={alert.id} alert={alert} onDismiss={dismissAlert} />
+          ))}
+          {activeInfo.map((alert) => (
+            <AlertItem key={alert.id} alert={alert} onDismiss={dismissAlert} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AlertItem({ alert, onDismiss }: { alert: Alert; onDismiss: (id: string) => void }) {
+  const timeAgo = formatTimeAgo(alert.detected_at);
+
+  return (
+    <div className={`alert-item ${alert.severity}`}>
+      <div className="alert-item-left">
+        <span className={`alert-item-icon ${alert.severity}`}>
+          {alert.severity === "critical" ? "🔴" : alert.severity === "warning" ? "🟡" : "🔵"}
+        </span>
+        <div className="alert-item-body">
+          <div className="alert-item-title">{alert.title}</div>
+          <div className="alert-item-message">{alert.message}</div>
+          <div className="alert-item-meta">
+            <span className="alert-item-module">{alert.module_name}</span>
+            <span className="alert-item-metric">
+              {alert.metric}: {alert.value} (threshold: {alert.threshold})
+            </span>
+            <span className="alert-item-time">{timeAgo}</span>
+          </div>
+        </div>
+      </div>
+      <button className="btn-icon" onClick={() => onDismiss(alert.id)} title="Dismiss">
+        ✕
+      </button>
+    </div>
+  );
+}
+
+function formatTimeAgo(ts: number): string {
+  const diff = Date.now() - ts;
+  const seconds = Math.floor(diff / 1000);
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
 /** Global system health panel for the root dashboard */
 export function SystemHealthPanel() {
   // Poll all active module health endpoints
