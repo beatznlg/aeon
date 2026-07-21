@@ -63,7 +63,8 @@ function singleTextStream(text: string, backend: string): Response {
 }
 
 export async function POST(req: Request) {
-  const { messages } = await req.json().catch(() => ({}));
+  const body = await req.json().catch(() => ({}));
+  const { messages, kb_id, prompt_id } = body;
   const last = messages?.[messages.length - 1];
   const prompt: string = last?.content ?? "";
   // Allow clients to request a specific provider at runtime (e.g. from
@@ -88,7 +89,7 @@ export async function POST(req: Request) {
     email: session?.user?.email ?? undefined,
     action: "CHAT",
     module: "global",
-    metadata: { backend: "web", provider: providerOverride },
+    metadata: { backend: "web", provider: providerOverride, kb_id, prompt_id },
   });
 
   logUsage({
@@ -100,6 +101,30 @@ export async function POST(req: Request) {
   });
 
   try {
+    // --- RAG chat path: if a knowledge base or prompt is selected ---
+    if (kb_id || prompt_id) {
+      const ragRes = await fetch(`${process.env.AEON_PYTHON_URL}/rag/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          query: prompt,
+          kb_id,
+          prompt_id,
+          variables: { userId, workspaceId },
+          top_k: 5,
+        }),
+      }).catch(() => null);
+      if (ragRes && ragRes.ok) {
+        const ragData = await ragRes.json();
+        if (ragData.ok !== false) {
+          const text = ragData.answer ?? "";
+          const backend = ragData.backend ?? "rag";
+          logTurn(sb, text, backend);
+          return singleTextStream(text, backend);
+        }
+      }
+    }
+
     // --- Route to the Python AEON kernel if configured ---
     if (pythonUrl()) {
       const kernelRes = await kernelChat(prompt);

@@ -66,7 +66,7 @@ export default function OSPage() {
             Deploy autonomous AI command centers across your enterprise
           </p>
         </div>
-        <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
           <Link href="/os/integrations" className="btn btn-primary">
             🔗 API Gateway
           </Link>
@@ -75,6 +75,12 @@ export default function OSPage() {
           </Link>
           <Link href="/os/observability" className="btn btn-primary">
             📊 Observability
+          </Link>
+          <Link href="/os/ai-studio" className="btn btn-primary">
+            🤖 AI Studio
+          </Link>
+          <Link href="/os/knowledge" className="btn btn-primary">
+            📚 Knowledge Bases
           </Link>
         </div>
       </header>

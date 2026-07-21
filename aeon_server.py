@@ -497,6 +497,147 @@ def metrics_index():
     return jsonify({"ok": True, "metrics": summary})
 
 
+# ── Prompt Registry & RAG endpoints ──────────────────────────────────────────
+_prompt_registry: Optional[Any] = None
+_kb_manager: Optional[Any] = None
+_rag_orchestrator: Optional[Any] = None
+
+
+def get_prompt_registry():
+    global _prompt_registry
+    if _prompt_registry is None:
+        from aeon_rag import PromptRegistry
+        _prompt_registry = PromptRegistry(AEON_ROOT)
+    return _prompt_registry
+
+
+def get_kb_manager():
+    global _kb_manager
+    if _kb_manager is None:
+        from aeon_rag import KnowledgeBaseManager
+        _kb_manager = KnowledgeBaseManager(AEON_ROOT)
+    return _kb_manager
+
+
+def get_rag_orchestrator():
+    global _rag_orchestrator
+    if _rag_orchestrator is None:
+        from aeon_rag import RAGOrchestrator
+        _rag_orchestrator = RAGOrchestrator(AEON_ROOT)
+    return _rag_orchestrator
+
+
+@app.route("/prompts", methods=["GET", "POST"])
+def prompts_index():
+    reg = get_prompt_registry()
+    if request.method == "GET":
+        return jsonify({"ok": True, "prompts": reg.list_prompts()})
+
+    data = request.json or {}
+    if not data.get("name"):
+        return jsonify({"ok": False, "error": "name is required"}), 400
+    prompt = reg.save_prompt(data)
+    return jsonify({"ok": True, "prompt": prompt.to_dict()})
+
+
+@app.route("/prompts/<prompt_id>", methods=["GET", "DELETE"])
+def prompt_detail(prompt_id: str):
+    reg = get_prompt_registry()
+    if request.method == "GET":
+        prompt = reg.get_prompt(prompt_id)
+        if not prompt:
+            return jsonify({"ok": False, "error": "prompt not found"}), 404
+        return jsonify({"ok": True, "prompt": prompt.to_dict()})
+
+    if reg.delete_prompt(prompt_id):
+        return jsonify({"ok": True})
+    return jsonify({"ok": False, "error": "prompt not found"}), 404
+
+
+@app.route("/knowledge-bases", methods=["GET", "POST"])
+def knowledge_bases_index():
+    mgr = get_kb_manager()
+    if request.method == "GET":
+        return jsonify({"ok": True, "knowledge_bases": mgr.list_kbs()})
+
+    data = request.json or {}
+    if not data.get("name"):
+        return jsonify({"ok": False, "error": "name is required"}), 400
+    kb = mgr.create_kb(data)
+    return jsonify({"ok": True, "knowledge_base": kb.to_dict()})
+
+
+@app.route("/knowledge-bases/<kb_id>", methods=["GET", "DELETE"])
+def knowledge_base_detail(kb_id: str):
+    mgr = get_kb_manager()
+    if request.method == "GET":
+        kb = mgr.get_kb(kb_id)
+        if not kb:
+            return jsonify({"ok": False, "error": "knowledge base not found"}), 404
+        return jsonify({"ok": True, "knowledge_base": kb.to_dict()})
+
+    if mgr.delete_kb(kb_id):
+        return jsonify({"ok": True})
+    return jsonify({"ok": False, "error": "knowledge base not found"}), 404
+
+
+@app.route("/knowledge-bases/<kb_id>/documents", methods=["POST"])
+def knowledge_base_upload(kb_id: str):
+    data = request.json or {}
+    text = (data.get("text") or "").strip()
+    doc_id = data.get("doc_id") or f"doc-{int(time.time() * 1000)}"
+    if not text:
+        return jsonify({"ok": False, "error": "text is required"}), 400
+    try:
+        result = get_kb_manager().add_document(kb_id, doc_id, text, metadata=data.get("metadata", {}))
+        return jsonify({"ok": True, **result})
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 404
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/knowledge-bases/<kb_id>/query", methods=["POST"])
+def knowledge_base_query(kb_id: str):
+    data = request.json or {}
+    query = (data.get("query") or "").strip()
+    top_k = min(20, max(1, int(data.get("top_k", 5))))
+    if not query:
+        return jsonify({"ok": False, "error": "query is required"}), 400
+    try:
+        chunks = get_kb_manager().query(kb_id, query, top_k=top_k)
+        return jsonify({"ok": True, "chunks": chunks})
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 404
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/rag/chat", methods=["POST"])
+def rag_chat():
+    data = request.json or {}
+    query = (data.get("query") or "").strip()
+    if not query:
+        return jsonify({"ok": False, "error": "query is required"}), 400
+
+    kb_id = data.get("kb_id")
+    prompt_id = data.get("prompt_id")
+    variables = data.get("variables", {})
+    top_k = min(20, max(1, int(data.get("top_k", 5))))
+
+    try:
+        result = get_rag_orchestrator().chat(
+            kb_id=kb_id,
+            prompt_id=prompt_id,
+            variables=variables,
+            query=query,
+            top_k=top_k,
+        )
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 # ── Main entrypoint ──────────────────────────────────────────────────────────
 if __name__ == "__main__":
     print(f"AEON Python Kernel starting on {HOST}:{PORT}")
