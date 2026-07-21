@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSession, signOut } from "next-auth/react";
+import type { ConnectorType } from "@/lib/connectors";
+import { CONNECTORS } from "@/lib/connectors";
 
 type SetupKeys = {
   huggingface_token?: { present: boolean; length: number };
@@ -20,6 +22,15 @@ type SetupStatus = {
 };
 
 type Health = { ok: boolean; backend?: string; ts?: number };
+
+type ConnectorCatalogItem = {
+  id: string;
+  name: string;
+  type: ConnectorType;
+  description: string;
+  requiredSecrets: string[];
+  optionalSecrets: string[];
+};
 
 const KEY_DEFINITIONS = [
   {
@@ -93,6 +104,8 @@ export default function SettingsPage() {
   const [health, setHealth] = useState<Health | null>(null);
   const [setup, setSetup] = useState<SetupStatus | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+  const [connectorCatalog, setConnectorCatalog] = useState<ConnectorCatalogItem[]>([]);
+  const [connectorStatus, setConnectorStatus] = useState<Record<string, { ok: boolean; message: string }>>({});
   const userRole = ((session?.user as any)?.role as string) || "viewer";
 
   useEffect(() => {
@@ -105,6 +118,11 @@ export default function SettingsPage() {
       .then((r) => r.json())
       .then((d) => setSetup(d))
       .catch(() => {});
+
+    fetch("/api/connectors", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => setConnectorCatalog(d.catalog || []))
+      .catch(() => {});
   }, []);
 
   const copyKey = async (key: string) => {
@@ -113,6 +131,31 @@ export default function SettingsPage() {
       setCopied(key);
       setTimeout(() => setCopied(null), 2000);
     } catch {}
+  };
+
+  const testConnector = async (item: ConnectorCatalogItem) => {
+    setConnectorStatus((s) => ({ ...s, [item.id]: { ok: false, message: "testing..." } }));
+    const secrets: Record<string, string> = {};
+    item.requiredSecrets.forEach((k) => {
+      secrets[k] = process.env[k] || "";
+    });
+    try {
+      const res = await fetch("/api/connectors", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "test",
+          config: { name: item.name, type: item.type, enabled: true, secrets },
+        }),
+      });
+      const data = await res.json();
+      setConnectorStatus((s) => ({
+        ...s,
+        [item.id]: { ok: data.ok, message: data.ok ? "connected" : data.error || "failed" },
+      }));
+    } catch (e: any) {
+      setConnectorStatus((s) => ({ ...s, [item.id]: { ok: false, message: e?.message || "error" } }));
+    }
   };
 
   const keyStatus = (envName: string): "connected" | "disconnected" | "pending" => {
@@ -310,6 +353,85 @@ export default function SettingsPage() {
           <button className="btn btn-sm" onClick={() => copyKey("AEON_LLM_PROVIDER")}>
             {copied === "AEON_LLM_PROVIDER" ? "Copied!" : "Copy env name"}
           </button>
+        </div>
+      </div>
+
+      {/* Enterprise Connectors */}
+      <div className="settings-section">
+        <div className="settings-section-header">
+          <span style={{ fontSize: "1.2rem" }}>🔌</span>
+          <div>
+            <h2>Enterprise Connectors</h2>
+            <p>Secure data sources for RAG and workflow automation</p>
+          </div>
+        </div>
+        {connectorCatalog.length === 0 ? (
+          <div className="settings-item">
+            <div>
+              <div className="settings-item-label">No connectors configured</div>
+              <div className="settings-item-desc">Check your API access or contact an admin.</div>
+            </div>
+          </div>
+        ) : (
+          connectorCatalog.map((item) => (
+            <div key={item.id} className="settings-item">
+              <div>
+                <div className="settings-item-label">{item.name}</div>
+                <div className="settings-item-desc">{item.description}</div>
+                <div className="settings-item-desc" style={{ marginTop: 4 }}>
+                  Required: {item.requiredSecrets.join(", ") || "none"}
+                </div>
+              </div>
+              <div className="settings-item-right">
+                <button
+                  className="btn btn-sm"
+                  onClick={() => testConnector(item)}
+                  disabled={!["ADMIN", "OPERATOR"].includes(userRole)}
+                >
+                  {connectorStatus[item.id]?.message || "Test"}
+                </button>
+                {connectorStatus[item.id] && (
+                  <span
+                    className={`settings-status ${
+                      connectorStatus[item.id].ok ? "connected" : "disconnected"
+                    }`}
+                    style={{ marginLeft: 8 }}
+                  >
+                    {connectorStatus[item.id].ok ? "✓" : "✕"}
+                  </span>
+                )}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* Workspace Info */}
+      <div className="settings-section">
+        <div className="settings-section-header">
+          <span style={{ fontSize: "1.2rem" }}>🛡️</span>
+          <div>
+            <h2>Workspace & RBAC</h2>
+            <p>Current workspace and permission level</p>
+          </div>
+        </div>
+        <div className="settings-item">
+          <div>
+            <div className="settings-item-label">Current Role</div>
+            <div className="settings-item-desc">Determines what actions you can perform</div>
+          </div>
+          <span className={`settings-status ${userRole === "ADMIN" ? "connected" : "disconnected"}`}>
+            {userRole.toUpperCase()}
+          </span>
+        </div>
+        <div className="settings-item">
+          <div>
+            <div className="settings-item-label">Workspace ID</div>
+            <div className="settings-item-desc">Active workspace context for data isolation</div>
+          </div>
+          <span style={{ color: "var(--fg-soft)", fontFamily: "ui-monospace, monospace", fontSize: "0.85rem" }}>
+            {(session?.user as any)?.workspaceId || "default"}
+          </span>
         </div>
       </div>
     </div>
