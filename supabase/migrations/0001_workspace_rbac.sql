@@ -1,6 +1,6 @@
 -- AEON OS Phase 3: Enterprise Identity & Data Connectors
 -- Tables: workspaces, memberships, connector_configs
--- Run this in Supabase SQL Editor or via supabase db push
+-- Run this in Supabase SQL Editor after 0000_users_and_audit.sql.
 
 -- Multi-tenant workspaces
 CREATE TABLE IF NOT EXISTS public.workspaces (
@@ -39,22 +39,23 @@ ALTER TABLE public.workspaces ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.memberships ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.connector_configs ENABLE ROW LEVEL SECURITY;
 
--- Users can see workspaces they are members of
+-- Idempotent policy creation: drop then recreate so reruns are safe
+DROP POLICY IF EXISTS workspace_members_select ON public.workspaces;
 CREATE POLICY workspace_members_select ON public.workspaces
   FOR SELECT USING (
     EXISTS (SELECT 1 FROM public.memberships m WHERE m.workspace_id = id AND m.user_id = auth.uid())
   );
 
--- Users can see their own memberships
+DROP POLICY IF EXISTS membership_select ON public.memberships;
 CREATE POLICY membership_select ON public.memberships
   FOR SELECT USING (user_id = auth.uid());
 
--- Connector configs visible within workspace
+DROP POLICY IF EXISTS connector_config_select ON public.connector_configs;
 CREATE POLICY connector_config_select ON public.connector_configs
   FOR SELECT USING (
-    EXISTS (SELECT 1 FROM public.memberships m WHERE m.workspace_id = workspace_id AND m.user_id = auth.uid())
+    EXISTS (
+      SELECT 1 FROM public.memberships m
+      WHERE m.workspace_id = connector_configs.workspace_id
+        AND m.user_id = auth.uid()
+    )
   );
-
--- Create a default workspace and make existing users admins (run after users exist)
--- INSERT INTO public.workspaces (slug, name, plan) VALUES ('default', 'Default Workspace', 'free');
--- UPDATE public.users SET role = 'ADMIN' WHERE email IN (SELECT email FROM your_admins);
