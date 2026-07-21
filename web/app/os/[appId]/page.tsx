@@ -73,18 +73,17 @@ export default function AppPage() {
     }
   };
 
-  const loadVitals = async () => {
-    try {
-      const res = await fetch(`/api/os/apps/${appId}/vitals`, { cache: "no-store" });
-      const data = await res.json();
-      if (data.ok) setVitals(data);
-    } catch (e) {
-      // non-fatal
-    }
-  };
-
   useEffect(() => {
     if (!appId) return;
+    const loadVitals = async () => {
+      try {
+        const res = await fetch(`/api/os/apps/${appId}/vitals`, { cache: "no-store" });
+        const data = await res.json();
+        if (data.ok) setVitals(data);
+      } catch (e) {
+        // non-fatal
+      }
+    };
     loadVitals();
     const t = setInterval(loadVitals, 5000);
     return () => clearInterval(t);
