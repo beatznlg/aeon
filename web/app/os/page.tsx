@@ -66,6 +66,9 @@ export default function OSPage() {
             Deploy autonomous AI command centers across your enterprise
           </p>
         </div>
+        <Link href="/os/workflows" className="btn btn-primary">
+          🕸️ Workflow Builder
+        </Link>
       </header>
 
       {error && <div className="module-alert danger">{error}</div>}

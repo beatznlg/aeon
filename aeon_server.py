@@ -29,6 +29,8 @@ from typing import Any, Dict, Optional
 from flask import Flask, request, jsonify
 
 from aeon import ReflectiveAgent
+from aeon_os import AeonOS
+import aeon_workflows  # patches AeonOS with workflow/swarm helpers
 
 app = Flask(__name__)
 
@@ -217,6 +219,81 @@ def list_agents():
                 for app_id, agent in _agents.items()
             ],
         })
+
+
+# ── OS orchestrator singleton (for workflows / swarm) ─────────────────────
+_aeon_os_lock = threading.Lock()
+_aeon_os_instance: Optional[AeonOS] = None
+
+
+def get_os() -> AeonOS:
+    """Return a singleton AeonOS orchestrator (loads workflow/swarm helpers)."""
+    global _aeon_os_instance
+    with _aeon_os_lock:
+        if _aeon_os_instance is None:
+            _aeon_os_instance = AeonOS(root=AEON_ROOT)
+        return _aeon_os_instance
+
+
+# ── Workflow endpoints ─────────────────────────────────────────────────────
+@app.route("/workflows", methods=["GET", "POST"])
+def workflows_index():
+    """List all workflows or create a new one."""
+    os_inst = get_os()
+    if request.method == "GET":
+        return jsonify({"ok": True, "workflows": os_inst.list_workflows()})
+
+    data = request.json or {}
+    workflow = aeon_workflows.WorkflowDefinition(
+        id=data.get("id") or f"wf-{int(time.time() * 1000)}",
+        name=data.get("name", "Untitled Workflow"),
+        description=data.get("description", ""),
+        nodes=[aeon_workflows.WorkflowNode(**n) for n in data.get("nodes", [])],
+        edges=[aeon_workflows.WorkflowEdge(**e) for e in data.get("edges", [])],
+    )
+    os_inst.save_workflow(workflow)
+    return jsonify({"ok": True, "workflow": workflow.to_dict()})
+
+
+@app.route("/workflows/<workflow_id>", methods=["GET", "DELETE"])
+def workflow_detail(workflow_id: str):
+    os_inst = get_os()
+    if request.method == "GET":
+        wf = os_inst.get_workflow(workflow_id)
+        if wf is None:
+            return jsonify({"ok": False, "error": "workflow not found"}), 404
+        return jsonify({"ok": True, "workflow": wf.to_dict()})
+
+    # DELETE
+    if os_inst.delete_workflow(workflow_id):
+        return jsonify({"ok": True})
+    return jsonify({"ok": False, "error": "workflow not found"}), 404
+
+
+@app.route("/workflows/<workflow_id>/run", methods=["POST"])
+def workflow_run(workflow_id: str):
+    data = request.json or {}
+    initial_input = (data.get("initial_input") or "").strip()
+    try:
+        result = get_os().run_workflow(workflow_id, initial_input)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+# ── Swarm endpoints ────────────────────────────────────────────────────────
+@app.route("/swarm/run", methods=["POST"])
+def swarm_run():
+    data = request.json or {}
+    app_ids = data.get("app_ids") or []
+    prompt = (data.get("prompt") or "").strip()
+    if not app_ids or not prompt:
+        return jsonify({"ok": False, "error": "app_ids and prompt required"}), 400
+    try:
+        result = get_os().run_swarm(app_ids, prompt)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 # ── Main entrypoint ──────────────────────────────────────────────────────────
