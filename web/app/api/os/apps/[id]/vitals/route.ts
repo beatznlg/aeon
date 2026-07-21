@@ -1,52 +1,35 @@
 import { NextResponse } from "next/server";
-import { spawn } from "child_process";
 
 export const dynamic = "force-dynamic";
 
-function runVitals(appId: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const root = process.cwd();
-    const script = `
-import json, os
-os.environ['AEON_OS_ROOT'] = '${root}/aeon_os_state'
-from aeon_os import AeonOS
-aos = AeonOS()
-aos.install_app('default-workspace', '${appId}')
-result = aos.vitals('default-workspace')
-print('___AEON_OS_VITALS___' + json.dumps(result))
-`;
-    const proc = require("child_process").spawn("python3", ["-c", script], {
-      cwd: root,
-      env: { ...process.env, AEON_OS_ROOT: `${root}/aeon_os_state` },
-    });
-    let stdout = "";
-    let stderr = "";
-    proc.stdout.on("data", (d: Buffer) => { stdout += d.toString(); });
-    proc.stderr.on("data", (d: Buffer) => { stderr += d.toString(); });
-    proc.on("close", (code: number) => {
-      if (code !== 0) {
-        return reject(new Error(stderr || "aeon os vitals failed"));
-      }
-      resolve(stdout);
-    });
-    proc.on("error", reject);
-  });
-}
-
+/**
+ * Vercel-compatible mock vitals for an AEON OS app.
+ * Returns deterministic, realistic data without spawning Python.
+ */
 export async function GET(
   _req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: { id: string } },
 ) {
   const id = params.id;
-  try {
-    const stdout = await runVitals(id);
-    const marker = stdout.indexOf("___AEON_OS_VITALS___");
-    if (marker === -1) {
-      return NextResponse.json({ ok: false, error: "no vitals from aeon os" }, { status: 500 });
-    }
-    const result = JSON.parse(stdout.slice(marker + "___AEON_OS_VITALS___".length).split("\n")[0]);
-    return NextResponse.json(result);
-  } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e.message || String(e) }, { status: 500 });
-  }
+  const now = Date.now();
+  const seed = id.split("").reduce((s, c) => s + c.charCodeAt(0), 0);
+
+  return NextResponse.json({
+    ok: true,
+    app_id: id,
+    vitals: {
+      uptime_s: Math.floor(3600 + (now % 86400)),
+      memory_mb: 256 + (seed % 128),
+      cpu_pct: 5 + (seed % 35),
+      active_workers: 2 + (seed % 4),
+    },
+    ledger_balance: 0.0125 + (seed % 100) / 10000,
+    open_goals: [
+      { title: "Monitor operational health", priority: 10 },
+      { title: "Surface actionable alerts", priority: 8 },
+      { title: "Optimize resource allocation", priority: 6 },
+    ],
+    tool_count: 6 + (seed % 10),
+    ts: now,
+  });
 }

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import {
+  CyberSecurityDashboard,
   RetailDashboard,
   ManufacturingDashboard,
   ProfessionalDashboard,
@@ -110,6 +111,7 @@ export default function AppPage() {
     if (dashboardLoading) return <div style={{ color: "var(--fg-mute)", padding: 40, textAlign: "center" }}>Loading module intelligence…</div>;
     if (!dashboardData) return null;
     switch (appId) {
+      case "cybersecurity": return <CyberSecurityDashboard data={dashboardData} />;
       case "retail": return <RetailDashboard data={dashboardData} />;
       case "manufacturing": return <ManufacturingDashboard data={dashboardData} />;
       case "professional": return <ProfessionalDashboard data={dashboardData} />;

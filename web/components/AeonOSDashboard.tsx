@@ -7,6 +7,34 @@ export type KPIData = { title: string; value: string | number; sub?: string; col
 
 export type DashboardData = {
   ok: boolean;
+  // cybersecurity
+  threats?: Array<{
+    id: string;
+    indicator: string;
+    type: string;
+    severity: string;
+    status: string;
+  }>;
+  vulnerabilities?: Array<{
+    cve: string;
+    severity: string;
+    cvss: number;
+    affected: string;
+    patch_available: boolean;
+  }>;
+  ip_reputation?: {
+    score: number;
+    known_malicious: boolean;
+    source_countries: string[];
+    last_seen_days: number;
+  };
+  compliance?: {
+    framework: string;
+    score: number;
+    maturity: string;
+    gaps: string[];
+  };
+  security_news?: Array<{ title: string; url: string }>;
   // retail
   forecast?: Array<{
     sku: string;
@@ -366,6 +394,82 @@ export function DataTable({ data, columns }: { data: any[]; columns: { key: stri
 }
 
 // =================== Module Dashboards ===================
+export function CyberSecurityDashboard({ data }: { data: DashboardData }) {
+  const threats = data.threats || [];
+  const vulns = data.vulnerabilities || [];
+  const ip = data.ip_reputation;
+  const compliance = data.compliance;
+  const news = data.security_news || [];
+  const criticalVulns = vulns.filter((v) => v.severity.toLowerCase() === "critical").length;
+  const activeThreats = threats.filter((t) => t.status === "blocked" || t.status === "quarantined").length;
+
+  return (
+    <section className="module-dashboard">
+      <div className="module-dashboard-header">
+        <h2>🛡️ Security Command Center</h2>
+        <p>Threat intelligence, vulnerability tracking, IP reputation, and compliance posture.</p>
+      </div>
+      <div className="module-kpi-row">
+        <KPICard title="Active Threats" value={activeThreats} sub="Blocked / quarantined" color={activeThreats > 0 ? "var(--danger)" : "var(--success)"} />
+        <KPICard title="Critical Vulns" value={criticalVulns} sub="Need immediate patch" color={criticalVulns > 0 ? "var(--danger)" : "var(--success)"} />
+        {ip && <KPICard title="IP Rep Score" value={ip.score.toFixed(2)} sub="0-1 reputation" color={ip.score > 0.5 ? "var(--danger)" : "var(--success)"} />}
+        {compliance && <KPICard title="Compliance" value={`${compliance.score}%`} sub={compliance.framework} />}
+      </div>
+      <div className="module-widgets-grid">
+        <Widget title="Threat Intelligence">
+          <DataTable data={threats} columns={[
+            { key: "indicator", label: "Indicator" },
+            { key: "type", label: "Type" },
+            { key: "severity", label: "Severity", render: (r) => <Badge variant={r.severity === "critical" ? "danger" : r.severity === "high" ? "warn" : "ok"}>{r.severity}</Badge> },
+            { key: "status", label: "Status", render: (r) => <Badge variant={r.status === "blocked" || r.status === "quarantined" ? "ok" : "warn"}>{r.status}</Badge> },
+          ]} />
+        </Widget>
+        <Widget title="Vulnerability Scan">
+          <DataTable data={vulns} columns={[
+            { key: "cve", label: "CVE" },
+            { key: "affected", label: "Affected" },
+            { key: "cvss", label: "CVSS" },
+            { key: "severity", label: "Severity", render: (r) => <Badge variant={r.severity === "Critical" ? "danger" : r.severity === "High" ? "warn" : "ok"}>{r.severity}</Badge> },
+            { key: "patch_available", label: "Patch", render: (r) => r.patch_available ? "✓" : "✗" },
+          ]} />
+        </Widget>
+        {compliance && (
+          <Widget title="Compliance Posture">
+            <div className="module-elasticity">
+              <div><span>Framework</span><strong>{compliance.framework}</strong></div>
+              <div><span>Score</span><strong>{compliance.score}%</strong></div>
+              <div><span>Maturity</span><strong>{compliance.maturity}</strong></div>
+            </div>
+            <div className="module-alert-section" style={{ marginTop: 12 }}>
+              <h4>Gaps</h4>
+              {compliance.gaps.map((g, i) => (
+                <div key={i} className="module-alert danger">{g}</div>
+              ))}
+            </div>
+          </Widget>
+        )}
+        {ip && (
+          <Widget title="IP Reputation">
+            <div className="module-elasticity">
+              <div><span>Score</span><strong>{ip.score.toFixed(2)}</strong></div>
+              <div><span>Known Malicious</span><strong>{ip.known_malicious ? "Yes" : "No"}</strong></div>
+              <div><span>Sources</span><strong>{ip.source_countries.join(", ")}</strong></div>
+              <div><span>Last Seen</span><strong>{ip.last_seen_days}d ago</strong></div>
+            </div>
+          </Widget>
+        )}
+        <Widget title="Security News">
+          <ul className="module-product-list">
+            {news.map((n, i) => (
+              <li key={i}><a href={n.url} style={{ color: "var(--accent)" }}>{n.title}</a></li>
+            ))}
+          </ul>
+        </Widget>
+      </div>
+    </section>
+  );
+}
+
 export function RetailDashboard({ data }: { data: DashboardData }) {
   const forecast = data.forecast || [];
   const inventory = data.inventory || { alerts: [], reorder_recommendations: [], healthy: [], summary: { total_skus: 0, stockout_risks: 0, overstocks: 0 } };
