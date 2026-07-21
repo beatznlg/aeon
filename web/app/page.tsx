@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { SystemHealthPanel } from "../components/LiveMonitor";
 
 const MODULES = [
   { id: "cybersecurity", name: "Security Command", icon: "🛡️", color: "#ef4444", status: "active", tools: 12, desc: "Threat intelligence, vulnerability scanning, and compliance monitoring" },
@@ -118,6 +119,9 @@ export default function DashboardPage() {
           </Link>
         ))}
       </div>
+
+      {/* ═══ Real-Time System Health ═══ */}
+      <SystemHealthPanel />
 
       {/* Enterprise Features */}
       <h2 style={{ fontSize: "1.1rem", fontWeight: 600, marginBottom: 16 }}>Platform Capabilities</h2>

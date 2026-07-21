@@ -17,6 +17,10 @@ import {
   useDashboard,
   KPICard,
 } from "../../../components/AeonOSDashboard";
+import {
+  LiveMonitorBar,
+  LiveMonitorWidget,
+} from "../../../components/LiveMonitor";
 
 type TickResult = {
   ok: boolean;
@@ -138,7 +142,13 @@ export default function AppPage() {
         </div>
       </header>
 
+      {/* ── Live Monitoring Bar ──────────────────────── */}
+      <LiveMonitorBar appId={appId} />
+
       {renderDashboard()}
+
+      {/* ── Live Metrics Widget ──────────────────────── */}
+      <LiveMonitorWidget appId={appId} title="Real-Time Module Metrics" />
 
       <section className="os-app-workspace">
         <div className="os-chat">
