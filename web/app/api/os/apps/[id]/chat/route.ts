@@ -3,6 +3,7 @@ import { APPS } from "@/lib/apps";
 import { auth } from "@/auth";
 import { logAudit } from "@/lib/audit";
 import { kernelAppChat, pythonUrl } from "@/lib/kernel";
+import { logUsage } from "@/lib/usage";
 
 export const maxDuration = 120;
 
@@ -111,13 +112,23 @@ export async function POST(
   }
 
   const system = buildSystemPrompt(appId);
+  const userId = (session?.user as any)?.id;
+  const workspaceId = (session?.user as any)?.workspaceId;
 
   logAudit({
-    userId: (session?.user as any)?.id,
+    userId,
     email: session?.user?.email ?? undefined,
     action: "CHAT",
     module: appId,
     metadata: { backend: "web", provider: providerOverride },
+  });
+
+  logUsage({
+    userId,
+    workspaceId,
+    action: "chat",
+    module: appId,
+    quantity: 1,
   });
 
   try {

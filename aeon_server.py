@@ -32,6 +32,7 @@ from aeon import ReflectiveAgent
 from aeon_os import AeonOS
 import aeon_workflows  # patches AeonOS with workflow/swarm helpers
 from aeon_integrations import IntegrationManager, IntegrationConfig, WebhookDelivery
+from aeon_usage import UsageMeter, BillingCalculator, HealthCollector
 
 app = Flask(__name__)
 
@@ -297,6 +298,33 @@ def swarm_run():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+# ── Usage / Billing / Observability endpoints ────────────────────────────
+_usage_meter: Optional[UsageMeter] = None
+_billing_calculator: Optional[BillingCalculator] = None
+_health_collector: Optional[HealthCollector] = None
+
+
+def get_usage_meter() -> UsageMeter:
+    global _usage_meter
+    if _usage_meter is None:
+        _usage_meter = UsageMeter(AEON_ROOT)
+    return _usage_meter
+
+
+def get_billing_calculator() -> BillingCalculator:
+    global _billing_calculator
+    if _billing_calculator is None:
+        _billing_calculator = BillingCalculator(AEON_ROOT, meter=get_usage_meter())
+    return _billing_calculator
+
+
+def get_health_collector() -> HealthCollector:
+    global _health_collector
+    if _health_collector is None:
+        _health_collector = HealthCollector(AEON_ROOT)
+    return _health_collector
+
+
 # ── Integration / API Gateway endpoints ────────────────────────────────────
 _integration_manager: Optional[IntegrationManager] = None
 
@@ -388,6 +416,85 @@ def webhook_receive(integration_id: str):
 def webhook_deliveries():
     limit = min(100, max(1, request.args.get("limit", 100, type=int)))
     return jsonify({"ok": True, "deliveries": get_integration_manager().list_deliveries(limit=limit)})
+
+
+# ── Usage, Billing & Observability endpoints ───────────────────────────────
+@app.route("/usage", methods=["POST"])
+def usage_record():
+    """Record one or more usage events."""
+    data = request.json or {}
+    events = data if isinstance(data, list) else [data]
+    recorded = []
+    for item in events:
+        event = get_usage_meter().record_event(
+            action=item.get("action", "unknown"),
+            module=item.get("module", "global"),
+            quantity=float(item.get("quantity", 1)),
+            cost=float(item.get("cost", 0)),
+            user_id=item.get("user_id"),
+            workspace_id=item.get("workspace_id"),
+            metadata=item.get("metadata", {}),
+        )
+        recorded.append(event.to_dict())
+    return jsonify({"ok": True, "recorded": recorded})
+
+
+@app.route("/usage/summary", methods=["GET"])
+def usage_summary():
+    workspace_id = request.args.get("workspace_id")
+    days = min(365, max(1, request.args.get("days", 30, type=int)))
+    summary = get_usage_meter().get_summary(workspace_id=workspace_id, days=days)
+    return jsonify({"ok": True, "summary": summary})
+
+
+@app.route("/billing/<workspace_id>", methods=["GET"])
+def billing_status(workspace_id: str):
+    days = min(365, max(1, request.args.get("days", 30, type=int)))
+    return jsonify({"ok": True, "billing": get_billing_calculator().workspace_status(workspace_id, days=days)})
+
+
+@app.route("/billing/<workspace_id>/plan", methods=["POST"])
+def billing_set_plan(workspace_id: str):
+    data = request.json or {}
+    plan_id = data.get("plan_id", "free")
+    credits = float(data.get("credits", 0))
+    get_billing_calculator().set_plan(workspace_id, plan_id, credits)
+    return jsonify({"ok": True})
+
+
+@app.route("/billing/<workspace_id>/credits", methods=["POST"])
+def billing_add_credits(workspace_id: str):
+    data = request.json or {}
+    amount = float(data.get("amount", 0))
+    get_billing_calculator().add_credits(workspace_id, amount)
+    return jsonify({"ok": True})
+
+
+@app.route("/health/detailed", methods=["GET"])
+def health_detailed():
+    with _agent_lock:
+        vitals = [
+            {"app_id": app_id, "ticks": agent.tick_count, "vitals": agent.self_model.vitals()}
+            for app_id, agent in _agents.items()
+        ]
+    integrations = [
+        {"id": cfg.id, "name": cfg.name, "type": cfg.type, "enabled": cfg.enabled}
+        for cfg in get_integration_manager().list_integrations(mask=False)
+    ]
+    return jsonify(
+        get_health_collector().snapshot(
+            agent_vitals=vitals,
+            queue_size=job_queue._queue.qsize(),
+            integrations=integrations,
+        )
+    )
+
+
+@app.route("/metrics", methods=["GET"])
+def metrics_index():
+    days = min(365, max(1, request.args.get("days", 30, type=int)))
+    summary = get_usage_meter().get_summary(workspace_id=None, days=days)
+    return jsonify({"ok": True, "metrics": summary})
 
 
 # ── Main entrypoint ──────────────────────────────────────────────────────────

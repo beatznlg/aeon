@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { logAudit } from "@/lib/audit";
+import { logUsage } from "@/lib/usage";
 
 export const dynamic = "force-dynamic";
 
@@ -332,6 +333,8 @@ export async function GET(
 ) {
   const id = params.id;
   const session = await auth();
+  const userId = (session?.user as any)?.id;
+  const workspaceId = (session?.user as any)?.workspaceId;
 
   const data = dashboards[id];
   if (!data) {
@@ -342,11 +345,19 @@ export async function GET(
   }
 
   logAudit({
-    userId: (session?.user as any)?.id,
+    userId,
     email: session?.user?.email ?? undefined,
     action: "DASHBOARD",
     module: id,
     metadata: { endpoint: req.url },
+  });
+
+  logUsage({
+    userId,
+    workspaceId,
+    action: "dashboard_view",
+    module: id,
+    quantity: 1,
   });
 
   return NextResponse.json(data);

@@ -1,10 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@/auth";
+import { logUsage } from "@/lib/usage";
 
 export const dynamic = "force-dynamic";
 
 const PYTHON_URL = process.env.AEON_PYTHON_URL;
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+  const session = await auth();
+  const userId = (session?.user as any)?.id;
+  const workspaceId = (session?.user as any)?.workspaceId;
+
   if (!PYTHON_URL) {
     return NextResponse.json({ ok: false, error: "AEON_PYTHON_URL not set" }, { status: 503 });
   }
@@ -17,6 +23,15 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       body: JSON.stringify({ initial_input: body.initial_input || "" }),
     });
     const data = await res.json();
+
+    logUsage({
+      userId,
+      workspaceId,
+      action: "workflow_run",
+      module: params.id,
+      quantity: data?.results?.length || 1,
+    });
+
     return NextResponse.json(data);
   } catch (e) {
     return NextResponse.json({ ok: false, error: String(e) }, { status: 503 });

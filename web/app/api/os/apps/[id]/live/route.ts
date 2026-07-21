@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { logAudit } from "@/lib/audit";
+import { logUsage } from "@/lib/usage";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -28,6 +29,8 @@ export async function GET(
 ) {
   const id = params.id;
   const session = await auth();
+  const userId = (session?.user as any)?.id;
+  const workspaceId = (session?.user as any)?.workspaceId;
   const now = Date.now();
   // Change values every 3 seconds so the dashboard looks alive
   const tick = Math.floor(now / 3000);
@@ -53,11 +56,19 @@ export async function GET(
   };
 
   logAudit({
-    userId: (session?.user as any)?.id,
+    userId,
     email: session?.user?.email ?? undefined,
     action: "LIVE",
     module: id,
     metadata: { endpoint: req.url },
+  });
+
+  logUsage({
+    userId,
+    workspaceId,
+    action: "live_sync",
+    module: id,
+    quantity: 1,
   });
 
   return NextResponse.json(live, {

@@ -73,6 +73,9 @@ export default function OSPage() {
           <Link href="/os/workflows" className="btn btn-primary">
             🕸️ Workflow Builder
           </Link>
+          <Link href="/os/observability" className="btn btn-primary">
+            📊 Observability
+          </Link>
         </div>
       </header>
 

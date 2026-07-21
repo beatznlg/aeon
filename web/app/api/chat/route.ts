@@ -3,6 +3,7 @@ import { callLLM } from "@/lib/llm";
 import { auth } from "@/auth";
 import { logAudit } from "@/lib/audit";
 import { kernelChat, pythonUrl } from "@/lib/kernel";
+import { logUsage } from "@/lib/usage";
 
 export const maxDuration = 120;
 
@@ -79,12 +80,23 @@ export async function POST(req: Request) {
 
   const sb = getSb();
 
+  const userId = (session?.user as any)?.id;
+  const workspaceId = (session?.user as any)?.workspaceId;
+
   logAudit({
-    userId: (session?.user as any)?.id,
+    userId,
     email: session?.user?.email ?? undefined,
     action: "CHAT",
     module: "global",
     metadata: { backend: "web", provider: providerOverride },
+  });
+
+  logUsage({
+    userId,
+    workspaceId,
+    action: "chat",
+    module: "global",
+    quantity: 1,
   });
 
   try {
