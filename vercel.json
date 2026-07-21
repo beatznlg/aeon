@@ -1,6 +1,5 @@
 {
   "version": 2,
-  "rootDirectory": "web",
   "buildCommand": "next build",
   "outputDirectory": ".next",
   "installCommand": "npm install",
