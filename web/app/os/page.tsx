@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 
- type AppDefinition = {
+type AppDefinition = {
   id: string;
   name: string;
   category: string;
@@ -59,18 +59,19 @@ export default function OSPage() {
     <div className="os-page">
       <header className="os-header">
         <div>
-          <h1>AEON OS</h1>
-          <p>Autonomous operating system for business and government.</p>
+          <h1 style={{ background: "var(--grad)", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>
+            ⊞ OS Module Launcher
+          </h1>
+          <p className="dashboard-subtitle">
+            Deploy autonomous AI command centers across your enterprise
+          </p>
         </div>
-        <Link href="/" className="btn-secondary">
-          ← Chat
-        </Link>
       </header>
 
-      {error && <div className="os-error">{error}</div>}
+      {error && <div className="module-alert danger">{error}</div>}
 
       {loading ? (
-        <div className="os-loading">Loading modules…</div>
+        <div style={{ color: "var(--fg-mute)", padding: 40, textAlign: "center" }}>Loading modules…</div>
       ) : (
         <section className="os-grid">
           {apps.map((app) => {
@@ -79,16 +80,13 @@ export default function OSPage() {
               <div
                 key={app.id}
                 className={`os-card ${app.status} ${isInstalled ? "installed" : ""}`}
-                style={{ borderTopColor: app.color }}
+                style={{ borderTopColor: app.color || "var(--accent)" }}
               >
                 <div className="os-card-header">
-                  <span className="os-icon" style={{ background: app.color }}>
+                  <span className="os-icon" style={{ background: app.color ? `${app.color}20` : "var(--bg-elevated)" }}>
                     {app.icon}
                   </span>
-                  <span
-                    className="os-status"
-                    style={{ color: app.status === "active" ? "var(--success)" : "var(--fg-mute)" }}
-                  >
+                  <span className={`os-status-pill ${app.status}`}>
                     {app.status}
                   </span>
                 </div>
@@ -96,19 +94,16 @@ export default function OSPage() {
                 <p className="os-category">{app.category}</p>
                 <p className="os-desc">{app.description}</p>
                 <div className="os-card-actions">
-                  {isInstalled ? (
-                    <Link href={`/os/${app.id}`} className="btn-primary">
-                      Open
-                    </Link>
-                  ) : (
-                    <button
-                      className="btn-secondary"
-                      onClick={() => install(app.id)}
-                      disabled={app.status !== "active"}
-                    >
-                      {app.status === "active" ? "Install" : "Planned"}
-                    </button>
-                  )}
+                  <Link href={`/os/${app.id}`} className="btn btn-sm btn-primary">
+                    Open
+                  </Link>
+                  <button
+                    className={`btn btn-sm ${isInstalled ? "btn-success" : ""}`}
+                    onClick={() => install(app.id)}
+                    disabled={app.status !== "active"}
+                  >
+                    {isInstalled ? "✓ Installed" : app.status === "active" ? "Install" : "Planned"}
+                  </button>
                 </div>
               </div>
             );

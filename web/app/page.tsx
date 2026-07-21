@@ -1,116 +1,181 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
-import Sidebar from "../components/Sidebar";
-import Topbar from "../components/Topbar";
-import ChatPanel from "../components/ChatPanel";
-import SettingsDrawer from "../components/SettingsDrawer";
-import MemoryBrowser from "../components/MemoryBrowser";
-import DeployGuidePanel from "../components/DeployGuidePanel";
+import Link from "next/link";
 
-type Episode = {
-  id: number; ts: number;
-  kind: "user" | "bot" | "obs"; text: string; ref: string | null;
-};
+const MODULES = [
+  { id: "cybersecurity", name: "Security Command", icon: "🛡️", color: "#ef4444", status: "active", tools: 12, desc: "Threat intelligence, vulnerability scanning, and compliance monitoring" },
+  { id: "health", name: "Health Command", icon: "🏥", color: "#10b981", status: "active", tools: 8, desc: "AI diagnostics, patient monitoring, drug interaction checks" },
+  { id: "finance", name: "Finance Command", icon: "💰", color: "#f59e0b", status: "active", tools: 10, desc: "Risk analysis, market forecasting, fraud detection" },
+  { id: "retail", name: "Commerce Command", icon: "📦", color: "#6366f1", status: "active", tools: 9, desc: "Demand forecasting, inventory optimization, pricing" },
+  { id: "transport", name: "Transport Command", icon: "🚚", color: "#06b6d4", status: "active", tools: 7, desc: "Traffic management, fleet scheduling, route optimization" },
+  { id: "manufacturing", name: "Factory Command", icon: "🏭", color: "#ec4899", status: "active", tools: 6, desc: "Predictive maintenance, quality control, smart logistics" },
+  { id: "tourism", name: "Hospitality Command", icon: "🏨", color: "#8b5cf6", status: "active", tools: 7, desc: "Booking optimization, dynamic pricing, automated concierge" },
+  { id: "cultural_heritage", name: "Cultural Command", icon: "🎭", color: "#14b8a6", status: "active", tools: 6, desc: "Visitor engagement, exhibition planning, virtual tours" },
+  { id: "professional", name: "Professional Hub", icon: "📋", color: "#a855f7", status: "active", tools: 5, desc: "Document parsing, accounting workflows, data management" },
+  { id: "utilities", name: "Utilities Command", icon: "⚡", color: "#eab308", status: "active", tools: 6, desc: "Resource optimization, waste management, energy grid" },
+  { id: "sme", name: "SME Business Suite", icon: "🏢", color: "#3b82f6", status: "active", tools: 8, desc: "Workflow automation, document processing, AI support" },
+];
 
-const sbUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-const sbKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
-const supabase = sbUrl && sbKey ? createClient(sbUrl, sbKey) : null;
+export default function DashboardPage() {
+  const [vitals, setVitals] = useState<any>(null);
+  const [health, setHealth] = useState<{ ok: boolean; backend?: string } | null>(null);
 
-export default function Page() {
-  const [backend, setBackend] = useState<string>("auto");
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [memoryOpen, setMemoryOpen] = useState(false);
-  const [deployOpen, setDeployOpen] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false); // mobile
-  const [memories, setMemories] = useState<Episode[]>([]);
-  const [loadingMemories, setLoadingMemories] = useState(true);
-
-  // Auto-open the deploy guide for first-time visitors if any required env is missing.
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (window.localStorage.getItem("aeon-deploy-seen")) return;
-    fetch("/api/onboarding/status", { cache: "no-store" })
+    fetch("/api/health", { cache: "no-store" })
       .then((r) => r.json())
-      .then((s) => {
-        const anyUnset = (s?.steps || []).some((st: any) =>
-          ["warn", "missing"].includes(st.state),
-        );
-        if (anyUnset) setDeployOpen(true);
-        window.localStorage.setItem("aeon-deploy-seen", "1");
+      .then((d) => setHealth(d))
+      .catch(() => {});
+
+    fetch("/api/os/apps", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d?.apps?.[0]?.allowed_tools) {
+          setVitals({ total_tools: d.apps.reduce((s: number, a: any) => s + (a.allowed_tools?.length || 0), 0) });
+        }
       })
-      .catch(() => { window.localStorage.setItem("aeon-deploy-seen", "1"); });
+      .catch(() => {});
   }, []);
 
-  // Load last 5 episodes from Supabase on mount.
-  useEffect(() => {
-    if (!supabase) { setLoadingMemories(false); return; }
-    (async () => {
-      const { data, error } = await supabase
-        .from("episodes")
-        .select("id,ts,kind,text,ref")
-        .order("id", { ascending: false })
-        .limit(5);
-      if (!error && Array.isArray(data)) setMemories((data as Episode[]).slice().reverse());
-      setLoadingMemories(false);
-    })();
-  }, []);
-
-  const writeMemory = async (kind: "user" | "bot", text: string) => {
-    if (!supabase) return;
-    const trimmed = String(text).trim().slice(0, 2000);
-    if (!trimmed) return;
-    const { data, error } = await supabase
-      .from("episodes")
-      .insert([{ ts: Date.now() / 1000, kind, text: trimmed, ref: "web_v3" }])
-      .select();
-    if (!error && Array.isArray(data) && data[0]) {
-      setMemories((prev) => [...prev, data[0] as Episode].slice(-50));
-    }
-  };
-
-  const newChat = () => setMemories([]);
+  const activeModules = MODULES.filter((m) => m.status === "active");
+  const totalTools = vitals?.total_tools || activeModules.reduce((s, m) => s + m.tools, 0);
 
   return (
-    <div className="app">
-      <Sidebar
-        onNewChat={newChat}
-        onOpenMemory={() => setMemoryOpen(true)}
-        onOpenSettings={() => setSettingsOpen(true)}
-        onOpenDeploy={() => setDeployOpen(true)}
-        mobileOpen={sidebarOpen}
-        onCloseMobile={() => setSidebarOpen(false)}
-      />
-
-      <div className="main">
-        <Topbar
-          backend={backend}
-          onBackend={setBackend}
-          onToggleSidebar={() => setSidebarOpen((v) => !v)}
-        />
-
-        {!loadingMemories && memories.length > 0 && (
-          <details className="memories-panel">
-            <summary>Recent memories ({memories.length})</summary>
-            {memories.slice(-5).map((m) => (
-              <div key={m.id} className="memory-item">
-                <div className="meta">
-                  #{m.id} · {m.kind}
-                  {m.ref ? " · " + m.ref : ""}
-                </div>
-                <div>{m.text}</div>
-              </div>
-            ))}
-          </details>
-        )}
-
-        <ChatPanel backend={backend} memories={memories} onMemoryWrite={writeMemory} />
+    <div className="dashboard">
+      {/* Header */}
+      <div className="dashboard-header">
+        <div>
+          <h1 className="dashboard-title">AEON Operating System</h1>
+          <p className="dashboard-subtitle">
+            Autonomous AI platform for enterprise and government — {activeModules.length} modules · {totalTools} tools
+          </p>
+        </div>
+        <div style={{ display: "flex", gap: 10 }}>
+          <Link href="/os" className="btn btn-primary">
+            ⊞ Launch OS
+          </Link>
+          <Link href="/llm" className="btn">
+            ⚡ Connect LLM
+          </Link>
+        </div>
       </div>
 
-      <SettingsDrawer open={settingsOpen} onClose={() => setSettingsOpen(false)} />
-      <MemoryBrowser   open={memoryOpen}  onClose={() => setMemoryOpen(false)} />
-      <DeployGuidePanel open={deployOpen} onClose={() => setDeployOpen(false)} />
+      {/* System Status Bar */}
+      <div className="system-bar">
+        <div className="system-bar-card">
+          <div className="system-bar-icon" style={{ background: "rgba(99,102,241,0.12)", color: "var(--accent)" }}>⟁</div>
+          <div className="system-bar-info">
+            <div className="system-bar-label">System Status</div>
+            <div className="system-bar-value" style={{ color: "var(--success)" }}>
+              {health === null ? "..." : health.ok ? "Online" : "Connecting"}
+            </div>
+            <div className="system-bar-sub">{health?.backend || "AEON stub"} backend</div>
+          </div>
+        </div>
+
+        <div className="system-bar-card">
+          <div className="system-bar-icon" style={{ background: "rgba(16,185,129,0.12)", color: "var(--success)" }}>⊞</div>
+          <div className="system-bar-info">
+            <div className="system-bar-label">Active Modules</div>
+            <div className="system-bar-value">{activeModules.length}</div>
+            <div className="system-bar-sub">Operational</div>
+          </div>
+        </div>
+
+        <div className="system-bar-card">
+          <div className="system-bar-icon" style={{ background: "rgba(245,158,11,0.12)", color: "var(--warning)" }}>⚡</div>
+          <div className="system-bar-info">
+            <div className="system-bar-label">Smart Tools</div>
+            <div className="system-bar-value">{totalTools}</div>
+            <div className="system-bar-sub">AI-powered capabilities</div>
+          </div>
+        </div>
+
+        <div className="system-bar-card">
+          <div className="system-bar-icon" style={{ background: "rgba(6,182,212,0.12)", color: "var(--accent-3)" }}>◈</div>
+          <div className="system-bar-info">
+            <div className="system-bar-label">LLM Backend</div>
+            <div className="system-bar-value">{health?.backend === "aeon-kernel" ? "AEON Kernel" : health?.backend === "hf-inference" ? "HF Inference" : "Stub"}</div>
+            <div className="system-bar-sub">Pluggable · Hot-swappable</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Quick Actions */}
+      <h2 style={{ fontSize: "1.1rem", fontWeight: 600, marginBottom: 16 }}>Command Centers</h2>
+      <div className="quick-actions">
+        {MODULES.map((mod) => (
+          <Link key={mod.id} href={`/os/${mod.id}`} className="quick-action-card">
+            <div className="qac-icon" style={{ background: `${mod.color}15`, color: mod.color }}>
+              {mod.icon}
+            </div>
+            <div className="qac-title">{mod.name}</div>
+            <div className="qac-desc">{mod.desc}</div>
+            <div className="qac-meta">
+              <span className={`qac-status ${mod.status}`}>{mod.status}</span>
+              <span className="qac-tools">{mod.tools} tools</span>
+            </div>
+          </Link>
+        ))}
+      </div>
+
+      {/* Enterprise Features */}
+      <h2 style={{ fontSize: "1.1rem", fontWeight: 600, marginBottom: 16 }}>Platform Capabilities</h2>
+      <div className="metrics-grid">
+        <div className="metric-card">
+          <div className="metric-header">
+            <span className="metric-title">LLM Agnostic</span>
+            <span style={{ fontSize: "1.2rem" }}>🔌</span>
+          </div>
+          <div className="metric-value" style={{ fontSize: "1rem" }}>OpenAI · Anthropic · HF · Ollama · Qwen</div>
+          <div className="metric-change up">Plug any provider via API key</div>
+        </div>
+
+        <div className="metric-card">
+          <div className="metric-header">
+            <span className="metric-title">Autonomous Agent</span>
+            <span style={{ fontSize: "1.2rem" }}>🤖</span>
+          </div>
+          <div className="metric-value" style={{ fontSize: "1rem" }}>Self-improving · Reflective</div>
+          <div className="metric-change up">Goal-driven with CodeEvolver</div>
+        </div>
+
+        <div className="metric-card">
+          <div className="metric-header">
+            <span className="metric-title">Enterprise Security</span>
+            <span style={{ fontSize: "1.2rem" }}>🔒</span>
+          </div>
+          <div className="metric-value" style={{ fontSize: "1rem" }}>Sandboxed · Audited</div>
+          <div className="metric-change up">CodeSandbox · Causal Credit</div>
+        </div>
+
+        <div className="metric-card">
+          <div className="metric-header">
+            <span className="metric-title">Multi-Vertical</span>
+            <span style={{ fontSize: "1.2rem" }}>🏢</span>
+          </div>
+          <div className="metric-value" style={{ fontSize: "1rem" }}>11 Industry Modules</div>
+          <div className="metric-change up">Government · Enterprise · SME</div>
+        </div>
+
+        <div className="metric-card">
+          <div className="metric-header">
+            <span className="metric-title">Memory & Learning</span>
+            <span style={{ fontSize: "1.2rem" }}>🧠</span>
+          </div>
+          <div className="metric-value" style={{ fontSize: "1rem" }}>Episodic · Semantic · Procedural</div>
+          <div className="metric-change up">Persistent across sessions</div>
+        </div>
+
+        <div className="metric-card">
+          <div className="metric-header">
+            <span className="metric-title">Revenue Model</span>
+            <span style={{ fontSize: "1.2rem" }}>💰</span>
+          </div>
+          <div className="metric-value" style={{ fontSize: "1rem" }}>Bounties · Ledger · Services</div>
+          <div className="metric-change up">Built-in token economy</div>
+        </div>
+      </div>
     </div>
   );
 }

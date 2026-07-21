@@ -18,7 +18,7 @@ import {
   KPICard,
 } from "../../../components/AeonOSDashboard";
 
- type TickResult = {
+type TickResult = {
   ok: boolean;
   app_id: string;
   result: {
@@ -66,6 +66,7 @@ export default function AppPage() {
   const sendTick = async () => {
     if (!query.trim() || running) return;
     setRunning(true);
+    setError(null);
     try {
       const res = await fetch(`/api/os/apps/${appId}/tick`, {
         method: "POST",
@@ -75,6 +76,7 @@ export default function AppPage() {
       const data: TickResult = await res.json();
       if (data.ok) {
         setLogs((prev) => [...prev, data]);
+        setQuery("");
       } else {
         setError(data.result?.answer || "tick failed");
       }
@@ -92,9 +94,7 @@ export default function AppPage() {
         const res = await fetch(`/api/os/apps/${appId}/vitals`, { cache: "no-store" });
         const data = await res.json();
         if (data.ok) setVitals(data);
-      } catch (e) {
-        // non-fatal
-      }
+      } catch {}
     };
     loadVitals();
     const t = setInterval(loadVitals, 5000);
@@ -102,31 +102,20 @@ export default function AppPage() {
   }, [appId]);
 
   const renderDashboard = () => {
-    if (dashboardLoading) return <div className="os-loading">Loading module intelligence…</div>;
+    if (dashboardLoading) return <div style={{ color: "var(--fg-mute)", padding: 40, textAlign: "center" }}>Loading module intelligence…</div>;
     if (!dashboardData) return null;
     switch (appId) {
-      case "retail":
-        return <RetailDashboard data={dashboardData} />;
-      case "manufacturing":
-        return <ManufacturingDashboard data={dashboardData} />;
-      case "professional":
-        return <ProfessionalDashboard data={dashboardData} />;
-      case "tourism":
-        return <TourismDashboard data={dashboardData} />;
-      case "health":
-        return <HealthDashboard data={dashboardData} />;
-      case "transport":
-        return <TransportDashboard data={dashboardData} />;
-      case "finance":
-        return <FinanceDashboard data={dashboardData} />;
-      case "cultural_heritage":
-        return <CulturalHeritageDashboard data={dashboardData} />;
-      case "utilities":
-        return <UtilitiesDashboard data={dashboardData} />;
-      case "sme":
-        return <SMEDashboard data={dashboardData} />;
-      default:
-        return null;
+      case "retail": return <RetailDashboard data={dashboardData} />;
+      case "manufacturing": return <ManufacturingDashboard data={dashboardData} />;
+      case "professional": return <ProfessionalDashboard data={dashboardData} />;
+      case "tourism": return <TourismDashboard data={dashboardData} />;
+      case "health": return <HealthDashboard data={dashboardData} />;
+      case "transport": return <TransportDashboard data={dashboardData} />;
+      case "finance": return <FinanceDashboard data={dashboardData} />;
+      case "cultural_heritage": return <CulturalHeritageDashboard data={dashboardData} />;
+      case "utilities": return <UtilitiesDashboard data={dashboardData} />;
+      case "sme": return <SMEDashboard data={dashboardData} />;
+      default: return null;
     }
   };
 
@@ -134,9 +123,7 @@ export default function AppPage() {
     <div className="os-app-page">
       <header className="os-app-header">
         <div>
-          <Link href="/os" className="os-back">
-            ← OS Launcher
-          </Link>
+          <Link href="/os" className="os-back">← OS Launcher</Link>
           <h1>{app?.icon} {app?.name}</h1>
           <p>{app?.description}</p>
         </div>
@@ -155,18 +142,21 @@ export default function AppPage() {
 
       <section className="os-app-workspace">
         <div className="os-chat">
+          <h3 style={{ fontSize: "0.9rem", fontWeight: 600, marginBottom: 14, color: "var(--fg-soft)" }}>
+            🤖 Autonomous Agent Console
+          </h3>
           <div className="os-chat-input">
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder={`Ask ${app?.name} to do something autonomously...`}
+              placeholder={`Ask ${app?.name || "the agent"} to do something autonomously...`}
               onKeyDown={(e) => e.key === "Enter" && sendTick()}
             />
-            <button onClick={sendTick} disabled={running}>
+            <button className="btn btn-primary" onClick={sendTick} disabled={running}>
               {running ? "Running…" : "Run"}
             </button>
           </div>
-          {error && <div className="os-error">{error}</div>}
+          {error && <div className="module-alert danger">{error}</div>}
           <div className="os-logs">
             {logs.map((log, i) => (
               <div key={i} className="os-log">

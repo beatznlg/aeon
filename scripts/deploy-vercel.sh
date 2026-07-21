@@ -31,14 +31,21 @@ echo
 
 echo "==> 2/5  AEON 7 self-tests in stub mode"
 python3 - <<'PY'
-import tempfile, os, sys, subprocess, re
+import tempfile, os, sys, subprocess, re, shutil
+
+# Copy both aeon.py and aeon_llm.py (aeon.py imports from aeon_llm)
 src = open("aeon.py").read()
 src = src.replace("for s in REQ: _pip(s)", "for s in REQ: print(\"  skip\", s)")
 m = re.search(r"\n# === DEMO", src)
 if m: src = src[:m.start()]
 src += '\nprint("smoke: self-tests only, no demo")\n'
+
 with tempfile.TemporaryDirectory() as td:
     p = os.path.join(td, "aeon.py"); open(p, "w").write(src)
+    # Copy aeon_llm.py so imports resolve in the temp directory
+    llm_src = "aeon_llm.py"
+    if os.path.exists(llm_src):
+        shutil.copy2(llm_src, os.path.join(td, "aeon_llm.py"))
     env = {**os.environ, "AEON_ROOT": td}
     env.pop("HUGGINGFACE_TOKEN", None)  # force stub-mode
     env.pop("SUPABASE_URL", None)
