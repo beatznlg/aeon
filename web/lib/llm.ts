@@ -3,15 +3,22 @@
  *
  * Calls LLM APIs directly via HTTP fetch so the chat route works on Vercel
  * (no Python subprocess needed). Supports OpenAI, Anthropic, HuggingFace,
- * and a stub provider for testing.
+ * OpenRouter, and a stub provider for testing.
  */
 
-export type LLMProvider = "openai" | "anthropic" | "hf" | "stub";
+export type LLMProvider = "openai" | "anthropic" | "hf" | "openrouter" | "stub";
 
-function getProvider(): LLMProvider {
-  const p = (process.env.AEON_LLM_PROVIDER || "stub").toLowerCase() as LLMProvider;
-  if (["openai", "anthropic", "hf", "stub"].includes(p)) return p;
-  return "stub";
+export const DEFAULT_PROVIDER: LLMProvider = "openrouter";
+
+function isValidProvider(p: string): p is LLMProvider {
+  return ["openai", "anthropic", "hf", "openrouter", "stub"].includes(p);
+}
+
+function getProvider(providerOverride?: LLMProvider | string): LLMProvider {
+  if (providerOverride && isValidProvider(providerOverride)) return providerOverride;
+  const env = (process.env.AEON_LLM_PROVIDER || DEFAULT_PROVIDER).toLowerCase();
+  if (isValidProvider(env)) return env;
+  return DEFAULT_PROVIDER;
 }
 
 export interface LLMResponse {
@@ -22,12 +29,17 @@ export interface LLMResponse {
 /**
  * Call the configured LLM provider with a prompt and optional system message,
  * returning the generated text and the backend identifier.
+ *
+ * `providerOverride` lets the caller request a specific backend at runtime
+ * (e.g. from a client-side preference stored in localStorage). It falls back
+ * to the `AEON_LLM_PROVIDER` environment variable, then to OpenRouter.
  */
 export async function callLLM(
   prompt: string,
   system?: string,
+  providerOverride?: LLMProvider | string,
 ): Promise<LLMResponse> {
-  const provider = getProvider();
+  const provider = getProvider(providerOverride);
 
   switch (provider) {
     case "openai":
@@ -36,6 +48,8 @@ export async function callLLM(
       return callAnthropic(prompt, system);
     case "hf":
       return callHuggingFace(prompt, system);
+    case "openrouter":
+      return callOpenRouter(prompt, system);
     case "stub":
     default:
       return callStub(prompt);
@@ -159,15 +173,58 @@ async function callHuggingFace(
   return { text, backend: "hf_" + model.split("/").pop() };
 }
 
+// ─── OpenRouter ─────────────────────────────────────────────────────────
+
+async function callOpenRouter(
+  prompt: string,
+  system?: string,
+): Promise<LLMResponse> {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) throw new Error("OPENROUTER_API_KEY is not set");
+
+  const model =
+    process.env.OPENROUTER_MODEL ||
+    "meta-llama/llama-3.1-8b-instruct:free";
+
+  const messages: Array<{ role: string; content: string }> = [];
+  if (system) messages.push({ role: "system", content: system });
+  messages.push({ role: "user", content: prompt });
+
+  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": process.env.OPENROUTER_REFERER || "https://aeon-os.vercel.app",
+      "X-Title": "AEON OS",
+    },
+    body: JSON.stringify({
+      model,
+      messages,
+      max_tokens: 512,
+      temperature: 0.7,
+    }),
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`OpenRouter API error ${res.status}: ${body}`);
+  }
+
+  const json = await res.json();
+  const text = json.choices?.[0]?.message?.content || "";
+  return { text, backend: "openrouter" };
+}
+
 // ─── Stub ───────────────────────────────────────────────────────────────
 
 async function callStub(prompt: string): Promise<LLMResponse> {
   const responses: Record<string, string> = {
     hello:
       "Hello! I'm AEON, your autonomous AI operating system. I can help you with cybersecurity, retail, manufacturing, professional services, tourism, health, transport, finance, cultural heritage, utilities, and SME business tools. How can I assist you today?",
-    help: "AEON is running in stub mode. To enable real AI responses, set AEON_LLM_PROVIDER to 'openai' or 'anthropic' and provide the corresponding API key.",
+    help: "AEON is running in stub mode. To enable real AI responses, set AEON_LLM_PROVIDER to 'openrouter', 'openai', or 'anthropic' and provide the corresponding API key.",
     default:
-      "I received your message. AEON is currently operating in stub mode — real LLM responses require an API key (OpenAI or Anthropic). For now, know that your request has been logged and processed by the AEON OS kernel.",
+      "I received your message. AEON is currently operating in stub mode — real LLM responses require an API key (OpenRouter, OpenAI, or Anthropic). For now, know that your request has been logged and processed by the AEON OS kernel.",
   };
 
   const lower = prompt.toLowerCase().trim();

@@ -95,6 +95,9 @@ export async function POST(
   };
   const last = messages?.[messages.length - 1];
   const prompt = last?.content ?? "";
+  // Allow clients to request a specific provider at runtime. Falls back to
+  // the AEON_LLM_PROVIDER env default (which is OpenRouter by default).
+  const providerOverride = req.headers.get("x-aeon-provider") || undefined;
 
   if (!prompt.trim()) {
     return new Response(JSON.stringify({ ok: false, error: "empty prompt" }), {
@@ -106,7 +109,7 @@ export async function POST(
   const system = buildSystemPrompt(appId);
 
   try {
-    const { text, backend } = await callLLM(prompt, system);
+    const { text, backend } = await callLLM(prompt, system, providerOverride);
     return streamResponse(text, backend);
   } catch (err: any) {
     const message = err?.message || String(err);

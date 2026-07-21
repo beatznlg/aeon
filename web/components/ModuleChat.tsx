@@ -1,6 +1,8 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useChat, type Message } from "@ai-sdk/react";
+import { getStoredProvider, type StoredProvider } from "@/lib/provider";
 
 interface ModuleChatProps {
   appId: string;
@@ -8,6 +10,18 @@ interface ModuleChatProps {
 }
 
 export function ModuleChat({ appId, appName }: ModuleChatProps) {
+  const [provider, setProvider] = useState<StoredProvider>(getStoredProvider());
+
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === "aeon_provider" && e.newValue) {
+        setProvider(e.newValue as StoredProvider);
+      }
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
   const {
     messages,
     input,
@@ -19,6 +33,7 @@ export function ModuleChat({ appId, appName }: ModuleChatProps) {
     api: `/api/os/apps/${appId}/chat`,
     id: `module-chat-${appId}`,
     body: { appId },
+    headers: { "x-aeon-provider": provider },
     initialMessages: [
       {
         id: "welcome",

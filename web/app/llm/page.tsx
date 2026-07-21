@@ -1,9 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { getStoredProvider, setStoredProvider, type StoredProvider } from "@/lib/provider";
 
 const PROVIDERS = [
+  {
+    id: "openrouter",
+    name: "OpenRouter",
+    icon: "🌐",
+    color: "#5b5bd6",
+    models: "Claude 3.5, GPT-4o, Llama 3.1, Qwen, and 100+",
+    envVar: "OPENROUTER_API_KEY",
+    placeholder: "sk-or-...",
+    setupUrl: "https://openrouter.ai/keys",
+    desc: "Default provider — one key unlocks hundreds of top-tier models. Includes free models out of the box.",
+  },
   {
     id: "openai",
     name: "OpenAI",
@@ -74,8 +86,13 @@ const PROVIDERS = [
 
 export default function LLMPage() {
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
+  const [activeProvider, setActiveProvider] = useState<StoredProvider>(getStoredProvider());
   const [copied, setCopied] = useState<string | null>(null);
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    setActiveProvider(getStoredProvider());
+  }, []);
 
   const toggleShowKey = (id: string) => {
     setShowKeys((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -119,7 +136,7 @@ export default function LLMPage() {
         <div>
           <div style={{ fontWeight: 600, marginBottom: 2 }}>Plug-and-Play Architecture</div>
           <div style={{ fontSize: "0.82rem", color: "var(--fg-soft)" }}>
-            AEON OS can switch between any LLM provider at runtime. Set your API keys in Settings, then choose your active provider via the <code style={{ background: "var(--bg-elevated)", padding: "2px 6px", borderRadius: 4 }}>AEON_LLM_PROVIDER</code> environment variable.
+            AEON OS can switch between any LLM provider at runtime. Set your API keys in Settings, then choose your active provider here or via the <code style={{ background: "var(--bg-elevated)", padding: "2px 6px", borderRadius: 4 }}>AEON_LLM_PROVIDER</code> environment variable.
           </div>
         </div>
       </div>
@@ -138,12 +155,40 @@ export default function LLMPage() {
                   {provider.icon}
                 </div>
                 <div>
-                  <div className="llm-provider-name">{provider.name}</div>
+                  <div className="llm-provider-name">
+                    {provider.name}
+                    {activeProvider === provider.id && (
+                      <span style={{
+                        marginLeft: 8,
+                        fontSize: "0.65rem",
+                        fontWeight: 700,
+                        textTransform: "uppercase",
+                        letterSpacing: 0.04,
+                        padding: "2px 8px",
+                        borderRadius: 999,
+                        background: "rgba(16,185,129,0.15)",
+                        color: "var(--success)",
+                      }}>Active</span>
+                    )}
+                  </div>
                   <div className="llm-provider-model">{provider.models}</div>
                 </div>
               </div>
 
               <div className="llm-provider-desc">{provider.desc}</div>
+
+              <button
+                className={`btn btn-sm ${activeProvider === provider.id ? "" : "btn-primary"}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setStoredProvider(provider.id as StoredProvider);
+                  setActiveProvider(provider.id as StoredProvider);
+                }}
+                disabled={activeProvider === provider.id}
+                style={{ marginTop: 10, width: "100%" }}
+              >
+                {activeProvider === provider.id ? "✓ Currently Active" : `Activate ${provider.name}`}
+              </button>
 
               {selectedProvider === provider.id && (
                 <div style={{ marginTop: 12 }}>
@@ -240,13 +285,14 @@ export default function LLMPage() {
           <div>│</div>
           <div>├─→ <strong style={{ color: "var(--accent)" }}>AEON OS Kernel</strong> (reflection, goals, memory)</div>
           <div>│</div>
-          <div>├─→ <strong style={{ color: "var(--success)" }}>LLM Provider Bridge</strong> (AEON_LLM_PROVIDER env)</div>
-          <div>│   ├── OpenAI        ← if AEON_LLM_PROVIDER=openai</div>
-          <div>│   ├── Anthropic     ← if AEON_LLM_PROVIDER=anthropic</div>
-          <div>│   ├── HuggingFace   ← if AEON_LLM_PROVIDER=hf</div>
-          <div>│   ├── Ollama        ← if AEON_LLM_PROVIDER=ollama</div>
-          <div>│   ├── Qwen Local    ← if AEON_LLM_PROVIDER=qwen</div>
-          <div>│   └── Stub          ← if AEON_LLM_PROVIDER=stub (default)</div>
+          <div>├─→ <strong style={{ color: "var(--success)" }}>LLM Provider Bridge</strong> (UI selector or AEON_LLM_PROVIDER env)</div>
+          <div>│   ├── OpenRouter    ← default (100+ models, one key)</div>
+          <div>│   ├── OpenAI        ← if provider=openai</div>
+          <div>│   ├── Anthropic     ← if provider=anthropic</div>
+          <div>│   ├── HuggingFace   ← if provider=hf</div>
+          <div>│   ├── Ollama        ← if provider=ollama</div>
+          <div>│   ├── Qwen Local    ← if provider=qwen</div>
+          <div>│   └── Stub          ← if provider=stub</div>
           <div>│</div>
           <div>└─→ <strong style={{ color: "var(--fg)" }}>Response</strong> (streamed to UI)</div>
         </div>

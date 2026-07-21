@@ -62,6 +62,9 @@ export async function POST(req: Request) {
   const { messages } = await req.json().catch(() => ({}));
   const last = messages?.[messages.length - 1];
   const prompt: string = last?.content ?? "";
+  // Allow clients to request a specific provider at runtime (e.g. from
+  // a UI selector stored in localStorage). Falls back to env default.
+  const providerOverride = req.headers.get("x-aeon-provider") || undefined;
 
   if (!prompt.trim()) {
     return new Response(
@@ -74,7 +77,7 @@ export async function POST(req: Request) {
 
   try {
     // --- Use the TypeScript LLM bridge instead of Python subprocess ---
-    const { text, backend } = await callLLM(prompt);
+    const { text, backend } = await callLLM(prompt, undefined, providerOverride);
     logTurn(sb, text, backend);
     return singleTextStream(text, backend);
   } catch (err: any) {

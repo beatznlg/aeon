@@ -22,11 +22,19 @@ type Health = { ok: boolean; backend?: string; ts?: number };
 
 const KEY_DEFINITIONS = [
   {
+    id: "openrouter_api_key",
+    label: "OpenRouter API Key",
+    env: "OPENROUTER_API_KEY",
+    desc: "Default provider — access 100+ models (Claude, GPT-4, Llama, Qwen). Get your key at openrouter.ai/keys",
+    placeholder: "sk-or-...",
+    href: "https://openrouter.ai/keys",
+  },
+  {
     id: "aeon_llm_provider",
     label: "LLM Provider",
     env: "AEON_LLM_PROVIDER",
-    desc: "Select your AI backend: openai, anthropic, hf, ollama, qwen, or stub",
-    placeholder: "openai / anthropic / hf / stub",
+    desc: "Server-side default AI backend. Use the LLM Connector page to set the active runtime provider.",
+    placeholder: "openrouter / openai / anthropic / hf / stub",
     href: null,
   },
   {

@@ -1,7 +1,9 @@
 "use client";
 
 import { useChat } from "@ai-sdk/react";
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
+import { getStoredProvider, type StoredProvider } from "@/lib/provider";
 
 type Episode = {
   id: number; ts: number;
@@ -110,10 +112,23 @@ export default function ChatPanel({
   memories: Episode[];
   onMemoryWrite: (kind: "user" | "bot", text: string) => void;
 }) {
+  const [provider, setProvider] = useState<StoredProvider>(getStoredProvider());
+
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === "aeon_provider" && e.newValue) {
+        setProvider(e.newValue as StoredProvider);
+      }
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
   const { messages, input, handleInputChange, handleSubmit, status, setMessages } =
     useChat({
       api: "/api/chat",
       body: { backend },
+      headers: { "x-aeon-provider": provider },
       onFinish: (msg) => onMemoryWrite("bot", msg.content),
     });
 

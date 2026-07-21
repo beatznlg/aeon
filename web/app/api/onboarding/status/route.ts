@@ -25,6 +25,7 @@ function urlHost(envName: string): { present: boolean; host: string | null } {
 
 export async function GET() {
   const keys = {
+    openrouter_api_key: keyMeta("OPENROUTER_API_KEY"),
     huggingface_token: keyMeta("HUGGINGFACE_TOKEN"),
     supabase_url: urlHost("SUPABASE_URL"),
     next_public_supabase_url: urlHost("NEXT_PUBLIC_SUPABASE_URL"),
@@ -33,7 +34,12 @@ export async function GET() {
   };
 
   const notes: string[] = [];
-  if (!keys.huggingface_token.present && !process.env.OPENAI_API_KEY && !process.env.ANTHROPIC_API_KEY) {
+  const hasLLMKey =
+    keys.openrouter_api_key.present ||
+    keys.huggingface_token.present ||
+    process.env.OPENAI_API_KEY ||
+    process.env.ANTHROPIC_API_KEY;
+  if (!hasLLMKey) {
     notes.push("No LLM API key configured — chat runs in stub mode");
   }
   if (!keys.next_public_supabase_url.present && !keys.supabase_url.present) {
@@ -42,7 +48,7 @@ export async function GET() {
 
   return NextResponse.json({
     ok: true,
-    backend: process.env.AEON_HF_SPACE_URL ? "aeon-kernel" : process.env.AEON_LLM_PROVIDER || "stub",
+    backend: process.env.AEON_HF_SPACE_URL ? "aeon-kernel" : process.env.AEON_LLM_PROVIDER || "openrouter",
     keys,
     notes,
   });
