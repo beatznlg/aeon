@@ -19,3 +19,18 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     return NextResponse.json({ ok: false, error: e?.message || String(e) });
   }
 }
+
+export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+  if (!PYTHON_URL) {
+    return NextResponse.json({ ok: false, error: "AEON_PYTHON_URL not set" });
+  }
+  try {
+    const res = await fetch(`${PYTHON_URL}/knowledge-bases/${params.id}/stats`, {
+      cache: "no-store",
+    });
+    const data = await res.json();
+    return NextResponse.json(data);
+  } catch (e: any) {
+    return NextResponse.json({ ok: false, error: e?.message || String(e) });
+  }
+}

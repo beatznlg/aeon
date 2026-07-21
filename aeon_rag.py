@@ -31,6 +31,12 @@ import numpy as np
 import requests
 
 from aeon_llm import get_llm_provider
+from aeon_vector_store import (
+    VectorStore,
+    create_vector_store,
+    _generate_id as _store_generate_id,
+    _now as _store_now,
+)
 
 
 # === helpers ==============================================================
@@ -319,11 +325,12 @@ class KnowledgeBase:
 
 
 class KnowledgeBaseManager:
-    def __init__(self, root: Path):
+    def __init__(self, root: Path, vector_store: Optional[VectorStore] = None):
         self.root = Path(root)
         self.kb_dir = self.root / "knowledge_bases"
         self.kb_dir.mkdir(parents=True, exist_ok=True)
         self._index = self._load_index()
+        self._vector_store = vector_store or create_vector_store(root)
 
     def _load_index(self) -> Dict[str, Any]:
         if (self.kb_dir / "index.json").exists():
@@ -365,6 +372,7 @@ class KnowledgeBaseManager:
         if kb_id not in self._index:
             return False
         import shutil
+        self._vector_store.delete_kb(kb_id)
         shutil.rmtree(self.kb_dir / kb_id, ignore_errors=True)
         del self._index[kb_id]
         self._save_index()
@@ -395,19 +403,20 @@ class KnowledgeBaseManager:
             f.write(json.dumps(doc_record, ensure_ascii=False) + "\n")
 
         chunk_records = []
-        with (kb_dir / "chunks.jsonl").open("a", encoding="utf-8") as f:
-            for i, (chunk_text, vec) in enumerate(zip(chunks, embeddings)):
-                rec = {
-                    "id": _generate_id(),
-                    "doc_id": doc_id,
-                    "kb_id": kb_id,
-                    "index": i,
-                    "text": chunk_text,
-                    "embedding": vec,
-                    "created_at": _now(),
-                }
-                f.write(json.dumps(rec, ensure_ascii=False) + "\n")
-                chunk_records.append(rec)
+        for i, (chunk_text, vec) in enumerate(zip(chunks, embeddings)):
+            rec = {
+                "id": _generate_id(),
+                "doc_id": doc_id,
+                "kb_id": kb_id,
+                "index": i,
+                "text": chunk_text,
+                "embedding": vec,
+                "created_at": _now(),
+            }
+            chunk_records.append(rec)
+
+        # Persist to vector store (disk + optional Supabase)
+        self._vector_store.add_chunks(kb_id, doc_id, chunk_records)
 
         # Update stats
         self._index[kb_id]["document_count"] = self._index[kb_id].get("document_count", 0) + 1
@@ -415,56 +424,37 @@ class KnowledgeBaseManager:
         self._save_index()
         return {"doc_id": doc_id, "chunks": len(chunk_records)}
 
-    def _iter_chunks(self, kb_id: str):
-        chunks_file = self.kb_dir / kb_id / "chunks.jsonl"
-        if not chunks_file.exists():
-            return
-        with chunks_file.open("r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    yield json.loads(line)
-                except Exception:
-                    continue
-
-    def query(self, kb_id: str, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
+    def query(self, kb_id: str, query: str, top_k: int = 5, mode: str = "hybrid") -> List[Dict[str, Any]]:
         kb = self.get_kb(kb_id)
         if not kb:
             raise ValueError("knowledge base not found")
 
         embedder = get_embedder(kb.embedding_provider)
         query_vec = embedder.embed([query])[0]
-        q = np.array(query_vec, dtype=np.float32)
 
-        chunks = list(self._iter_chunks(kb_id))
-        if not chunks:
-            return []
-
-        # Cosine similarity
-        scored = []
-        for rec in chunks:
-            vec = np.array(rec.get("embedding", []), dtype=np.float32)
-            if vec.size == 0:
-                continue
-            norm = np.linalg.norm(vec) * np.linalg.norm(q)
-            score = float(np.dot(vec, q) / (norm + 1e-9))
-            scored.append({"score": score, "chunk": rec})
-
-        scored.sort(key=lambda x: x["score"], reverse=True)
-        return [
-            {
-                "id": s["chunk"]["id"],
-                "doc_id": s["chunk"]["doc_id"],
-                "text": s["chunk"]["text"],
-                "score": round(s["score"], 4),
-            }
-            for s in scored[:top_k]
-        ]
+        if mode == "keyword":
+            return self._vector_store.search_keyword(kb_id, query, top_k=top_k)
+        if mode == "vector":
+            return self._vector_store.search_vector(kb_id, query_vec, top_k=top_k)
+        # Default: hybrid RRF fusion
+        return self._vector_store.search_hybrid(kb_id, query, query_vec, top_k=top_k)
 
 
 # === RAG Orchestrator =====================================================
+
+    def stats(self, kb_id: str) -> Dict[str, Any]:
+        """Return stats from the vector store plus local index metadata."""
+        kb = self.get_kb(kb_id)
+        if not kb:
+            return {}
+        store_stats = self._vector_store.stats(kb_id)
+        return {
+            **store_stats,
+            "kb_id": kb_id,
+            "name": kb.name,
+            "embedding_provider": kb.embedding_provider,
+        }
+
 
 class RAGOrchestrator:
     def __init__(self, root: Path):

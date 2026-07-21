@@ -18,6 +18,15 @@ type Chunk = {
   doc_id: string;
   text: string;
   score: number;
+  vector_rank?: number | null;
+  keyword_rank?: number | null;
+  rrf_score?: number;
+};
+
+type KBStats = {
+  backend: string;
+  chunk_count: number;
+  document_count: number;
 };
 
 export default function KnowledgePage() {
@@ -37,10 +46,24 @@ export default function KnowledgePage() {
   const [query, setQuery] = useState("");
   const [chunks, setChunks] = useState<Chunk[]>([]);
   const [querying, setQuerying] = useState(false);
+  const [mode, setMode] = useState<"hybrid" | "vector" | "keyword">("hybrid");
+  const [topK, setTopK] = useState(5);
+  const [stats, setStats] = useState<Record<string, KBStats>>({});
 
   useEffect(() => {
     fetchKbs();
   }, []);
+
+  useEffect(() => {
+    kbs.forEach((k) => {
+      fetch(`/api/os/ai/knowledge-bases/${k.id}/query`, { cache: "no-store" })
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.ok) setStats((prev) => ({ ...prev, [k.id]: data.stats }));
+        })
+        .catch(() => null);
+    });
+  }, [kbs]);
 
   const fetchKbs = async () => {
     setLoading(true);
@@ -110,7 +133,7 @@ export default function KnowledgePage() {
       const res = await fetch(`/api/os/ai/knowledge-bases/${selectedKb}/query`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query, top_k: 5 }),
+        body: JSON.stringify({ query, top_k: topK, mode }),
       });
       const data = await res.json();
       if (data.ok) setChunks(data.chunks || []);
@@ -201,6 +224,18 @@ export default function KnowledgePage() {
             Query
             <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Ask something about the uploaded documents…" required />
           </label>
+          <label>
+            Search mode
+            <select value={mode} onChange={(e) => setMode(e.target.value as any)}>
+              <option value="hybrid">Hybrid (RRF)</option>
+              <option value="vector">Vector only</option>
+              <option value="keyword">Keyword only</option>
+            </select>
+          </label>
+          <label>
+            Top-K
+            <input type="number" min={1} max={20} value={topK} onChange={(e) => setTopK(Number(e.target.value))} />
+          </label>
           <button type="submit" className="btn btn-primary" disabled={querying}>{querying ? "Querying…" : "Retrieve"}</button>
         </form>
         {chunks.length > 0 && (
@@ -210,7 +245,9 @@ export default function KnowledgePage() {
               <div key={c.id} className="os-card" style={{ marginBottom: 8 }}>
                 <div className="os-card-header">
                   <span className="os-status-pill active">{c.doc_id}</span>
-                  <span className="os-status-pill active">score {c.score}</span>
+                  <span className="os-status-pill active">score {c.rrf_score ?? c.score}</span>
+                  {typeof c.vector_rank === "number" && <span className="os-status-pill active">v-rank {c.vector_rank}</span>}
+                  {typeof c.keyword_rank === "number" && <span className="os-status-pill active">k-rank {c.keyword_rank}</span>}
                 </div>
                 <p className="os-desc">{c.text}</p>
               </div>
@@ -235,6 +272,11 @@ export default function KnowledgePage() {
                 </div>
                 <p className="os-desc">{k.description || "No description"}</p>
                 <p className="os-desc">Chunks: {k.chunk_count}</p>
+                {stats[k.id] && (
+                  <p className="os-desc">
+                    Backend: <strong>{stats[k.id].backend}</strong> · Docs: {stats[k.id].document_count} · Chunks: {stats[k.id].chunk_count}
+                  </p>
+                )}
                 <button className="btn btn-sm" onClick={() => deleteKb(k.id)}>Delete</button>
               </div>
             ))}

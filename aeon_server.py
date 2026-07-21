@@ -602,11 +602,23 @@ def knowledge_base_query(kb_id: str):
     data = request.json or {}
     query = (data.get("query") or "").strip()
     top_k = min(20, max(1, int(data.get("top_k", 5))))
+    mode = data.get("mode", "hybrid")
     if not query:
         return jsonify({"ok": False, "error": "query is required"}), 400
     try:
-        chunks = get_kb_manager().query(kb_id, query, top_k=top_k)
-        return jsonify({"ok": True, "chunks": chunks})
+        chunks = get_kb_manager().query(kb_id, query, top_k=top_k, mode=mode)
+        return jsonify({"ok": True, "chunks": chunks, "mode": mode})
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 404
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/knowledge-bases/<kb_id>/stats", methods=["GET"])
+def knowledge_base_stats(kb_id: str):
+    try:
+        stats = get_kb_manager().stats(kb_id)
+        return jsonify({"ok": True, "stats": stats})
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e)}), 404
     except Exception as e:
