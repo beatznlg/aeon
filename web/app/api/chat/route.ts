@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import { spawn } from "child_process";
+import { callLLM } from "@/lib/llm";
 
 export const maxDuration = 120;
 
@@ -37,8 +37,7 @@ function logTurn(sb: ReturnType<typeof getSb>, text: string, backend: string) {
 
 /**
  * Wrap a single final string into a Vercel AI Data Stream response so the
- * browser-side useChat renders it as streamed text. We send a single chunk;
- * the SDK still treats it as "finished" once the stream closes.
+ * browser-side useChat renders it as streamed text.
  */
 function singleTextStream(text: string, backend: string): Response {
   const enc = new TextEncoder();
@@ -59,42 +58,6 @@ function singleTextStream(text: string, backend: string): Response {
   });
 }
 
-/**
- * Spawn the AEON chat CLI and return its JSON output.
- * All LLM routing and provider selection is handled inside aeon_chat.py
- * based on the AEON_LLM_PROVIDER environment variable.
- */
-function runAeonChat(query: string, system?: string): Promise<{ text: string; backend: string }> {
-  return new Promise((resolve, reject) => {
-    const args = ["aeon_chat.py", query, "--max-tokens", "512"];
-    if (system) {
-      args.push("--system", system);
-    }
-    const proc = spawn("python3", args, {
-      cwd: process.cwd(),
-      env: { ...process.env },
-    });
-    let stdout = "";
-    let stderr = "";
-    proc.stdout.on("data", (d) => { stdout += d.toString(); });
-    proc.stderr.on("data", (d) => { stderr += d.toString(); });
-    proc.on("close", (code) => {
-      if (code !== 0) {
-        return reject(new Error(stderr || "aeon chat process failed"));
-      }
-      // The CLI prints JSON as the last non-empty line.
-      const lastLine = stdout.trim().split("\n").pop() || "";
-      try {
-        const parsed = JSON.parse(lastLine);
-        resolve({ text: String(parsed.answer || parsed.text || ""), backend: String(parsed.backend || "unknown") });
-      } catch (e) {
-        reject(new Error("invalid JSON from aeon chat: " + lastLine));
-      }
-    });
-    proc.on("error", reject);
-  });
-}
-
 export async function POST(req: Request) {
   const { messages } = await req.json().catch(() => ({}));
   const last = messages?.[messages.length - 1];
@@ -110,11 +73,13 @@ export async function POST(req: Request) {
   const sb = getSb();
 
   try {
-    const { text, backend } = await runAeonChat(prompt);
+    // --- Use the TypeScript LLM bridge instead of Python subprocess ---
+    const { text, backend } = await callLLM(prompt);
     logTurn(sb, text, backend);
     return singleTextStream(text, backend);
   } catch (err: any) {
     const message = err?.message || String(err);
+    console.error("chat error:", message);
     return new Response(
       JSON.stringify({ ok: false, error: message }),
       { status: 503, headers: { "Content-Type": "application/json" } },
