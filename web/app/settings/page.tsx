@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useSession, signOut } from "next-auth/react";
 
 type SetupKeys = {
   huggingface_token?: { present: boolean; length: number };
@@ -88,9 +89,11 @@ const KEY_DEFINITIONS = [
 ];
 
 export default function SettingsPage() {
+  const { data: session } = useSession();
   const [health, setHealth] = useState<Health | null>(null);
   const [setup, setSetup] = useState<SetupStatus | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+  const userRole = ((session?.user as any)?.role as string) || "viewer";
 
   useEffect(() => {
     fetch("/api/health", { cache: "no-store" })
@@ -167,6 +170,44 @@ export default function SettingsPage() {
               {setup?.notes?.length || 0} items
             </span>
           </div>
+        </div>
+      </div>
+
+      {/* Account & Security */}
+      <div className="settings-section">
+        <div className="settings-section-header">
+          <span style={{ fontSize: "1.2rem" }}>👤</span>
+          <div>
+            <h2>Account & Security</h2>
+            <p>Current session and role</p>
+          </div>
+        </div>
+        <div className="settings-item">
+          <div>
+            <div className="settings-item-label">Logged in as</div>
+            <div className="settings-item-desc">{session?.user?.email || "Guest"}</div>
+          </div>
+          <span className={`settings-status ${session?.user ? "connected" : "disconnected"}`}>
+            {session?.user ? "Active" : "Anonymous"}
+          </span>
+        </div>
+        <div className="settings-item">
+          <div>
+            <div className="settings-item-label">Role</div>
+            <div className="settings-item-desc">RBAC level for this session</div>
+          </div>
+          <span style={{ color: "var(--fg-soft)", fontFamily: "ui-monospace, monospace", fontSize: "0.85rem", textTransform: "uppercase" }}>
+            {userRole}
+          </span>
+        </div>
+        <div className="settings-item">
+          <div>
+            <div className="settings-item-label">Session</div>
+            <div className="settings-item-desc">Sign out to end this session</div>
+          </div>
+          <button className="btn btn-sm" onClick={() => signOut({ callbackUrl: "/login" })}>
+            Sign out
+          </button>
         </div>
       </div>
 

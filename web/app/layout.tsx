@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
+import { SessionProvider } from "next-auth/react";
+import UserMenu from "@/components/UserMenu";
 import "./globals.css";
 
 // ─── Navigation items ───────────────────────────────────────────
@@ -80,6 +82,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta name="description" content="AEON OS: Autonomous AI operating system for government and enterprise." />
       </head>
       <body>
+        <SessionProvider>
         {/* Mobile overlay */}
         <div
           className={`sidebar-overlay ${sidebarOpen ? "open" : ""}`}
@@ -149,6 +152,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <h1>AEON OS</h1>
             </div>
             <div className="main-header-right">
+              <UserMenu />
               <Link href="/settings" className="btn btn-sm">
                 ⚙ Settings
               </Link>
@@ -159,6 +163,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </header>
           {children}
         </div>
+        </SessionProvider>
       </body>
     </html>
   );

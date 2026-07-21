@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { auth } from "@/auth";
+import { logAudit } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -21,10 +23,11 @@ function timeVaryingString(seed: number, options: string[]): string {
 const STATUS_OPTIONS = ["healthy", "healthy", "healthy", "warning", "healthy", "healthy", "critical", "healthy"];
 
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: { id: string } },
 ) {
   const id = params.id;
+  const session = await auth();
   const now = Date.now();
   // Change values every 3 seconds so the dashboard looks alive
   const tick = Math.floor(now / 3000);
@@ -48,6 +51,14 @@ export async function GET(
     // ── App-specific live metrics ──────────────────────────────────
     metrics: getAppMetrics(id, seed),
   };
+
+  logAudit({
+    userId: (session?.user as any)?.id,
+    email: session?.user?.email ?? undefined,
+    action: "LIVE",
+    module: id,
+    metadata: { endpoint: req.url },
+  });
 
   return NextResponse.json(live, {
     headers: {

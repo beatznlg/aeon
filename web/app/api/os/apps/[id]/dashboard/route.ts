@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { auth } from "@/auth";
+import { logAudit } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
 
@@ -325,10 +327,12 @@ const dashboards: Record<string, object> = {
 };
 
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: { id: string } },
 ) {
   const id = params.id;
+  const session = await auth();
+
   const data = dashboards[id];
   if (!data) {
     return NextResponse.json(
@@ -336,5 +340,14 @@ export async function GET(
       { status: 404 },
     );
   }
+
+  logAudit({
+    userId: (session?.user as any)?.id,
+    email: session?.user?.email ?? undefined,
+    action: "DASHBOARD",
+    module: id,
+    metadata: { endpoint: req.url },
+  });
+
   return NextResponse.json(data);
 }

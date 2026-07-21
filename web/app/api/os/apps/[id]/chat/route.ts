@@ -1,5 +1,7 @@
 import { callLLM } from "@/lib/llm";
 import { APPS } from "@/lib/apps";
+import { auth } from "@/auth";
+import { logAudit } from "@/lib/audit";
 
 export const maxDuration = 120;
 
@@ -98,6 +100,7 @@ export async function POST(
   // Allow clients to request a specific provider at runtime. Falls back to
   // the AEON_LLM_PROVIDER env default (which is OpenRouter by default).
   const providerOverride = req.headers.get("x-aeon-provider") || undefined;
+  const session = await auth();
 
   if (!prompt.trim()) {
     return new Response(JSON.stringify({ ok: false, error: "empty prompt" }), {
@@ -107,6 +110,14 @@ export async function POST(
   }
 
   const system = buildSystemPrompt(appId);
+
+  logAudit({
+    userId: (session?.user as any)?.id,
+    email: session?.user?.email ?? undefined,
+    action: "CHAT",
+    module: appId,
+    metadata: { backend: "web", provider: providerOverride },
+  });
 
   try {
     const { text, backend } = await callLLM(prompt, system, providerOverride);

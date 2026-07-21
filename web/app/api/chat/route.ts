@@ -1,5 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { callLLM } from "@/lib/llm";
+import { auth } from "@/auth";
+import { logAudit } from "@/lib/audit";
 
 export const maxDuration = 120;
 
@@ -65,6 +67,7 @@ export async function POST(req: Request) {
   // Allow clients to request a specific provider at runtime (e.g. from
   // a UI selector stored in localStorage). Falls back to env default.
   const providerOverride = req.headers.get("x-aeon-provider") || undefined;
+  const session = await auth();
 
   if (!prompt.trim()) {
     return new Response(
@@ -74,6 +77,14 @@ export async function POST(req: Request) {
   }
 
   const sb = getSb();
+
+  logAudit({
+    userId: (session?.user as any)?.id,
+    email: session?.user?.email ?? undefined,
+    action: "CHAT",
+    module: "global",
+    metadata: { backend: "web", provider: providerOverride },
+  });
 
   try {
     // --- Use the TypeScript LLM bridge instead of Python subprocess ---

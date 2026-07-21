@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@/auth";
+import { logAudit } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
 
@@ -167,6 +169,15 @@ export async function POST(
       { status: 400 },
     );
   }
+
+  const session = await auth();
+  logAudit({
+    userId: (session?.user as any)?.id,
+    email: session?.user?.email ?? undefined,
+    action: "TICK",
+    module: id,
+    metadata: { query },
+  });
 
   const result = mockTick(id, query);
   return NextResponse.json(result);
