@@ -16,46 +16,17 @@ import {
   UtilitiesDashboard,
   SMEDashboard,
   useDashboard,
-  KPICard,
 } from "../../../components/AeonOSDashboard";
 import {
   LiveMonitorBar,
   LiveMonitorWidget,
   AlertBanner,
 } from "../../../components/LiveMonitor";
-
-type TickResult = {
-  ok: boolean;
-  app_id: string;
-  result: {
-    answer: string;
-    backend: string;
-    wall_s: number;
-    tool_calls: number;
-  };
-};
-
-const MODULE_NAMES: Record<string, string> = {
-  cybersecurity: "Security Command Center",
-  retail: "Commerce Command Center",
-  manufacturing: "Factory Command Center",
-  professional: "Professional Services Hub",
-  tourism: "Hospitality Command Center",
-  health: "Health Command Center",
-  transport: "Transport Command Center",
-  finance: "Finance Command Center",
-  cultural_heritage: "Cultural Heritage Command Center",
-  utilities: "Utilities Command Center",
-  sme: "SME Business Suite",
-};
+import { ModuleChat } from "../../../components/ModuleChat";
 
 export default function AppPage() {
   const { appId } = useParams<{ appId: string }>();
   const [app, setApp] = useState<any>(null);
-  const [query, setQuery] = useState("");
-  const [running, setRunning] = useState(false);
-  const [logs, setLogs] = useState<TickResult[]>([]);
-  const [error, setError] = useState<string | null>(null);
   const [vitals, setVitals] = useState<any>(null);
   const { data: dashboardData, loading: dashboardLoading } = useDashboard(appId || "");
 
@@ -68,30 +39,6 @@ export default function AppPage() {
         if (found) setApp(found);
       });
   }, [appId]);
-
-  const sendTick = async () => {
-    if (!query.trim() || running) return;
-    setRunning(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/os/apps/${appId}/tick`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: query.trim() }),
-      });
-      const data: TickResult = await res.json();
-      if (data.ok) {
-        setLogs((prev) => [...prev, data]);
-        setQuery("");
-      } else {
-        setError(data.result?.answer || "tick failed");
-      }
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setRunning(false);
-    }
-  };
 
   useEffect(() => {
     if (!appId) return;
@@ -157,37 +104,7 @@ export default function AppPage() {
       <LiveMonitorWidget appId={appId} title="Real-Time Module Metrics" />
 
       <section className="os-app-workspace">
-        <div className="os-chat">
-          <h3 style={{ fontSize: "0.9rem", fontWeight: 600, marginBottom: 14, color: "var(--fg-soft)" }}>
-            🤖 Autonomous Agent Console
-          </h3>
-          <div className="os-chat-input">
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={`Ask ${app?.name || "the agent"} to do something autonomously...`}
-              onKeyDown={(e) => e.key === "Enter" && sendTick()}
-            />
-            <button className="btn btn-primary" onClick={sendTick} disabled={running}>
-              {running ? "Running…" : "Run"}
-            </button>
-          </div>
-          {error && <div className="module-alert danger">{error}</div>}
-          <div className="os-logs">
-            {logs.map((log, i) => (
-              <div key={i} className="os-log">
-                <div className="os-log-meta">
-                  {log.app_id} · {log.result.backend} · {log.result.wall_s}s · {log.result.tool_calls} tools
-                </div>
-                <div className="os-log-body">{log.result.answer}</div>
-              </div>
-            ))}
-            {logs.length === 0 && !running && (
-              <div className="os-empty">Send a command to see the autonomous agent at work.</div>
-            )}
-            {running && <div className="os-empty">Agent is thinking…</div>}
-          </div>
-        </div>
+        <ModuleChat appId={appId} appName={app?.name} />
 
         <aside className="os-app-sidebar">
           <h4>Allowed Tools</h4>
