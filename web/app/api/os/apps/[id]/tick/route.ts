@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { logAudit } from "@/lib/audit";
+import { kernelTick, pythonUrl } from "@/lib/kernel";
 
 export const dynamic = "force-dynamic";
 
@@ -178,6 +179,22 @@ export async function POST(
     module: id,
     metadata: { query },
   });
+
+  // --- Route to the Python AEON kernel if configured ---
+  if (pythonUrl()) {
+    try {
+      const kernelRes = await kernelTick(id, query);
+      if (kernelRes) {
+        return NextResponse.json(kernelRes);
+      }
+    } catch (error: any) {
+      console.error(`[module-tick ${id}] kernel proxy error:`, error);
+      return NextResponse.json(
+        { ok: false, error: "kernel_proxy_error", details: error?.message },
+        { status: 502 },
+      );
+    }
+  }
 
   const result = mockTick(id, query);
   return NextResponse.json(result);

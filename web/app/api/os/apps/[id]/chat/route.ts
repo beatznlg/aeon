@@ -2,6 +2,7 @@ import { callLLM } from "@/lib/llm";
 import { APPS } from "@/lib/apps";
 import { auth } from "@/auth";
 import { logAudit } from "@/lib/audit";
+import { kernelAppChat, pythonUrl } from "@/lib/kernel";
 
 export const maxDuration = 120;
 
@@ -120,6 +121,15 @@ export async function POST(
   });
 
   try {
+    // --- Route to the Python AEON kernel if configured ---
+    if (pythonUrl()) {
+      const kernelRes = await kernelAppChat(appId, prompt, system);
+      if (kernelRes) {
+        return streamResponse(kernelRes.data?.answer ?? "", kernelRes.data?.backend ?? "aeon_python");
+      }
+    }
+
+    // --- Fallback: TypeScript LLM bridge ---
     const { text, backend } = await callLLM(prompt, system, providerOverride);
     return streamResponse(text, backend);
   } catch (err: any) {

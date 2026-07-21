@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { callLLM } from "@/lib/llm";
 import { auth } from "@/auth";
 import { logAudit } from "@/lib/audit";
+import { kernelChat, pythonUrl } from "@/lib/kernel";
 
 export const maxDuration = 120;
 
@@ -87,7 +88,18 @@ export async function POST(req: Request) {
   });
 
   try {
-    // --- Use the TypeScript LLM bridge instead of Python subprocess ---
+    // --- Route to the Python AEON kernel if configured ---
+    if (pythonUrl()) {
+      const kernelRes = await kernelChat(prompt);
+      if (kernelRes) {
+        const text = kernelRes.data?.answer ?? "";
+        const backend = kernelRes.data?.backend ?? "aeon_python";
+        logTurn(sb, text, backend);
+        return singleTextStream(text, backend);
+      }
+    }
+
+    // --- Fallback: TypeScript LLM bridge ---
     const { text, backend } = await callLLM(prompt, undefined, providerOverride);
     logTurn(sb, text, backend);
     return singleTextStream(text, backend);

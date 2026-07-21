@@ -1282,33 +1282,36 @@ def _test():
 
     print("all self-tests passed.")
 
-print("running self-tests...")
-_test()
+def _main():
+    print("running self-tests...")
+    _test()
+
+    print()
+    print("running ReflectiveAgent demo:")
+    agent = ReflectiveAgent(ROOT)
+    queries = [
+        "what is 2+2?",
+        "integrate x^2 dx",
+        "search the web for python requests retry pattern",
+    ]
+    agent.run_loop(queries)
+    print()
+    print("--- tool evolution demo ---")
+    ev_res = agent.evolve(
+        source="def run(args, root):\n    return True, args.get('x', 0) * 2",
+        test_cases=[({"x": 5}, "10"), ({"x": 0}, "0")])
+    print("evolve result:", ev_res)
+    if ev_res["ok"]:
+        print("calling evolved tool:", TOOLS[ev_res["name"]]({"x": 7}, str(ROOT)))
+    print()
+    print("final vitals:", agent.self_model.vitals())
+    print("open goals:", [g["title"] for g in agent.goals.open_goals()])
+    print("evolved skills:", list(agent.memory.skill_meta.keys()))
+    print("wallet state:", W3C.state())
+    print("ledger balance:", agent.ledger.balance("ETH"), "ETH")
+    print("services:", list(agent.services.list_services().keys()))
+    print("open bounties:", agent.bounty_board.fetch_open().get("bounties", []))
 
 
-# === DEMO ================================================================
-print()
-print("running ReflectiveAgent demo:")
-agent = ReflectiveAgent(ROOT)
-queries = [
-    "what is 2+2?",
-    "integrate x^2 dx",
-    "search the web for python requests retry pattern",
-]
-agent.run_loop(queries)
-print()
-print("--- tool evolution demo ---")
-ev_res = agent.evolve(
-    source="def run(args, root):\n    return True, args.get('x', 0) * 2",
-    test_cases=[({"x": 5}, "10"), ({"x": 0}, "0")])
-print("evolve result:", ev_res)
-if ev_res["ok"]:
-    print("calling evolved tool:", TOOLS[ev_res["name"]]({"x": 7}, str(ROOT)))
-print()
-print("final vitals:", agent.self_model.vitals())
-print("open goals:", [g["title"] for g in agent.goals.open_goals()])
-print("evolved skills:", list(agent.memory.skill_meta.keys()))
-print("wallet state:", W3C.state())
-print("ledger balance:", agent.ledger.balance("ETH"), "ETH")
-print("services:", list(agent.services.list_services().keys()))
-print("open bounties:", agent.bounty_board.fetch_open().get("bounties", []))
+if __name__ == "__main__":
+    _main()
