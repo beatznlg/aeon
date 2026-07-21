@@ -143,7 +143,7 @@ class AppRegistry:
             ],
         ))
 
-        # Future verticals (stubs for the dashboard)
+        # Existing retail, manufacturing, professional, tourism (unchanged)
         self.register(AppDefinition(
             id="retail",
             name="Retail & Wholesale",
@@ -234,6 +234,161 @@ class AppRegistry:
                 {"title": "Maximize occupancy through predictive overbooking", "priority": 10},
                 {"title": "Adjust room rates dynamically based on demand signals", "priority": 9},
                 {"title": "Triage guest requests and automate concierge responses", "priority": 8},
+            ],
+        ))
+
+        # === NEW VERTICALS ===
+        # Health & Medicine
+        self.register(AppDefinition(
+            id="health",
+            name="Health & Medicine",
+            category="Healthcare",
+            description="AI-powered diagnostics, patient monitoring, drug interaction checks, and telehealth triage for modern healthcare.",
+            icon="🏥",
+            color="#06b6d4",
+            status="active",
+            allowed_tools=[
+                "diagnostic_analyzer",
+                "health_monitor",
+                "drug_interaction_check",
+                "medical_literature_search",
+                "telehealth_triage",
+                "fetch",
+                "search",
+                "math",
+            ],
+            default_goals=[
+                {"title": "Monitor patient vitals and flag abnormal trends", "priority": 10},
+                {"title": "Cross-check medication regimens for adverse interactions", "priority": 9},
+                {"title": "Triage incoming telehealth cases by urgency score", "priority": 8},
+                {"title": "Search medical literature for treatment evidence", "priority": 7},
+            ],
+        ))
+        # Transport & Logistics
+        self.register(AppDefinition(
+            id="transport",
+            name="Transport & Logistics",
+            category="Mobility",
+            description="Traffic optimization, fleet scheduling, route planning, and congestion forecasting for smart mobility.",
+            icon="🚚",
+            color="#f97316",
+            status="active",
+            allowed_tools=[
+                "traffic_optimizer",
+                "fleet_scheduler",
+                "route_optimizer",
+                "congestion_forecast",
+                "smart_logistics",
+                "fetch",
+                "search",
+                "math",
+            ],
+            default_goals=[
+                {"title": "Optimize fleet utilization and reduce idle time", "priority": 10},
+                {"title": "Re-route deliveries around congestion hot spots", "priority": 9},
+                {"title": "Forecast traffic patterns for proactive scheduling", "priority": 8},
+                {"title": "Schedule preventive maintenance for fleet vehicles", "priority": 7},
+            ],
+        ))
+        # Finance & Fintech
+        self.register(AppDefinition(
+            id="finance",
+            name="Finance & Fintech",
+            category="Financial Services",
+            description="AI-driven risk analysis, payment pattern monitoring, market forecasting, fraud detection, and credit scoring.",
+            icon="💰",
+            color="#22c55e",
+            status="active",
+            allowed_tools=[
+                "risk_assessment",
+                "payment_analyzer",
+                "market_forecast",
+                "fraud_detection",
+                "credit_scoring",
+                "fetch",
+                "search",
+                "math",
+            ],
+            default_goals=[
+                {"title": "Assess portfolio risk exposure and VaR metrics", "priority": 10},
+                {"title": "Monitor transaction patterns for fraud signals", "priority": 9},
+                {"title": "Forecast market trends across major indices", "priority": 8},
+                {"title": "Process credit applications with AI scoring model", "priority": 7},
+            ],
+        ))
+        # Tourism & Cultural Heritage (expanded)
+        self.register(AppDefinition(
+            id="cultural_heritage",
+            name="Cultural Heritage",
+            category="Culture & Tourism",
+            description="Visitor engagement strategies, cultural heritage guides, virtual tour assistance, and exhibition planning.",
+            icon="🎭",
+            color="#a855f7",
+            status="active",
+            allowed_tools=[
+                "visitor_engagement",
+                "cultural_heritage_guide",
+                "virtual_tour_guide",
+                "exhibition_planner",
+                "fetch",
+                "search",
+                "math",
+            ],
+            default_goals=[
+                {"title": "Engage visitors with personalized cultural recommendations", "priority": 10},
+                {"title": "Generate rich cultural heritage content for exhibits", "priority": 9},
+                {"title": "Guide virtual tour participants with AI narration", "priority": 8},
+                {"title": "Plan exhibition schedules and optimize visitor flow", "priority": 7},
+            ],
+        ))
+        # Utilities & Consumer Services
+        self.register(AppDefinition(
+            id="utilities",
+            name="Utilities & Consumer Services",
+            category="Public Sector",
+            description="Resource consumption optimization, public service monitoring, waste management, and energy grid oversight.",
+            icon="⚡",
+            color="#eab308",
+            status="active",
+            allowed_tools=[
+                "resource_optimizer",
+                "public_service_monitor",
+                "waste_management",
+                "energy_grid_monitor",
+                "fetch",
+                "search",
+                "math",
+            ],
+            default_goals=[
+                {"title": "Optimize resource allocation across public services", "priority": 10},
+                {"title": "Monitor utility infrastructure for failure risks", "priority": 9},
+                {"title": "Track waste management KPIs and recycling rates", "priority": 8},
+                {"title": "Balance energy grid load and forecast demand peaks", "priority": 7},
+            ],
+        ))
+        # General SME Tools
+        self.register(AppDefinition(
+            id="sme",
+            name="SME Business Suite",
+            category="General Business",
+            description="Workflow automation, intelligent document processing, AI-powered customer support, and supply chain analytics for SMEs.",
+            icon="🏢",
+            color="#14b8a6",
+            status="active",
+            allowed_tools=[
+                "workflow_automator",
+                "document_processor",
+                "customer_support_bot",
+                "supply_chain_analyzer",
+                "fetch",
+                "search",
+                "math",
+            ],
+            default_goals=[
+                {"title": "Automate repetitive business workflows for efficiency", "priority": 10},
+                {"title": "Process incoming documents and extract structured data", "priority": 9},
+                {"title": "Power AI chatbot for customer self-service", "priority": 8},
+                {"title": "Analyze supply chain for bottlenecks and cost savings", "priority": 7},
             ],
         ))
 
@@ -666,6 +821,526 @@ def _tool_automated_concierge(args, root):
         "automated_response": responses.get(intent, "We will assist you shortly."),
         "upsell": "Wine pairing" if intent == "dining" else "Late checkout" if intent == "housekeeping" else None,
         "escalate": sentiment == "negative",
+    }, ensure_ascii=False)
+
+
+# === Health & Medicine Tools ============================================
+
+@_register("diagnostic_analyzer")
+def _tool_diagnostic_analyzer(args, root):
+    """Analyze symptoms and suggest possible conditions. args={symptoms, age?}."""
+    symptoms = str(args.get("symptoms", "fever, cough")).strip() or "fever, cough"
+    h = hash(symptoms) % 100
+    conditions = [
+        {"name": "Upper Respiratory Infection", "probability": 0.35 + (h % 30) / 100.0, "severity": "mild", "action": "Rest and hydration"},
+        {"name": "Allergic Rhinitis", "probability": 0.15 + (h % 20) / 100.0, "severity": "mild", "action": "Antihistamines"},
+        {"name": "Influenza", "probability": 0.10 + (h % 15) / 100.0, "severity": "moderate", "action": "Antiviral if early"},
+    ]
+    conditions.sort(key=lambda c: c["probability"], reverse=True)
+    return True, json.dumps({
+        "analyzed_symptoms": symptoms,
+        "possible_conditions": conditions[:3],
+        "urgency": "high" if h > 80 else "moderate" if h > 50 else "low",
+        "recommendation": "Consult primary care provider" if h > 60 else "Self-care with monitoring",
+        "disclaimer": "This is an AI screening tool and not a medical diagnosis. Always consult a healthcare professional.",
+    }, ensure_ascii=False)
+
+
+@_register("health_monitor")
+def _tool_health_monitor(args, root):
+    """Monitor patient vital trends. args={patient_id, metric?}."""
+    patient = str(args.get("patient_id", "P-1001")).strip() or "P-1001"
+    metric = str(args.get("metric", "heart_rate")).strip().lower()
+    h = hash(patient + metric) % 100
+    baseline = {"heart_rate": 72, "blood_pressure_sys": 120, "blood_pressure_dia": 80, "oxygen_sat": 98, "temperature": 37.0}
+    current_variance = (h % 20) - 10
+    return True, json.dumps({
+        "patient_id": patient,
+        "metric": metric,
+        "baseline": baseline.get(metric, "unknown"),
+        "current": baseline.get(metric, 0) + current_variance,
+        "trend": "rising" if current_variance > 5 else "falling" if current_variance < -5 else "stable",
+        "alert": abs(current_variance) > 8,
+        "last_checked": "2025-07-20T14:30:00Z",
+    }, ensure_ascii=False)
+
+
+@_register("drug_interaction_check")
+def _tool_drug_interaction_check(args, root):
+    """Check potential drug interactions. args={drugs}."""
+    drugs_str = str(args.get("drugs", "aspirin, warfarin")).strip() or "aspirin, warfarin"
+    drugs = [d.strip().lower() for d in drugs_str.split(",")]
+    interactions = []
+    known_pairs = [
+        (["warfarin", "aspirin"], "Increased bleeding risk — monitor INR closely"),
+        (["lisinopril", "potassium"], "Risk of hyperkalemia — check serum potassium"),
+        (["metformin", "contrast_dye"], "Risk of lactic acidosis — hold metformin 48h"),
+    ]
+    for pair, warning in known_pairs:
+        if all(d in drugs for d in pair):
+            interactions.append({"drugs": pair, "severity": "moderate", "warning": warning})
+    return True, json.dumps({
+        "medications": drugs,
+        "interactions_found": len(interactions),
+        "interactions": interactions,
+        "recommendation": "Review with pharmacist" if interactions else "No significant interactions predicted",
+    }, ensure_ascii=False)
+
+
+@_register("medical_literature_search")
+def _tool_medical_literature_search(args, root):
+    """Search medical literature abstracts. args={query}."""
+    query = str(args.get("query", "hypertension treatment guidelines")).strip()
+    h = hash(query) % 20
+    return True, json.dumps({
+        "query": query,
+        "results": [
+            {"title": "Updated Guidelines for Hypertension Management (2025)", "journal": "NEJM", "relevance": 0.95, "doi": "10.1056/NEJMoa2500001"},
+            {"title": "Lifestyle Interventions vs Pharmacotherapy in Stage 1 Hypertension", "journal": "JAMA", "relevance": 0.88 - h / 100.0, "doi": "10.1001/jama.2025.0002"},
+            {"title": "AI-Assisted Blood Pressure Monitoring in Primary Care", "journal": "The Lancet Digital Health", "relevance": 0.82 - h / 100.0, "doi": "10.1016/S2589-7500(25)00003-9"},
+        ],
+        "total_found": 2000 + h * 100,
+    }, ensure_ascii=False)
+
+
+@_register("telehealth_triage")
+def _tool_telehealth_triage(args, root):
+    """Triage a telehealth case by urgency. args={symptoms, age, vitals?}."""
+    symptoms = str(args.get("symptoms", "chest pain")).strip()
+    age = int(args.get("age", 45))
+    h = hash(symptoms + str(age)) % 100
+    urgency = "emergent" if h > 80 else "urgent" if h > 50 else "routine"
+    return True, json.dumps({
+        "symptoms": symptoms,
+        "age": age,
+        "urgency": urgency,
+        "wait_time_minutes": 0 if urgency == "emergent" else 15 if urgency == "urgent" else 60,
+        "recommendation": "Call 911 immediately" if urgency == "emergent" else "See provider within 24h" if urgency == "urgent" else "Schedule appointment",
+        "telehealth_eligible": urgency != "emergent",
+    }, ensure_ascii=False)
+
+
+# === Transport & Logistics Tools =========================================
+
+@_register("traffic_optimizer")
+def _tool_traffic_optimizer(args, root):
+    """Optimize traffic signal timing or flow. args={zone, congestion_level?}."""
+    zone = str(args.get("zone", "downtown")).strip() or "downtown"
+    congestion = int(args.get("congestion_level", 7)) % 10
+    h = hash(zone) % 100
+    return True, json.dumps({
+        "zone": zone,
+        "current_congestion": congestion,
+        "recommended_timing": {"green_ratio": 1.0 - (congestion / 10.0), "cycle_seconds": 90 + (h % 30)},
+        "predicted_improvement": f"{5 + (h % 15)}% reduction in avg wait time",
+        "alternative_routes": [f"Route-{i}" for i in range(1, 4)],
+        "incident_nearby": h > 75,
+    }, ensure_ascii=False)
+
+
+@_register("fleet_scheduler")
+def _tool_fleet_scheduler(args, root):
+    """Schedule fleet vehicle assignments. args={vehicles, shifts?}."""
+    vehicles = int(args.get("vehicles", 10))
+    shifts = int(args.get("shifts", 3))
+    h = hash(str(vehicles) + str(shifts)) % 100
+    return True, json.dumps({
+        "vehicles_available": vehicles,
+        "shifts": shifts,
+        "vehicles_per_shift": max(1, vehicles // shifts),
+        "unallocated": vehicles % shifts,
+        "utilization_pct": 70 + (h % 25),
+        "recommendation": "Add 2 more vehicles to peak shift" if h > 70 else "Current fleet sufficient",
+        "next_maintenance_due": [f"Vehicle-{i}" for i in range(1, 4) if (h + i) % 3 == 0],
+    }, ensure_ascii=False)
+
+
+@_register("route_optimizer")
+def _tool_route_optimizer(args, root):
+    """Optimize delivery routes. args={stops, depot?}."""
+    stops_str = str(args.get("stops", "A,B,C,D,E,F")).strip() or "A,B,C,D,E,F"
+    stops = [s.strip() for s in stops_str.split(",")]
+    depot = str(args.get("depot", "Warehouse-1")).strip() or "Warehouse-1"
+    h = hash("".join(stops)) % 100
+    return True, json.dumps({
+        "depot": depot,
+        "stops": stops,
+        "optimal_route": [depot] + stops + [depot],
+        "estimated_distance_km": len(stops) * 12 + (h % 20),
+        "estimated_time_min": len(stops) * 25 + (h % 15),
+        "fuel_cost_est": round(len(stops) * 3.5 + h * 0.2, 2),
+        "efficiency_gain": f"{h % 15}% vs current route",
+    }, ensure_ascii=False)
+
+
+@_register("congestion_forecast")
+def _tool_congestion_forecast(args, root):
+    """Forecast traffic congestion. args={area, hours_ahead?}."""
+    area = str(args.get("area", "city_center")).strip()
+    hours = min(72, max(1, int(args.get("hours_ahead", 6))))
+    h = hash(area) % 100
+    return True, json.dumps({
+        "area": area,
+        "forecast_hours": hours,
+        "peak_congestion_time": f"{7 + (h % 4)}:00 - {10 + (h % 3)}:00",
+        "peak_level": min(10, 5 + (h % 6)),
+        "recommendation": "Avoid peak hours; use alternate routes" if h > 60 else "Normal traffic expected",
+        "hourly_forecast": [{"hour": i, "level": min(10, abs(h - i * 7) % 10)} for i in range(0, hours, 2)],
+    }, ensure_ascii=False)
+
+
+# === Finance & Fintech Tools =============================================
+
+@_register("risk_assessment")
+def _tool_risk_assessment(args, root):
+    """Assess financial risk for a portfolio or asset. args={asset, portfolio_value?}."""
+    asset = str(args.get("asset", "S&P 500")).strip()
+    portfolio = float(args.get("portfolio_value", 100000))
+    h = hash(asset) % 100
+    var_95 = round(portfolio * (0.02 + (h % 50) / 1000.0), 2)
+    return True, json.dumps({
+        "asset": asset,
+        "portfolio_value": portfolio,
+        "var_95_1d": var_95,
+        "var_95_pct": round(var_95 / portfolio * 100, 2),
+        "sharpe_estimate": round(0.8 + (h % 60) / 100.0, 2),
+        "beta": round(0.5 + (h % 100) / 100.0, 2),
+        "risk_rating": "low" if h < 30 else "medium" if h < 65 else "high",
+        "diversification_score": min(10, 3 + h // 10),
+        "recommendation": "Consider hedging strategies" if h > 70 else "Portfolio is balanced",
+    }, ensure_ascii=False)
+
+
+@_register("payment_analyzer")
+def _tool_payment_analyzer(args, root):
+    """Analyze payment patterns. args={account_id, days?}."""
+    account = str(args.get("account_id", "ACC-1234")).strip()
+    days = min(90, max(1, int(args.get("days", 30))))
+    h = hash(account) % 100
+    return True, json.dumps({
+        "account_id": account,
+        "period_days": days,
+        "total_transactions": 10 + h * 3,
+        "total_volume": round(10000 + h * 500, 2),
+        "avg_transaction": round(500 + h * 25, 2),
+        "top_categories": ["retail", "subscription", "transfer", "utility"][:3],
+        "anomaly_count": max(0, h % 5 - 2),
+        "spending_trend": "increasing" if h > 60 else "stable" if h > 30 else "decreasing",
+    }, ensure_ascii=False)
+
+
+@_register("market_forecast")
+def _tool_market_forecast(args, root):
+    """Forecast market trends. args={market, horizon_days?}."""
+    market = str(args.get("market", "S&P 500")).strip()
+    horizon = min(365, max(1, int(args.get("horizon_days", 30))))
+    h = hash(market + str(horizon)) % 100
+    return True, json.dumps({
+        "market": market,
+        "horizon_days": horizon,
+        "predicted_direction": "bullish" if h > 55 else "bearish" if h < 30 else "neutral",
+        "confidence": 0.55 + (h % 30) / 100.0,
+        "key_factors": ["Interest rate expectations", "Earnings season", "Geopolitical risk"],
+        "price_target_pct": round((h % 40) - 15, 1),
+        "volatility_forecast": "low" if h < 30 else "moderate" if h < 70 else "high",
+    }, ensure_ascii=False)
+
+
+@_register("fraud_detection")
+def _tool_fraud_detection(args, root):
+    """Detect potentially fraudulent transactions. args={transaction_id, amount, location?}."""
+    tx_id = str(args.get("transaction_id", "TXN-5001")).strip()
+    amount = float(args.get("amount", 1500))
+    location = str(args.get("location", "unknown")).strip().lower()
+    h = hash(tx_id) % 100
+    fraud_score = h / 100.0
+    return True, json.dumps({
+        "transaction_id": tx_id,
+        "amount": amount,
+        "location": location,
+        "fraud_score": round(fraud_score, 2),
+        "risk_level": "high" if fraud_score > 0.75 else "medium" if fraud_score > 0.4 else "low",
+        "flags": [] if fraud_score < 0.4 else ["unusual_location", "rapid_transaction", "high_amount"]
+    } | ({"action": "Block and review"} if fraud_score > 0.75 else {"action": "Allow with monitoring"}), ensure_ascii=False)
+
+
+@_register("credit_scoring")
+def _tool_credit_scoring(args, root):
+    """Score a credit applicant. args={applicant_id, income, debt, history_years?}."""
+    app_id = str(args.get("applicant_id", "APP-200")).strip()
+    income = float(args.get("income", 75000))
+    debt = float(args.get("debt", 15000))
+    history = max(1, int(args.get("history_years", 5)))
+    h = hash(app_id) % 100
+    dti = round(debt / max(income, 1), 3)
+    score = 300 + (h % 550)  # 300-850 range
+    return True, json.dumps({
+        "applicant_id": app_id,
+        "credit_score": score,
+        "rating": "excellent" if score > 750 else "good" if score > 670 else "fair" if score > 580 else "poor",
+        "debt_to_income": dti,
+        "approval_probability": round((score / 850.0) * (1 - dti / 2), 2),
+        "recommended_limit": max(500, int(income * 0.3 * (score / 850.0))),
+        "risk_factors": ["High DTI"] if dti > 0.4 else [],
+    }, ensure_ascii=False)
+
+
+# === Tourism & Cultural Heritage Tools ===================================
+
+@_register("visitor_engagement")
+def _tool_visitor_engagement(args, root):
+    """Generate visitor engagement recommendations. args={venue, visitor_count?}."""
+    venue = str(args.get("venue", "National Museum")).strip()
+    visitors = int(args.get("visitor_count", 500))
+    h = hash(venue) % 100
+    strategies = [
+        "Interactive AR exhibits for younger audiences",
+        "Audio guides in 5 languages with QR codes",
+        "Gamified scavenger hunt through permanent collection",
+        "Evening cultural performances and storytelling",
+    ]
+    return True, json.dumps({
+        "venue": venue,
+        "daily_visitors": visitors,
+        "engagement_score": 60 + (h % 35),
+        "recommended_strategies": strategies[:2 + (h % 3)],
+        "projected_lift": f"{10 + (h % 20)}% increase in repeat visits",
+        "peak_hours": f"{10 + (h % 4)}:00 - {14 + (h % 3)}:00",
+    }, ensure_ascii=False)
+
+
+@_register("cultural_heritage_guide")
+def _tool_cultural_heritage_guide(args, root):
+    """Generate cultural heritage information. args={site, language?}."""
+    site = str(args.get("site", "Colosseum")).strip() or "Colosseum"
+    lang = str(args.get("language", "english")).strip().lower() or "english"
+    h = hash(site) % 100
+    heritage_data = {
+        "Colosseum": {"era": "Ancient Rome (70-80 AD)", "significance": "Largest amphitheater, symbol of Roman engineering", "visitors_2024": 7500000},
+        "Machu Picchu": {"era": "Inca Empire (1450 AD)", "significance": "Mountain citadel, UNESCO World Heritage", "visitors_2024": 1500000},
+        "Angkor Wat": {"era": "Khmer Empire (12th Century)", "significance": "Largest religious monument, Hindu-Buddhist temple complex", "visitors_2024": 2600000},
+    }
+    info = heritage_data.get(site, {"era": "Unknown", "significance": "Cultural heritage site awaiting classification", "visitors_2024": 0})
+    return True, json.dumps({
+        "site": site,
+        "language": lang,
+        "era": info["era"],
+        "significance": info["significance"],
+        "annual_visitors": info["visitors_2024"],
+        "conservation_status": "good" if h < 50 else "requires attention" if h < 80 else "critical",
+        "recommended_visit_duration_hours": 3 + (h % 4),
+        "virtual_tour_available": True,
+    }, ensure_ascii=False)
+
+
+@_register("virtual_tour_guide")
+def _tool_virtual_tour_guide(args, root):
+    """Generate AI tour narration. args={site, interest?}."""
+    site = str(args.get("site", "Louvre Museum")).strip()
+    interest = str(args.get("interest", "art")).strip().lower()
+    h = hash(site + interest) % 100
+    narrations = {
+        "art": "This masterpiece captures the Baroque fascination with light and shadow — notice how the artist uses chiaroscuro to draw your eye to the central figure.",
+        "history": "This hall was originally a royal ballroom built in 1685. Over 300 years, it witnessed coronations, revolutions, and world exhibitions.",
+        "architecture": "The facade combines Gothic ribbed vaults with Renaissance symmetry — a transition that defined 16th-century European architecture.",
+    }
+    narration = narrations.get(interest, narrations["art"])
+    return True, json.dumps({
+        "site": site,
+        "interest": interest,
+        "narration": narration,
+        "next_stop": f"Gallery {3 + (h % 8)}",
+        "audio_duration_seconds": 45 + (h % 30),
+        "did_you_know": f"This site attracts {5000000 + h * 50000} visitors annually." if h > 50 else "The ceiling fresco took 12 years to complete.",
+    }, ensure_ascii=False)
+
+
+@_register("exhibition_planner")
+def _tool_exhibition_planner(args, root):
+    """Plan exhibition layout and schedule. args={theme, budget?}."""
+    theme = str(args.get("theme", "Modern Art")).strip()
+    budget = float(args.get("budget", 50000))
+    h = hash(theme) % 100
+    return True, json.dumps({
+        "theme": theme,
+        "budget": budget,
+        "recommended_duration_days": 30 + (h % 60),
+        "galleries_required": 2 + (h % 4),
+        "estimated_visitors": int(10000 + (h % 100) * 200),
+        "ticket_price": round(10 + (h % 25), 2),
+        "projected_revenue": int(budget * (1.0 + (h % 50) / 100.0)),
+        "sponsorship_potential": "high" if h > 60 else "moderate" if h > 30 else "low",
+    }, ensure_ascii=False)
+
+
+# === Utilities & Consumer Services Tools =================================
+
+@_register("resource_optimizer")
+def _tool_resource_optimizer(args, root):
+    """Optimize resource allocation. args={resource, demand, supply?}."""
+    resource = str(args.get("resource", "water")).strip() or "water"
+    demand = float(args.get("demand", 1000))
+    supply = float(args.get("supply", 850))
+    h = hash(resource) % 100
+    deficit = supply - demand
+    return True, json.dumps({
+        "resource": resource,
+        "demand": demand,
+        "supply": supply,
+        "deficit": deficit,
+        "status": "critical" if deficit < -200 else "warning" if deficit < 0 else "surplus",
+        "optimization_recommendation": "Implement demand-side management" if deficit < 0 else "Increase reserve storage",
+        "projected_peak_hour": f"{14 + (h % 6)}:00",
+        "conservation_lift_pct": 10 + (h % 15),
+    }, ensure_ascii=False)
+
+
+@_register("public_service_monitor")
+def _tool_public_service_monitor(args, root):
+    """Monitor public service KPIs. args={service, jurisdiction?}."""
+    service = str(args.get("service", "waste_collection")).strip()
+    jurisdiction = str(args.get("jurisdiction", "Metro District")).strip() or "Metro District"
+    h = hash(service + jurisdiction) % 100
+    return True, json.dumps({
+        "service": service,
+        "jurisdiction": jurisdiction,
+        "kpi_score": 60 + (h % 35),
+        "status": "excellent" if h > 80 else "satisfactory" if h > 45 else "needs_improvement",
+        "response_time_min": 15 + (h % 45),
+        "citizen_satisfaction": round(0.6 + (h % 35) / 100.0, 2),
+        "open_tickets": max(0, 50 - h),
+        "trend": "improving" if h > 60 else "stable" if h > 30 else "declining",
+    }, ensure_ascii=False)
+
+
+@_register("waste_management")
+def _tool_waste_management(args, root):
+    """Analyze waste management operations. args={district, period?}."""
+    district = str(args.get("district", "Zone A")).strip()
+    period = str(args.get("period", "monthly")).strip() or "monthly"
+    h = hash(district) % 100
+    return True, json.dumps({
+        "district": district,
+        "period": period,
+        "total_waste_tons": 500 + h * 20,
+        "recycled_pct": 15 + (h % 40),
+        "composted_pct": 5 + (h % 15),
+        "landfill_pct": 100 - (15 + (h % 40)) - (5 + (h % 15)),
+        "collection_efficiency": round(0.7 + (h % 25) / 100.0, 2),
+        "recommendations": [
+            "Expand curbside composting to Zone B",
+            "Add smart bins in high-density areas",
+            "Optimize collection routes with AI routing",
+        ][:2 + (h % 2)],
+    }, ensure_ascii=False)
+
+
+@_register("energy_grid_monitor")
+def _tool_energy_grid_monitor(args, root):
+    """Monitor energy grid load and balance. args={region, time_of_day?}."""
+    region = str(args.get("region", "North Grid")).strip()
+    hour = int(args.get("time_of_day", 14)) % 24
+    h = hash(region) % 100
+    load = 200 + h * 5 + (hour * 10)
+    capacity = 500 + (h % 200)
+    return True, json.dumps({
+        "region": region,
+        "hour": hour,
+        "current_load_mw": load,
+        "capacity_mw": capacity,
+        "utilization_pct": round(load / capacity * 100, 1),
+        "renewable_share_pct": 15 + (h % 35),
+        "status": "critical" if load / capacity > 0.9 else "warning" if load / capacity > 0.75 else "normal",
+        "peak_prediction": f"{16 + (h % 4)}:00",
+        "demand_response_recommended": load / capacity > 0.85,
+    }, ensure_ascii=False)
+
+
+# === General SME Tools ===================================================
+
+@_register("workflow_automator")
+def _tool_workflow_automator(args, root):
+    """Analyze and recommend workflow automation. args={process, employees?}."""
+    process = str(args.get("process", "invoice_approval")).strip() or "invoice_approval"
+    employees = int(args.get("employees", 5))
+    h = hash(process) % 100
+    time_saved = employees * (1 + h % 8)
+    return True, json.dumps({
+        "process": process,
+        "employees_involved": employees,
+        "current_cycle_hours": 10 + (h % 40),
+        "automated_cycle_hours": max(1, (10 + (h % 40)) - time_saved),
+        "hours_saved_per_month": time_saved * 20,
+        "cost_savings_annual": round(time_saved * 20 * 35 * 12, 2),
+        "automation_readiness": round(0.4 + (h % 50) / 100.0, 2),
+        "recommended_tools": ["RPA bot", "Approval dashboard", "Auto-reminder system"],
+    }, ensure_ascii=False)
+
+
+@_register("document_processor")
+def _tool_document_processor(args, root):
+    """Extract structured data from a document. args={document_type, content?}."""
+    doc_type = str(args.get("document_type", "invoice")).strip().lower() or "invoice"
+    h = hash(doc_type) % 100
+    return True, json.dumps({
+        "document_type": doc_type,
+        "fields_extracted": ["vendor", "amount", "date", "invoice_number", "tax", "line_items"],
+        "confidence": round(0.75 + (h % 20) / 100.0, 2),
+        "pages_processed": 1 + (h % 5),
+        "structured_output": {
+            "vendor": f"Vendor-{h % 10}",
+            "amount": 1500 + h * 30,
+            "date": "2025-07-20",
+            "tax": round((1500 + h * 30) * 0.08, 2),
+        },
+        "extraction_method": "AI OCR + NLP",
+    }, ensure_ascii=False)
+
+
+@_register("customer_support_bot")
+def _tool_customer_support_bot(args, root):
+    """Generate AI customer support response. args={query, customer_tier?}."""
+    query = str(args.get("query", "Where is my order?")).strip()
+    tier = str(args.get("customer_tier", "standard")).strip().lower() or "standard"
+    h = hash(query + tier) % 100
+    responses = {
+        "order": "Your order #12345 is currently in transit. Expected delivery: July 25.",
+        "refund": "A refund of $59.99 has been initiated. It will reach your account within 5-7 business days.",
+        "account": "I've verified your account. Your subscription is active until Aug 15, 2025.",
+        "product": "This product features a 2-year warranty, free returns within 30 days, and 24/7 technical support.",
+    }
+    detected_intent = "order" if "order" in query else "refund" if "refund" in query else "account" if "account" in query else "product"
+    response = responses.get(detected_intent, "Thank you for contacting us. A specialist will respond within 4 hours.")
+    return True, json.dumps({
+        "query": query,
+        "detected_intent": detected_intent,
+        "sentiment": "positive" if h > 60 else "neutral" if h > 30 else "negative",
+        "response": response,
+        "escalated": h < 20,
+        "resolution_time_min": 2 if h > 50 else 15,
+        "customer_satisfaction_predicted": round(0.5 + (h % 40) / 100.0, 2),
+    }, ensure_ascii=False)
+
+
+@_register("supply_chain_analyzer")
+def _tool_supply_chain_analyzer(args, root):
+    """Analyze supply chain for bottlenecks. args={chain_id, depth?}."""
+    chain = str(args.get("chain_id", "SC-001")).strip() or "SC-001"
+    depth = min(5, max(1, int(args.get("depth", 3))))
+    h = hash(chain) % 100
+    return True, json.dumps({
+        "chain_id": chain,
+        "depth": depth,
+        "health_score": 50 + (h % 45),
+        "bottlenecks": [f"Supplier-{i}" for i in range(1, depth + 1) if (h + i) % 2 == 0],
+        "lead_time_days": 5 + (h % 20),
+        "cost_per_unit": round(10 + h * 0.5, 2),
+        "risk_level": "high" if h > 70 else "medium" if h > 40 else "low",
+        "recommended_actions": [
+            "Diversify critical suppliers" if h > 60 else "Maintain current network",
+            "Increase safety stock by 15%" if h > 45 else "Reduce safety stock",
+            "Audit Tier 2 suppliers for compliance",
+        ],
     }, ensure_ascii=False)
 
 

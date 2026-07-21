@@ -8,6 +8,12 @@ import {
   ManufacturingDashboard,
   ProfessionalDashboard,
   TourismDashboard,
+  HealthDashboard,
+  TransportDashboard,
+  FinanceDashboard,
+  CulturalHeritageDashboard,
+  UtilitiesDashboard,
+  SMEDashboard,
   useDashboard,
   KPICard,
 } from "../../../components/AeonOSDashboard";
@@ -29,6 +35,12 @@ const MODULE_NAMES: Record<string, string> = {
   manufacturing: "Factory Command Center",
   professional: "Professional Services Hub",
   tourism: "Hospitality Command Center",
+  health: "Health Command Center",
+  transport: "Transport Command Center",
+  finance: "Finance Command Center",
+  cultural_heritage: "Cultural Heritage Command Center",
+  utilities: "Utilities Command Center",
+  sme: "SME Business Suite",
 };
 
 export default function AppPage() {
@@ -101,6 +113,18 @@ export default function AppPage() {
         return <ProfessionalDashboard data={dashboardData} />;
       case "tourism":
         return <TourismDashboard data={dashboardData} />;
+      case "health":
+        return <HealthDashboard data={dashboardData} />;
+      case "transport":
+        return <TransportDashboard data={dashboardData} />;
+      case "finance":
+        return <FinanceDashboard data={dashboardData} />;
+      case "cultural_heritage":
+        return <CulturalHeritageDashboard data={dashboardData} />;
+      case "utilities":
+        return <UtilitiesDashboard data={dashboardData} />;
+      case "sme":
+        return <SMEDashboard data={dashboardData} />;
       default:
         return null;
     }
