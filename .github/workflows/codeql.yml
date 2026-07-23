@@ -1,63 +1,47 @@
+# AEON — CodeQL static analysis (GitHub Advanced Security)
+# Free for public repositories. Runs on push, PRs, and weekly schedule.
 name: "CodeQL"
 
 on:
   push:
-    branches: [ "main" ]
-    paths-ignore:
-      - "**/*.md"
-      - "**/*.mdx"
-      - "**/*.txt"
-      - "**/*.ipynb"
-      - "scripts/**"
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
-    paths-ignore:
-      - "**/*.md"
-      - "**/*.mdx"
-      - "**/*.txt"
-      - "**/*.ipynb"
-      - "scripts/**"
+    branches: ["main"]
   schedule:
-    # Weekly, Sunday 04:00 UTC (off-peak for runner capacity)
+    # Sunday 04:00 UTC — weekly baseline scan
     - cron: "0 4 * * 0"
-
-permissions:
-  # Auto-injected GITHUB_TOKEN. Required scopes:
-  #   contents: read     (clone private deps if ever added)
-  #   security-events: write (publish SARIF back to repo)
-  contents: read
-  security-events: write
 
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
+
+    permissions:
+      # Required for CodeQL to upload SARIF results
+      security-events: write
+      # Required to check out the repo
+      contents: read
+      # Required for private repos only; harmless on public
+      actions: read
+
     strategy:
       fail-fast: false
       matrix:
-        # AEON = Python kernel (aeon.py, scripts/*.py) + JS/TS web app (web/)
-        language: [ "python", "javascript-typescript" ]
+        language: ["python", "javascript-typescript"]
 
     steps:
-      - name: Checkout source
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Initializes the CodeQL tools for the chosen matrix language
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
         with:
           languages: ${{ matrix.language }}
-          # Pin to a query pack — gives reproducible alert diffs across weeks
+          # Use the security-extended suite for deeper analysis
           queries: security-extended
-          # Avoid analyzing build outputs / vendored deps
-          paths-ignore:
-            - "web/node_modules"
-            - "web/.next"
-            - "web/out"
-            - ".venv"
-            - "**/__pycache__"
-            - "**/*.pyc"
-            - "aeon_state"
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3

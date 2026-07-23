@@ -82,6 +82,9 @@ export default function OSPage() {
           <Link href="/os/knowledge" className="btn btn-primary">
             📚 Knowledge Bases
           </Link>
+          <Link href="/os/governance" className="btn btn-primary">
+            🛡️ Governance
+          </Link>
         </div>
       </header>
 

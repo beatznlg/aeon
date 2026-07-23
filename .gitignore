@@ -39,3 +39,7 @@ web/.next/
 web/out/
 web/.env.local
 !-web/.env.example
+
+# Local runtime state/logs
+aeon_state/
+server.log

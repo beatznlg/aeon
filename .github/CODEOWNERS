@@ -1,0 +1,31 @@
+# AEON Code Owners
+# Lines starting with `#` are comments.
+# The last matching pattern is used.
+
+# Global fallback — everything owned by the project maintainer
+* @beatznlg
+
+# Compliance & security configuration require maintainer review
+.github/CODEOWNERS @beatznlg
+.github/workflows/* @beatznlg
+.github/SECURITY.md @beatznlg
+
+# Core kernel and server code
+aeon.py @beatznlg
+aeon_os.py @beatznlg
+aeon_llm.py @beatznlg
+aeon_rag.py @beatznlg
+aeon_vector_store.py @beatznlg
+aeon_integrations.py @beatznlg
+aeon_workflows.py @beatznlg
+aeon_server.py @beatznlg
+aeon_governance.py @beatznlg
+
+# Database schema and migrations
+supabase/migrations/*.sql @beatznlg
+supabase/*.sql @beatznlg
+
+# Web frontend (Next.js / TypeScript)
+web/app/ @beatznlg
+web/lib/ @beatznlg
+web/components/ @beatznlg
