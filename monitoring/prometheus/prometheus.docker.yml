@@ -1,0 +1,31 @@
+# Prometheus scrape configuration for the AEON docker-compose monitoring stack.
+# Use this inside the Docker Compose network where the kernel is reachable at
+# http://aeon-server:5000/metrics.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: aeon
+    replica: '{{.ExternalURL}}'
+
+scrape_configs:
+  - job_name: 'aeon-python-kernel'
+    metrics_path: /metrics
+    scheme: http
+    static_configs:
+      - targets:
+          - 'aeon-server:5000'
+        labels:
+          service: aeon-server
+          env: docker-compose
+
+rule_files:
+  - 'rules/recording-rules.yml'
+  - 'rules/alert-rules.yml'
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - 'alertmanager:9093'

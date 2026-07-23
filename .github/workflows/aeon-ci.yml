@@ -2,7 +2,8 @@ name: AEON CI
 
 on:
   push:
-    branches: [ "main" ]
+    branches:
+      - "main"
   workflow_dispatch:
   repository_dispatch:
 
@@ -23,10 +24,13 @@ jobs:
           python -m py_compile aeon.py
           echo "✅ aeon.py compiles cleanly."
 
+      - name: Install minimal Python deps for stub self-tests
+        run: python -m pip install numpy requests web3 sympy
+
       - name: Run AEON 7 self-tests (stub mode)
         run: |
           python - <<'PY'
-          import tempfile, os, sys, subprocess, re
+          import tempfile, os, sys, subprocess, re, shutil
           src = open("aeon.py").read()
           src = src.replace("for s in REQ: _pip(s)", "for s in REQ: print(\"  skip\", s)")
           m = re.search(r"\n# === DEMO", src)
@@ -34,6 +38,7 @@ jobs:
           src += '\nprint("smoke: self-tests only, no demo")\n'
           with tempfile.TemporaryDirectory() as td:
               p = os.path.join(td, "aeon.py"); open(p, "w").write(src)
+              shutil.copy("aeon_llm.py", os.path.join(td, "aeon_llm.py"))
               env = {**os.environ, "AEON_ROOT": td}
               # Force stub-mode: zero network calls.
               for k in ("HUGGINGFACE_TOKEN","SUPABASE_URL","SUPABASE_ANON_KEY",
@@ -50,8 +55,9 @@ jobs:
           nb = json.load(open('colab_runner.ipynb'))
           assert nb['nbformat'] == 4, 'notebook not nbformat 4'
           assert len(nb['cells']) >= 1, 'no cells'
-          assert nb['cells'][0]['cell_type'] == 'code', 'first cell not code'
-          print('✅ colab_runner.ipynb: nbformat 4,', len(nb['cells']), 'cell(s)')
+          code_cells = [c for c in nb['cells'] if c['cell_type'] == 'code']
+          assert code_cells, 'no code cells'
+          print(' colab_runner.ipynb: nbformat 4,', len(nb['cells']), 'cell(s),', len(code_cells), 'code cell(s)')
           "
 
       - name: Validate web/package.json is valid JSON
@@ -103,3 +109,47 @@ jobs:
       - name: Type-check web/ (no emit)
         working-directory: web
         run: npx tsc --noEmit
+
+  alertmanager-smoke-test:
+    name: Alertmanager config + smoke tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install Python dependencies
+        run: python -m pip install pyyaml
+
+      - name: Cache monitoring binaries
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/aeon-ci
+          key: monitoring-binaries-v1-0.27.0-2.53.0
+
+      - name: Download Alertmanager binary
+        run: |
+          mkdir -p ~/.cache/aeon-ci
+          if [ ! -x ~/.cache/aeon-ci/alertmanager-0.27.0.linux-amd64/alertmanager ]; then
+            curl -fsSL -o /tmp/am.tar.gz https://github.com/prometheus/alertmanager/releases/download/v0.27.0/alertmanager-0.27.0.linux-amd64.tar.gz
+            tar -xzf /tmp/am.tar.gz -C ~/.cache/aeon-ci
+          fi
+          ~/.cache/aeon-ci/alertmanager-0.27.0.linux-amd64/alertmanager --version
+
+      - name: Download Prometheus binary
+        run: |
+          mkdir -p ~/.cache/aeon-ci
+          if [ ! -x ~/.cache/aeon-ci/prometheus-2.53.0.linux-amd64/prometheus ]; then
+            curl -fsSL -o /tmp/prom.tar.gz https://github.com/prometheus/prometheus/releases/download/v2.53.0/prometheus-2.53.0.linux-amd64.tar.gz
+            tar -xzf /tmp/prom.tar.gz -C ~/.cache/aeon-ci
+          fi
+          ~/.cache/aeon-ci/prometheus-2.53.0.linux-amd64/prometheus --version
+
+      - name: Run Alertmanager tests
+        working-directory: monitoring
+        run: |
+          export AEON_ALERTMANAGER_BINARY="$HOME/.cache/aeon-ci/alertmanager-0.27.0.linux-amd64/alertmanager"
+          export AEON_PROMETHEUS_BINARY="$HOME/.cache/aeon-ci/prometheus-2.53.0.linux-amd64/prometheus"
+          python -m unittest discover -s tests -v

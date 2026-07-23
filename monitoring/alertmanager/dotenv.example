@@ -1,0 +1,17 @@
+# Example environment variables for the AEON monitoring stack.
+# Copy this file to monitoring/.env and fill in your real values.
+# NEVER commit .env to version control.
+
+# ── SMTP (email notifications) ─────────────────────────────────────────────
+ALERTMANAGER_SMTP_HOST=smtp.example.com:587
+ALERTMANAGER_SMTP_FROM=alerts@example.com
+ALERTMANAGER_SMTP_USERNAME=your_smtp_username
+ALERTMANAGER_SMTP_PASSWORD=your_smtp_password
+ALERTMANAGER_SMTP_IDENTITY=
+
+# ── Email recipients ─────────────────────────────────────────────────────────
+ALERTMANAGER_EMAIL_TO=oncall@example.com
+
+# ── Slack (optional) ───────────────────────────────────────────────────────────
+ALERTMANAGER_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/YOUR/WEBHOOK/URL
+ALERTMANAGER_SLACK_CHANNEL=#alerts
