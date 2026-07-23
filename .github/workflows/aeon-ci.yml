@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - "main"
-      - "ci/monitoring-cache-test"
   workflow_dispatch:
   repository_dispatch:
 
