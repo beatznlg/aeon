@@ -2,7 +2,9 @@ name: AEON CI
 
 on:
   push:
-    branches: [ "main" ]
+    branches:
+      - "main"
+      - "ci/monitoring-cache-test"
   workflow_dispatch:
   repository_dispatch:
 
