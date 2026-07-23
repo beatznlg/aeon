@@ -29,14 +29,24 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from monitoring.tests.test_utils import (
-    DEFAULT_ALERTMANAGER_BINARY,
-    DEFAULT_PROMETHEUS_BINARY,
-    TEMPLATES_DIR,
-    docker_available,
-    free_port,
-    prepare_alertmanager_config,
-)
+try:
+    from monitoring.tests.test_utils import (
+        DEFAULT_ALERTMANAGER_BINARY,
+        DEFAULT_PROMETHEUS_BINARY,
+        TEMPLATES_DIR,
+        docker_available,
+        free_port,
+        prepare_alertmanager_config,
+    )
+except ImportError:  # when running `python -m unittest discover -s tests`
+    from test_utils import (
+        DEFAULT_ALERTMANAGER_BINARY,
+        DEFAULT_PROMETHEUS_BINARY,
+        TEMPLATES_DIR,
+        docker_available,
+        free_port,
+        prepare_alertmanager_config,
+    )
 
 ALERTMANAGER_IMAGE = "prom/alertmanager:v0.27.0"
 PROMETHEUS_IMAGE = "prom/prometheus:v2.53.0"
