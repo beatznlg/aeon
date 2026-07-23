@@ -31,7 +31,7 @@ jobs:
       - name: Run AEON 7 self-tests (stub mode)
         run: |
           python - <<'PY'
-          import tempfile, os, sys, subprocess, re
+          import tempfile, os, sys, subprocess, re, shutil
           src = open("aeon.py").read()
           src = src.replace("for s in REQ: _pip(s)", "for s in REQ: print(\"  skip\", s)")
           m = re.search(r"\n# === DEMO", src)
@@ -39,6 +39,7 @@ jobs:
           src += '\nprint("smoke: self-tests only, no demo")\n'
           with tempfile.TemporaryDirectory() as td:
               p = os.path.join(td, "aeon.py"); open(p, "w").write(src)
+              shutil.copy("aeon_llm.py", os.path.join(td, "aeon_llm.py"))
               env = {**os.environ, "AEON_ROOT": td}
               # Force stub-mode: zero network calls.
               for k in ("HUGGINGFACE_TOKEN","SUPABASE_URL","SUPABASE_ANON_KEY",
