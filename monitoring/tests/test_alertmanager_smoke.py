@@ -29,13 +29,22 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from monitoring.tests.test_utils import (
-    DEFAULT_ALERTMANAGER_BINARY,
-    TEMPLATES_DIR,
-    docker_available,
-    free_port,
-    prepare_alertmanager_config,
-)
+try:
+    from monitoring.tests.test_utils import (
+        DEFAULT_ALERTMANAGER_BINARY,
+        TEMPLATES_DIR,
+        docker_available,
+        free_port,
+        prepare_alertmanager_config,
+    )
+except ImportError:  # when running `python -m unittest discover -s tests`
+    from test_utils import (
+        DEFAULT_ALERTMANAGER_BINARY,
+        TEMPLATES_DIR,
+        docker_available,
+        free_port,
+        prepare_alertmanager_config,
+    )
 
 IMAGE = "prom/alertmanager:v0.27.0"
 CONTAINER_NAME = "aeon-alertmanager-smoke"
