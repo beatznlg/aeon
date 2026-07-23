@@ -1,0 +1,12 @@
+apiVersion: 1
+
+providers:
+  - name: "AEON Dashboards"
+    org_id: 1
+    folder: "AEON"
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards

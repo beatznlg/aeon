@@ -1,0 +1,37 @@
+{{ define "aeon.email" }}
+<!DOCTYPE html>
+<html>
+<head><title>AEON Alert</title></head>
+<body>
+<h2>{{ .GroupLabels.alertname }}</h2>
+<p><strong>Severity:</strong> {{ .GroupLabels.severity }}</p>
+<p><strong>Service:</strong> {{ .GroupLabels.service }}</p>
+<ul>
+{{ range .Alerts }}
+  <li>{{ .Annotations.summary }}<br/>{{ .Annotations.description }}</li>
+{{ end }}
+</ul>
+</body>
+</html>
+{{ end }}
+
+{{ define "aeon.email.text" }}
+AEON Alert: {{ .GroupLabels.alertname }}
+Severity: {{ .GroupLabels.severity }}
+Service: {{ .GroupLabels.service }}
+
+{{ range .Alerts }}
+- {{ .Annotations.summary }}
+  {{ .Annotations.description }}
+{{ end }}
+{{ end }}
+
+{{ define "aeon.slack.title" }}{{ .GroupLabels.alertname }} ({{ .GroupLabels.severity }}){{ end }}
+
+{{ define "aeon.slack.text" }}
+{{ range .Alerts }}
+*{{ .Annotations.summary }}*
+{{ .Annotations.description }}
+{{ if .Annotations.runbook_url }}Runbook: {{ .Annotations.runbook_url }}{{ end }}
+{{ end }}
+{{ end }}

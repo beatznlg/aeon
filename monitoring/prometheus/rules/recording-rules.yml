@@ -1,0 +1,88 @@
+# AEON v3.0 Prometheus recording rules
+# These rules pre-compute commonly queried metrics from the aeon_server /metrics endpoint.
+
+groups:
+  - name: aeon_http
+    interval: 15s
+    rules:
+      - record: aeon:http_requests_rate_1m
+        expr: |
+          sum(rate(aeon_http_requests_total[1m])) by (method, status)
+        labels:
+          source: recorded
+
+      - record: aeon:http_request_latency_p99_5m
+        expr: |
+          histogram_quantile(0.99,
+            sum(rate(aeon_http_request_duration_seconds_bucket[5m])) by (le, method, path)
+          )
+        labels:
+          source: recorded
+
+      - record: aeon:http_error_rate_1m
+        expr: |
+          sum(rate(aeon_http_requests_total{status=~"5.."}[1m])) by (method, path)
+          /
+          sum(rate(aeon_http_requests_total[1m])) by (method, path)
+        labels:
+          source: recorded
+
+  - name: aeon_agents
+    interval: 15s
+    rules:
+      - record: aeon:agent_tick_rate_1m
+        expr: |
+          sum(rate(aeon_agent_ticks_total[1m])) by (app_id)
+        labels:
+          source: recorded
+
+      - record: aeon:agent_reflection_rate_1m
+        expr: |
+          sum(rate(aeon_agent_reflections_total[1m])) by (app_id)
+        labels:
+          source: recorded
+
+      - record: aeon:app_chat_rate_1m
+        expr: |
+          sum(rate(aeon_app_chat_requests_total[1m])) by (app_id)
+        labels:
+          source: recorded
+
+  - name: aeon_business
+    interval: 15s
+    rules:
+      - record: aeon:chat_requests_rate_1m
+        expr: |
+          sum(rate(aeon_chat_requests_total[1m]))
+        labels:
+          source: recorded
+
+      - record: aeon:workflow_run_rate_1m
+        expr: |
+          sum(rate(aeon_workflow_runs_total[1m])) by (workflow_id, ok)
+        labels:
+          source: recorded
+
+      - record: aeon:swarm_run_rate_1m
+        expr: |
+          sum(rate(aeon_swarm_runs_total[1m])) by (ok)
+        labels:
+          source: recorded
+
+      - record: aeon:integration_run_rate_1m
+        expr: |
+          sum(rate(aeon_integration_runs_total[1m])) by (integration_id, ok)
+        labels:
+          source: recorded
+
+      - record: aeon:proxy_request_rate_1m
+        expr: |
+          sum(rate(aeon_proxy_requests_total[1m])) by (integration_id, ok)
+        labels:
+          source: recorded
+
+      - record: aeon:webhook_delivery_rate_1m
+        expr: |
+          sum(rate(aeon_webhook_deliveries_total[1m])) by (verified)
+        labels:
+          source: recorded

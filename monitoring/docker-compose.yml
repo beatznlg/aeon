@@ -1,0 +1,107 @@
+# AEON v3.0 local monitoring stack
+#
+# Services:
+#   - aeon-server: AEON Python kernel (:5000)
+#   - prometheus:  Prometheus (:9090)
+#   - grafana:       Grafana (:3000)
+#
+# Start:
+#   cd monitoring
+#   docker compose up --build
+#
+# URLs:
+#   AEON kernel: http://localhost:5000
+#   Prometheus:  http://localhost:9090
+#   Grafana:     http://localhost:3000 (admin / admin)
+
+version: "3.8"
+
+services:
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: aeon-alertmanager
+    ports:
+      - "9093:9093"
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+      - "--web.external-url=http://localhost:9093"
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ./alertmanager/templates:/etc/alertmanager/templates:ro
+      - alertmanager_data:/alertmanager
+    env_file:
+      - .env
+    networks:
+      - aeon
+
+  aeon-server:
+    build:
+      context: ..
+      dockerfile: monitoring/aeon-server/Dockerfile
+    container_name: aeon-server
+    ports:
+      - "5000:5000"
+    environment:
+      AEON_PYTHON_HOST: "0.0.0.0"
+      AEON_PYTHON_PORT: "5000"
+      AEON_LOG_LEVEL: "INFO"
+    volumes:
+      - aeon_state:/app/aeon_state
+    networks:
+      - aeon
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:5000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: aeon-prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.docker.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+      - "--web.console.templates=/usr/share/prometheus/consoles"
+      - "--web.enable-lifecycle"
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.docker.yml:/etc/prometheus/prometheus.docker.yml:ro
+      - ./prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus_data:/prometheus
+    networks:
+      - aeon
+    depends_on:
+      aeon-server:
+        condition: service_healthy
+
+  grafana:
+    image: grafana/grafana:11.0.0
+    container_name: aeon-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/aeon-metrics.json:/var/lib/grafana/dashboards/aeon-metrics.json:ro
+      - grafana_data:/var/lib/grafana
+    networks:
+      - aeon
+    depends_on:
+      - prometheus
+
+volumes:
+  aeon_state:
+  prometheus_data:
+  grafana_data:
+  alertmanager_data:
+
+networks:
+  aeon:
+    driver: bridge

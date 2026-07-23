@@ -1,0 +1,39 @@
+# Prometheus scrape configuration for AEON v3.0
+# Point Prometheus at this file with:
+#   prometheus --config.file=monitoring/prometheus/prometheus.yml
+#
+# Adjust the target host/port to wherever aeon_server.py is running.
+# Default: localhost:5000 (set via AEON_PYTHON_PORT / AEON_PYTHON_HOST).
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: aeon
+    replica: '{{.ExternalURL}}'
+
+scrape_configs:
+  - job_name: 'aeon-python-kernel'
+    metrics_path: /metrics
+    scheme: http
+    static_configs:
+      - targets:
+          - 'localhost:5000'
+        labels:
+          service: aeon-server
+          env: production
+
+  # Example: scrape the AEON web frontend Next.js app if you expose metrics
+  # via /api/metrics (not provided by default).
+  # - job_name: 'aeon-web'
+  #   metrics_path: /api/metrics
+  #   scheme: http
+  #   static_configs:
+  #     - targets:
+  #         - 'localhost:3000'
+  #       labels:
+  #         service: aeon-web
+
+rule_files:
+  - 'rules/recording-rules.yml'
+  - 'rules/alert-rules.yml'
