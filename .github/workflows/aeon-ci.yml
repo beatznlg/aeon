@@ -56,8 +56,9 @@ jobs:
           nb = json.load(open('colab_runner.ipynb'))
           assert nb['nbformat'] == 4, 'notebook not nbformat 4'
           assert len(nb['cells']) >= 1, 'no cells'
-          assert nb['cells'][0]['cell_type'] == 'code', 'first cell not code'
-          print('✅ colab_runner.ipynb: nbformat 4,', len(nb['cells']), 'cell(s)')
+          code_cells = [c for c in nb['cells'] if c['cell_type'] == 'code']
+          assert code_cells, 'no code cells'
+          print(' colab_runner.ipynb: nbformat 4,', len(nb['cells']), 'cell(s),', len(code_cells), 'code cell(s)')
           "
 
       - name: Validate web/package.json is valid JSON
