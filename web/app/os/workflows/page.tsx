@@ -77,6 +77,78 @@ export default function WorkflowBuilderPage() {
   const lastPanMouse = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
   useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      const tag = target?.tagName?.toLowerCase();
+      const isTyping = tag === "input" || tag === "textarea" || tag === "select" || target?.isContentEditable;
+
+      if (isTyping) {
+        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
+          e.preventDefault();
+          saveWorkflow();
+        }
+        return;
+      }
+
+      switch (e.key) {
+        case "+":
+        case "=":
+          e.preventDefault();
+          setZoom((z) => Math.min(3, z + 0.2));
+          break;
+        case "-":
+        case "_":
+          e.preventDefault();
+          setZoom((z) => Math.max(0.2, z - 0.2));
+          break;
+        case "0":
+          e.preventDefault();
+          setZoom(1);
+          setPan({ x: 0, y: 0 });
+          break;
+        case "ArrowUp":
+          e.preventDefault();
+          setPan((p) => ({ ...p, y: p.y + 50 }));
+          break;
+        case "ArrowDown":
+          e.preventDefault();
+          setPan((p) => ({ ...p, y: p.y - 50 }));
+          break;
+        case "ArrowLeft":
+          e.preventDefault();
+          setPan((p) => ({ ...p, x: p.x + 50 }));
+          break;
+        case "ArrowRight":
+          e.preventDefault();
+          setPan((p) => ({ ...p, x: p.x - 50 }));
+          break;
+        case "Delete":
+        case "Backspace":
+          if (selectedNode) {
+            e.preventDefault();
+            removeNode(selectedNode);
+          }
+          break;
+        case "Escape":
+          setSelectedNode(null);
+          setDraggingId(null);
+          setEdgeDraggingSource(null);
+          break;
+        case "s":
+        case "S":
+          if (e.metaKey || e.ctrlKey) {
+            e.preventDefault();
+            saveWorkflow();
+          }
+          break;
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selectedNode]);
+
+  useEffect(() => {
     Promise.all([
       fetch("/api/os/apps", { cache: "no-store" }).then((r) => r.json()),
       fetch("/api/os/workflows", { cache: "no-store" }).then((r) => r.json()),
@@ -524,9 +596,15 @@ export default function WorkflowBuilderPage() {
                 </marker>
               </defs>
             </svg>
+            </div>            <div className="workflow-shortcuts">
+              <strong>Shortcuts</strong>
+              <div>Zoom: + / −</div>
+              <div>Pan: arrows</div>
+              <div>Delete: del</div>
+              <div>Save: ⌘S / Ctrl+S</div>
+              <div>Reset: 0</div>
             </div>
-            <div
-              style={{
+            <div style={{
                 position: "absolute",
                 bottom: 16,
                 right: 16,
