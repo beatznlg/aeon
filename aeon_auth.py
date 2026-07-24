@@ -96,10 +96,10 @@ def create_access_token(user_id: str, email: str, role: str, workspace_id: Optio
     """Create a short-lived JWT access token."""
     now = datetime.now(timezone.utc)
     payload = {
-        "sub": user_id,
+        "sub": str(user_id) if user_id else None,
         "email": email,
         "role": role,
-        "workspace_id": workspace_id,
+        "workspace_id": str(workspace_id) if workspace_id else None,
         "iat": now,
         "exp": now + timedelta(seconds=ACCESS_TOKEN_TTL),
         "type": "access",

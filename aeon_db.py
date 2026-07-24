@@ -169,6 +169,10 @@ class Database:
         with self.session() as s:
             return s.query(Membership).filter_by(workspace_id=workspace_id).all()
 
+    def list_user_memberships(self, user_id: str) -> List[Membership]:
+        with self.session() as s:
+            return s.query(Membership).filter_by(user_id=user_id).all()
+
     def ensure_default_workspace(self, tenant_id: Optional[str] = None) -> Workspace:
         """Create a default workspace if none exists (idempotent)."""
         with self.session() as s:

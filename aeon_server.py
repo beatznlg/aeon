@@ -365,7 +365,7 @@ def auth_login():
     # Pick the first workspace membership as the default workspace context.
     workspace_id = None
     try:
-        memberships = db.list_workspace_members(user.id)
+        memberships = db.list_user_memberships(user.id)
         if memberships:
             workspace_id = memberships[0].workspace_id
     except Exception:
