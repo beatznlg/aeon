@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aeon-server
+  namespace: aeon
+  labels:
+    app: aeon-server
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: aeon-server
+  template:
+    metadata:
+      labels:
+        app: aeon-server
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: aeon-server
+          image: ghcr.io/beatznlg/aeon-server:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5000
+              name: http
+          envFrom:
+            - configMapRef:
+                name: aeon-config
+            - secretRef:
+                name: aeon-secrets
+          env:
+            - name: AEON_ROOT
+              value: "/home/aeon/app/aeon_state"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            runAsNonRoot: true
+            runAsUser: 1000
+          livenessProbe:
+            httpGet:
+              path: /live
+              port: 5000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 5000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: 2
+              memory: 4Gi
+          volumeMounts:
+            - name: aeon-state
+              mountPath: /home/aeon/app/aeon_state
+      volumes:
+        - name: aeon-state
+          emptyDir: {}

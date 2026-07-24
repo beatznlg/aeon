@@ -1,0 +1,58 @@
+# Git / CI
+.git
+.github
+
+# Node / Web build artifacts
+node_modules
+web/node_modules
+web/.next
+web/out
+web/dist
+
+# Python caches
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg-info
+.pytest_cache
+.mypy_cache
+coverage
+htmlcov
+
+# Runtime state (mount as volume instead)
+aeona_state
+aeon_state
+server.log
+
+# Monitoring data volumes (mount as volumes instead)
+prometheus_data
+grafana_data
+alertmanager_data
+
+# Supabase local
+supabase/.branches
+supabase/.temp
+supabase/seed.sql
+
+# Env / secrets
+.env
+.env.local
+.env.*
+!.env.example
+
+# Docs / misc
+*.md
+!README.md
+!monitoring/README.md
+monitoring/tests
+monitoring/__pycache__
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~

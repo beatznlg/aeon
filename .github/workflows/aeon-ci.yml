@@ -153,3 +153,49 @@ jobs:
           export AEON_ALERTMANAGER_BINARY="$HOME/.cache/aeon-ci/alertmanager-0.27.0.linux-amd64/alertmanager"
           export AEON_PROMETHEUS_BINARY="$HOME/.cache/aeon-ci/prometheus-2.53.0.linux-amd64/prometheus"
           python -m unittest discover -s tests -v
+
+  docker-build-smoke:
+    name: Docker build + smoke test
+    runs-on: ubuntu-latest
+    needs: [smoke-check, alertmanager-smoke-test]
+    if: always()
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build AEON server image (stub mode)
+        run: |
+          docker build --build-arg STUB_MODE=true -t aeon-server:latest .
+
+      - name: Run container and verify liveness/readiness
+        run: |
+          docker run -d --name aeon-server-smoke \
+            -p 5000:5000 \
+            -e AEON_PYTHON_HOST=0.0.0.0 \
+            -e AEON_PYTHON_PORT=5000 \
+            -e AEON_ROOT=/home/aeon/app/aeon_state \
+            aeon-server:latest
+
+          # Wait for the container to become healthy.
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:5000/live >/dev/null 2>&1; then
+              echo "✅ /live responded"
+              break
+            fi
+            echo "Waiting for /live... ($i/30)"
+            sleep 2
+          done
+
+          curl -fsS http://127.0.0.1:5000/live
+          echo ""
+          curl -fsS http://127.0.0.1:5000/ready
+          echo ""
+
+          docker stop aeon-server-smoke
+          docker rm aeon-server-smoke
+
+      - name: Build docker-compose stack
+        run: |
+          docker compose -f docker-compose.yml config

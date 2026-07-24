@@ -1,0 +1,135 @@
+# AEON v3.0 — Local production-like stack
+#
+# Services:
+#   - aeon-server:   AEON Python kernel (:5000)
+#   - postgres:      Postgres 15 for Supabase-compatible local state (:5432)
+#   - prometheus:    Prometheus (:9090)
+#   - alertmanager:  Alertmanager (:9093)
+#   - grafana:       Grafana (:3000)
+#
+# Start:
+#   docker compose up --build
+#
+# URLs:
+#   AEON kernel:    http://localhost:5000
+#   Prometheus:     http://localhost:9090
+#   Alertmanager:   http://localhost:9093
+#   Grafana:        http://localhost:3000  (admin / admin)
+#
+# Stop:
+#   docker compose down
+#   docker compose down -v  # also remove volumes
+
+version: "3.8"
+
+services:
+  aeon-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        STUB_MODE: "true"
+    container_name: aeon-server
+    ports:
+      - "5000:5000"
+    environment:
+      AEON_PYTHON_HOST: "0.0.0.0"
+      AEON_PYTHON_PORT: "5000"
+      AEON_ROOT: "/home/aeon/app/aeon_state"
+      AEON_LOG_LEVEL: "INFO"
+      # Point to local Postgres (Supabase-compatible URL).
+      SUPABASE_URL: ${SUPABASE_URL:-http://localhost:8000}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-local-anon-key}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-local-service-role-key}
+    volumes:
+      - aeon_state:/home/aeon/app/aeon_state
+    networks:
+      - aeon
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:5000/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  postgres:
+    image: postgres:15
+    container_name: aeon-postgres
+    environment:
+      POSTGRES_USER: aeon
+      POSTGRES_PASSWORD: aeonpassword
+      POSTGRES_DB: aeondb
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    networks:
+      - aeon
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: aeon-prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.docker.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+      - "--web.console.templates=/usr/share/prometheus/consoles"
+      - "--web.enable-lifecycle"
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.docker.yml:/etc/prometheus/prometheus.docker.yml:ro
+      - ./monitoring/prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus_data:/prometheus
+    networks:
+      - aeon
+    depends_on:
+      aeon-server:
+        condition: service_healthy
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: aeon-alertmanager
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+      - "--web.external-url=http://localhost:9093"
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ./monitoring/alertmanager/templates:/etc/alertmanager/templates:ro
+      - alertmanager_data:/alertmanager
+    env_file:
+      - ./monitoring/.env
+    networks:
+      - aeon
+
+  grafana:
+    image: grafana/grafana:11.0.0
+    container_name: aeon-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/aeon-metrics.json:/var/lib/grafana/dashboards/aeon-metrics.json:ro
+      - grafana_data:/var/lib/grafana
+    networks:
+      - aeon
+    depends_on:
+      - prometheus
+
+volumes:
+  aeon_state:
+  pg_data:
+  prometheus_data:
+  grafana_data:
+  alertmanager_data:
+
+networks:
+  aeon:
+    driver: bridge

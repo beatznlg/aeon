@@ -1,0 +1,17 @@
+# Prometheus Operator ServiceMonitor.
+# Apply this if you have the Prometheus Operator installed in your cluster.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: aeon-server
+  namespace: aeon
+  labels:
+    app: aeon-server
+spec:
+  selector:
+    matchLabels:
+      app: aeon-server
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s

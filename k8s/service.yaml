@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: aeon-server
+  namespace: aeon
+  labels:
+    app: aeon-server
+spec:
+  selector:
+    app: aeon-server
+  ports:
+    - name: http
+      port: 80
+      targetPort: 5000
+      protocol: TCP
+  type: ClusterIP

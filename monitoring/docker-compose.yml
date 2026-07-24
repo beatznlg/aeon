@@ -38,7 +38,9 @@ services:
   aeon-server:
     build:
       context: ..
-      dockerfile: monitoring/aeon-server/Dockerfile
+      dockerfile: Dockerfile
+      args:
+        STUB_MODE: "true"
     container_name: aeon-server
     ports:
       - "5000:5000"

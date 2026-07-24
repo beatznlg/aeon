@@ -331,6 +331,12 @@ def health():
     return jsonify({"ok": True, "backend": "aeon_python_kernel"})
 
 
+@app.route("/live", methods=["GET"])
+def live():
+    """Liveness probe: returns 200 as long as the server process is responsive."""
+    return jsonify({"ok": True, "status": "alive"}), 200
+
+
 @app.route("/ready", methods=["GET"])
 def ready():
     """Readiness probe: environment, loaded agents, and job queue."""
