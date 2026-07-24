@@ -105,3 +105,7 @@ kubectl -n aeon logs -l app=aeon-server
 - The full image downloads `torch` + `transformers` and can exceed 6 GB. Use `STUB_MODE=true` for CI or lightweight deployments.
 - The container runs as a non-root `aeon` user.
 - `/metrics` is intentionally not rate-limited; protect it at the ingress/reverse-proxy level.
+
+## CI note
+
+Pushing to `main` automatically triggers the `AEON CI` workflow. If GitHub Actions is ever paused due to billing, the workflow will resume once the account payment issue is resolved.
