@@ -71,6 +71,11 @@ export default function WorkflowBuilderPage() {
   const [edgeDraggingSource, setEdgeDraggingSource] = useState<string | null>(null);
   const [mousePos, setMousePos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
+  const lastPanMouse = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+
   useEffect(() => {
     Promise.all([
       fetch("/api/os/apps", { cache: "no-store" }).then((r) => r.json()),
@@ -291,32 +296,64 @@ export default function WorkflowBuilderPage() {
           <div
             className="workflow-canvas"
             ref={canvasRef}
-            onMouseMove={(e) => {
+            style={{ cursor: isPanning ? "grabbing" : "grab" }}
+            onWheel={(e) => {
+              const zoomFactor = e.deltaY * -0.001;
+              const newZoom = Math.min(Math.max(0.2, zoom + zoomFactor), 3);
               if (!canvasRef.current) return;
               const rect = canvasRef.current.getBoundingClientRect();
-              const x = e.clientX - rect.left;
-              const y = e.clientY - rect.top;
+              const mx = e.clientX - rect.left;
+              const my = e.clientY - rect.top;
+              const wx = (mx - pan.x) / zoom;
+              const wy = (my - pan.y) / zoom;
+              setPan({ x: mx - wx * newZoom, y: my - wy * newZoom });
+              setZoom(newZoom);
+            }}
+            onMouseDown={(e) => {
+              setIsPanning(true);
+              lastPanMouse.current = { x: e.clientX, y: e.clientY };
+            }}
+            onMouseMove={(e) => {
+              if (isPanning) {
+                const dx = e.clientX - lastPanMouse.current.x;
+                const dy = e.clientY - lastPanMouse.current.y;
+                setPan((p) => ({ x: p.x + dx, y: p.y + dy }));
+                lastPanMouse.current = { x: e.clientX, y: e.clientY };
+                return;
+              }
+              if (!canvasRef.current) return;
+              const rect = canvasRef.current.getBoundingClientRect();
+              const mx = e.clientX - rect.left;
+              const my = e.clientY - rect.top;
+              const wx = (mx - pan.x) / zoom;
+              const wy = (my - pan.y) / zoom;
               if (draggingId) {
                 setNodes((prev) =>
                   prev.map((n) =>
                     n.id === draggingId
-                      ? { ...n, x: x - dragOffset.current.x, y: y - dragOffset.current.y }
+                      ? { ...n, x: wx - dragOffset.current.x, y: wy - dragOffset.current.y }
                       : n
                   )
                 );
               } else if (edgeDraggingSource) {
-                setMousePos({ x, y });
+                setMousePos({ x: wx, y: wy });
               }
             }}
             onMouseUp={() => {
+              setIsPanning(false);
               setDraggingId(null);
               setEdgeDraggingSource(null);
             }}
             onMouseLeave={() => {
+              setIsPanning(false);
               setDraggingId(null);
               setEdgeDraggingSource(null);
             }}
           >
+            <div
+              className="workflow-world"
+              style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}
+            >
             {nodes.map((node) => {
               const app = apps.find((a) => a.id === node.app_id);
               const integration = integrations.find((i) => i.id === node.integration_id);
@@ -330,7 +367,13 @@ export default function WorkflowBuilderPage() {
                   onMouseDown={(e) => {
                     e.stopPropagation();
                     setDraggingId(node.id);
-                    dragOffset.current = { x: e.clientX - node.x, y: e.clientY - node.y };
+                    if (!canvasRef.current) return;
+                    const rect = canvasRef.current.getBoundingClientRect();
+                    const mx = e.clientX - rect.left;
+                    const my = e.clientY - rect.top;
+                    const wx = (mx - pan.x) / zoom;
+                    const wy = (my - pan.y) / zoom;
+                    dragOffset.current = { x: wx - node.x, y: wy - node.y };
                   }}
                   onMouseUp={(e) => {
                     if (edgeDraggingSource && edgeDraggingSource !== node.id) {
@@ -354,18 +397,21 @@ export default function WorkflowBuilderPage() {
                     }}
                   >
                     ×
-                  </button>
-                  <div
-                    className="workflow-node-handle"
-                    title="Drag to connect"
-                    onMouseDown={(e) => {
-                      e.stopPropagation();
-                      if (!canvasRef.current) return;
-                      const rect = canvasRef.current.getBoundingClientRect();
-                      setEdgeDraggingSource(node.id);
-                      setMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
-                    }}
-                  />
+                  </button>                    <div
+                      className="workflow-node-handle"
+                      title="Drag to connect"
+                      onMouseDown={(e) => {
+                        e.stopPropagation();
+                        if (!canvasRef.current) return;
+                        const rect = canvasRef.current.getBoundingClientRect();
+                        const mx = e.clientX - rect.left;
+                        const my = e.clientY - rect.top;
+                        const wx = (mx - pan.x) / zoom;
+                        const wy = (my - pan.y) / zoom;
+                        setEdgeDraggingSource(node.id);
+                        setMousePos({ x: wx, y: wy });
+                      }}
+                    />
                   <div className="workflow-node-title">
                     {isIntegration ? `🔌 ${integration?.name || node.integration_id}` : `${app?.icon || ""} ${app?.name || node.app_id}`}
                   </div>
@@ -478,6 +524,32 @@ export default function WorkflowBuilderPage() {
                 </marker>
               </defs>
             </svg>
+            </div>
+            <div
+              style={{
+                position: "absolute",
+                bottom: 16,
+                right: 16,
+                display: "flex",
+                gap: 8,
+                zIndex: 100,
+                userSelect: "none",
+                alignItems: "center",
+              }}
+            >
+              <button className="btn btn-sm" onClick={() => setZoom((z) => Math.max(0.2, z - 0.2))}>
+                −
+              </button>
+              <button className="btn btn-sm" onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }}>
+                Reset
+              </button>
+              <button className="btn btn-sm" onClick={() => setZoom((z) => Math.min(3, z + 0.2))}>
+                +
+              </button>
+              <div style={{ fontSize: 12, width: 40, color: "var(--fg-mute)" }}>
+                {Math.round(zoom * 100)}%
+              </div>
+            </div>
           </div>
         </div>
 

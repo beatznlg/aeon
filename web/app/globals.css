@@ -6,8 +6,14 @@
 .workflow-canvas {
   position: absolute;
   inset: 0;
-  overflow: auto;
+  overflow: hidden;
   background: var(--bg-alt, #0f172a);
+}
+
+.workflow-world {
+  position: absolute;
+  inset: 0;
+  transform-origin: 0 0;
 }
 
 .workflow-node {
@@ -98,8 +104,11 @@
 .workflow-edges {
   position: absolute;
   inset: 0;
+  width: 100%;
+  height: 100%;
   pointer-events: none;
   z-index: 5;
+  overflow: visible;
 }
 
 .workflow-edge-delete {
