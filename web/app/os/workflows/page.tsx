@@ -137,6 +137,17 @@ export default function WorkflowBuilderPage() {
     });
   };
 
+  const clearDraft = () => {
+    if (!confirm("Are you sure you want to clear your current draft?")) return;
+    setName("New Workflow");
+    setDescription("");
+    setNodes([]);
+    setEdges([]);
+    setPast([]);
+    setFuture([]);
+    localStorage.removeItem("aeon_workflow_draft");
+  };
+
   const handleFocus = () => {
     focusStartState.current = cloneState(currentStateRef.current);
   };
@@ -253,6 +264,22 @@ export default function WorkflowBuilderPage() {
         if (workflowsData.ok) setWorkflows(workflowsData.workflows || []);
         else setError(workflowsData.error || "failed to load workflows");
         if (intData.ok) setIntegrations(intData.integrations || []);
+
+        const draft = localStorage.getItem("aeon_workflow_draft");
+        if (draft) {
+          try {
+            const parsed = JSON.parse(draft);
+            if (parsed.name) setName(parsed.name);
+            if (parsed.description) setDescription(parsed.description);
+            if (parsed.nodes) setNodes(parsed.nodes);
+            if (parsed.edges) setEdges(parsed.edges);
+            if (parsed.past) setPast(parsed.past.slice(-50));
+            if (parsed.future) setFuture(parsed.future.slice(0, 50));
+          } catch (e) {
+            console.error("Failed to parse draft", e);
+          }
+        }
+
         setLoading(false);
       })
       .catch((e) => {
@@ -260,6 +287,19 @@ export default function WorkflowBuilderPage() {
         setLoading(false);
       });
   }, []);
+
+  useEffect(() => {
+    if (loading) return;
+    const stateToSave = {
+      name,
+      description,
+      nodes,
+      edges,
+      past: past.slice(-50),
+      future: future.slice(0, 50),
+    };
+    localStorage.setItem("aeon_workflow_draft", JSON.stringify(stateToSave));
+  }, [name, description, nodes, edges, past, future, loading]);
 
   const addNode = (id: string, type: "agent" | "integration") => {
     saveSnapshot();
@@ -328,6 +368,8 @@ export default function WorkflowBuilderPage() {
         }
         return [...prev, data.workflow];
       });
+      setPast([]);
+      setFuture([]);
       setRunResult(null);
     } else {
       setError(data.error || "failed to save workflow");
@@ -739,6 +781,9 @@ export default function WorkflowBuilderPage() {
               </button>
               <button className="btn btn-sm" onClick={redo} disabled={future.length === 0} title="Redo (⌘⇧Z / Ctrl+Shift+Z)">
                 ⟳ Redo
+              </button>
+              <button className="btn btn-sm" onClick={clearDraft} title="Clear draft">
+                🗑️ Clear
               </button>
               <div style={{ width: 1, height: 16, background: "var(--border)", margin: "0 4px" }} />
               <button className="btn btn-sm" onClick={() => setZoom((z) => Math.max(0.2, z - 0.2))}>
