@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 
 type AppDefinition = {
@@ -63,6 +63,10 @@ export default function WorkflowBuilderPage() {
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [runResult, setRunResult] = useState<any>(null);
+
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const dragOffset = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const canvasRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     Promise.all([
@@ -281,7 +285,23 @@ export default function WorkflowBuilderPage() {
       <section className="module-widgets-grid" style={{ gridTemplateColumns: "2fr 1fr" }}>
         <div className="module-widget" style={{ minHeight: 400, position: "relative" }}>
           <h3>Canvas</h3>
-          <div className="workflow-canvas">
+          <div
+            className="workflow-canvas"
+            ref={canvasRef}
+            onMouseMove={(e) => {
+              if (!draggingId || !canvasRef.current) return;
+              const rect = canvasRef.current.getBoundingClientRect();
+              setNodes((prev) =>
+                prev.map((n) =>
+                  n.id === draggingId
+                    ? { ...n, x: e.clientX - rect.left - dragOffset.current.x, y: e.clientY - rect.top - dragOffset.current.y }
+                    : n
+                )
+              );
+            }}
+            onMouseUp={() => setDraggingId(null)}
+            onMouseLeave={() => setDraggingId(null)}
+          >
             {nodes.map((node) => {
               const app = apps.find((a) => a.id === node.app_id);
               const integration = integrations.find((i) => i.id === node.integration_id);
@@ -292,7 +312,22 @@ export default function WorkflowBuilderPage() {
                   className={`workflow-node ${selectedNode === node.id ? "selected" : ""} ${isIntegration ? "integration" : ""}`}
                   style={{ left: node.x, top: node.y, borderColor: app?.color || "var(--accent)" }}
                   onClick={() => setSelectedNode(node.id)}
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                    setDraggingId(node.id);
+                    dragOffset.current = { x: e.clientX - node.x, y: e.clientY - node.y };
+                  }}
                 >
+                  <button
+                    className="workflow-node-delete"
+                    title="Remove node"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      removeNode(node.id);
+                    }}
+                  >
+                    ×
+                  </button>
                   <div className="workflow-node-title">
                     {isIntegration ? `🔌 ${integration?.name || node.integration_id}` : `${app?.icon || "🤖"} ${app?.name || node.app_id}`}
                   </div>
