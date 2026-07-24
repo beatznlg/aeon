@@ -76,6 +76,25 @@
   color: white;
 }
 
+.workflow-node-handle {
+  position: absolute;
+  right: -6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 12px;
+  height: 12px;
+  background: var(--accent, #6366f1);
+  border: 2px solid var(--bg, #1e293b);
+  border-radius: 50%;
+  cursor: crosshair;
+  z-index: 20;
+  transition: transform 0.15s ease;
+}
+
+.workflow-node-handle:hover {
+  transform: translateY(-50%) scale(1.4);
+}
+
 .workflow-edges {
   position: absolute;
   inset: 0;

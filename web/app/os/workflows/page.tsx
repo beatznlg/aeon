@@ -68,6 +68,9 @@ export default function WorkflowBuilderPage() {
   const dragOffset = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const canvasRef = useRef<HTMLDivElement | null>(null);
 
+  const [edgeDraggingSource, setEdgeDraggingSource] = useState<string | null>(null);
+  const [mousePos, setMousePos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+
   useEffect(() => {
     Promise.all([
       fetch("/api/os/apps", { cache: "no-store" }).then((r) => r.json()),
@@ -289,18 +292,30 @@ export default function WorkflowBuilderPage() {
             className="workflow-canvas"
             ref={canvasRef}
             onMouseMove={(e) => {
-              if (!draggingId || !canvasRef.current) return;
+              if (!canvasRef.current) return;
               const rect = canvasRef.current.getBoundingClientRect();
-              setNodes((prev) =>
-                prev.map((n) =>
-                  n.id === draggingId
-                    ? { ...n, x: e.clientX - rect.left - dragOffset.current.x, y: e.clientY - rect.top - dragOffset.current.y }
-                    : n
-                )
-              );
+              const x = e.clientX - rect.left;
+              const y = e.clientY - rect.top;
+              if (draggingId) {
+                setNodes((prev) =>
+                  prev.map((n) =>
+                    n.id === draggingId
+                      ? { ...n, x: x - dragOffset.current.x, y: y - dragOffset.current.y }
+                      : n
+                  )
+                );
+              } else if (edgeDraggingSource) {
+                setMousePos({ x, y });
+              }
             }}
-            onMouseUp={() => setDraggingId(null)}
-            onMouseLeave={() => setDraggingId(null)}
+            onMouseUp={() => {
+              setDraggingId(null);
+              setEdgeDraggingSource(null);
+            }}
+            onMouseLeave={() => {
+              setDraggingId(null);
+              setEdgeDraggingSource(null);
+            }}
           >
             {nodes.map((node) => {
               const app = apps.find((a) => a.id === node.app_id);
@@ -317,6 +332,18 @@ export default function WorkflowBuilderPage() {
                     setDraggingId(node.id);
                     dragOffset.current = { x: e.clientX - node.x, y: e.clientY - node.y };
                   }}
+                  onMouseUp={(e) => {
+                    if (edgeDraggingSource && edgeDraggingSource !== node.id) {
+                      setEdges((prev) => {
+                        if (prev.some((edge) => edge.source === edgeDraggingSource && edge.target === node.id)) {
+                          return prev;
+                        }
+                        return [...prev, { source: edgeDraggingSource, target: node.id, condition: "always" }];
+                      });
+                    }
+                    setEdgeDraggingSource(null);
+                    e.stopPropagation();
+                  }}
                 >
                   <button
                     className="workflow-node-delete"
@@ -328,8 +355,19 @@ export default function WorkflowBuilderPage() {
                   >
                     ×
                   </button>
+                  <div
+                    className="workflow-node-handle"
+                    title="Drag to connect"
+                    onMouseDown={(e) => {
+                      e.stopPropagation();
+                      if (!canvasRef.current) return;
+                      const rect = canvasRef.current.getBoundingClientRect();
+                      setEdgeDraggingSource(node.id);
+                      setMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+                    }}
+                  />
                   <div className="workflow-node-title">
-                    {isIntegration ? `🔌 ${integration?.name || node.integration_id}` : `${app?.icon || "🤖"} ${app?.name || node.app_id}`}
+                    {isIntegration ? `🔌 ${integration?.name || node.integration_id}` : `${app?.icon || ""} ${app?.name || node.app_id}`}
                   </div>
                   <div className="workflow-node-id">{node.id.slice(0, 6)}</div>
                 </div>
@@ -353,6 +391,23 @@ export default function WorkflowBuilderPage() {
                   />
                 );
               })}
+              {(() => {
+                if (!edgeDraggingSource) return null;
+                const source = nodes.find((n) => n.id === edgeDraggingSource);
+                if (!source) return null;
+                return (
+                  <line
+                    x1={source.x + 90}
+                    y1={source.y + 35}
+                    x2={mousePos.x}
+                    y2={mousePos.y}
+                    stroke="var(--accent)"
+                    strokeWidth={2}
+                    strokeDasharray="5,5"
+                    markerEnd="url(#arrow)"
+                  />
+                );
+              })()}
               <defs>
                 <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
                   <path d="M0,0 L0,6 L9,3 z" fill="var(--accent)" />
