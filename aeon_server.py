@@ -378,6 +378,47 @@ def auth_login():
     })
 
 
+@app.route("/auth/me", methods=["GET"])
+@require_auth
+def auth_me():
+    """Return the current authenticated user's profile and default workspace."""
+    from aeon_db import get_db
+
+    ctx = g.user
+    user_id = ctx.get("user_id")
+    db = get_db()
+    user = db.get_user_by_id(user_id)
+    if not user:
+        return jsonify({"ok": False, "error": "user not found"}), 404
+
+    workspace = None
+    try:
+        memberships = db.list_user_memberships(str(user.id))
+        if memberships:
+            ws = db.get_workspace(str(memberships[0].workspace_id))
+            if ws:
+                workspace = {
+                    "id": str(ws.id),
+                    "slug": ws.slug,
+                    "name": ws.name,
+                    "plan": ws.plan,
+                }
+    except Exception:
+        pass
+
+    return jsonify({
+        "ok": True,
+        "user": {
+            "id": str(user.id),
+            "email": user.email,
+            "name": user.name,
+            "role": user.role,
+            "tenant_id": user.tenant_id,
+            "workspace": workspace,
+        },
+    })
+
+
 @app.route("/ready", methods=["GET"])
 def ready():
     """Readiness probe: environment, loaded agents, and job queue."""

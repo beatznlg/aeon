@@ -46,8 +46,6 @@ class Tenant(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, default=_now)
     updated_at = Column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
 
-    workspaces = relationship("Workspace", back_populates="tenant", cascade="all, delete-orphan")
-
 
 class User(Base):
     __tablename__ = "users"
@@ -67,14 +65,12 @@ class Workspace(Base):
     __tablename__ = "workspaces"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    tenant_id = Column(String(36), ForeignKey("tenants.id"), nullable=False, index=True)
+    tenant_id = Column(String(36), ForeignKey("tenants.id"), nullable=True, index=True)
     slug = Column(String(255), unique=True, nullable=False, index=True)
     name = Column(String(255), nullable=False)
     plan = Column(String(50), nullable=False, default="free")
-    state = Column(JSON, default=dict)
     created_at = Column(DateTime(timezone=True), nullable=False, default=_now)
 
-    tenant = relationship("Tenant", back_populates="workspaces")
     memberships = relationship("Membership", back_populates="workspace", cascade="all, delete-orphan")
 
 
@@ -148,30 +144,30 @@ class Database:
 
     def get_user_by_id(self, user_id: str) -> Optional[User]:
         with self.session() as s:
-            return s.query(User).filter_by(id=user_id).first()
+            return s.query(User).filter_by(id=str(user_id)).first()
 
     def get_workspace(self, workspace_id: str) -> Optional[Workspace]:
         with self.session() as s:
-            return s.query(Workspace).filter_by(id=workspace_id).first()
+            return s.query(Workspace).filter_by(id=str(workspace_id)).first()
 
     def get_workspace_by_slug(self, slug: str, tenant_id: Optional[str] = None) -> Optional[Workspace]:
         with self.session() as s:
             q = s.query(Workspace).filter_by(slug=slug)
             if tenant_id:
-                q = q.filter_by(tenant_id=tenant_id)
+                q = q.filter_by(tenant_id=str(tenant_id))
             return q.first()
 
     def get_membership(self, workspace_id: str, user_id: str) -> Optional[Membership]:
         with self.session() as s:
-            return s.query(Membership).filter_by(workspace_id=workspace_id, user_id=user_id).first()
+            return s.query(Membership).filter_by(workspace_id=str(workspace_id), user_id=str(user_id)).first()
 
     def list_workspace_members(self, workspace_id: str) -> List[Membership]:
         with self.session() as s:
-            return s.query(Membership).filter_by(workspace_id=workspace_id).all()
+            return s.query(Membership).filter_by(workspace_id=str(workspace_id)).all()
 
     def list_user_memberships(self, user_id: str) -> List[Membership]:
         with self.session() as s:
-            return s.query(Membership).filter_by(user_id=user_id).all()
+            return s.query(Membership).filter_by(user_id=str(user_id)).all()
 
     def ensure_default_workspace(self, tenant_id: Optional[str] = None) -> Workspace:
         """Create a default workspace if none exists (idempotent)."""
