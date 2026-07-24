@@ -47,7 +47,20 @@ type Workflow = {
   updated_at: number;
 };
 
+type WorkflowState = {
+  name: string;
+  description: string;
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+};
+
 const generateId = () => Math.random().toString(36).slice(2, 9);
+
+const cloneState = (s: WorkflowState): WorkflowState => ({
+  ...s,
+  nodes: s.nodes.map((n) => ({ ...n })),
+  edges: s.edges.map((e) => ({ ...e })),
+});
 
 export default function WorkflowBuilderPage() {
   const [apps, setApps] = useState<AppDefinition[]>([]);
@@ -75,6 +88,69 @@ export default function WorkflowBuilderPage() {
   const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
   const lastPanMouse = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  // Undo/redo history
+  const [past, setPast] = useState<WorkflowState[]>([]);
+  const [future, setFuture] = useState<WorkflowState[]>([]);
+  const currentStateRef = useRef<WorkflowState>({
+    name,
+    description,
+    nodes,
+    edges,
+  });
+  const dragStartSnapshot = useRef<WorkflowState | null>(null);
+  const focusStartState = useRef<WorkflowState | null>(null);
+
+  useEffect(() => {
+    currentStateRef.current = { name, description, nodes, edges };
+  }, [name, description, nodes, edges]);
+
+  const restoreState = (state: WorkflowState) => {
+    setName(state.name);
+    setDescription(state.description);
+    setNodes(state.nodes.map((n) => ({ ...n })));
+    setEdges(state.edges.map((e) => ({ ...e })));
+  };
+
+  const saveSnapshot = () => {
+    setPast((prev) => [...prev, cloneState(currentStateRef.current)].slice(-50));
+    setFuture([]);
+  };
+
+  const undo = () => {
+    setPast((prev) => {
+      if (prev.length === 0) return prev;
+      const previous = prev[prev.length - 1];
+      setFuture((f) => [cloneState(currentStateRef.current), ...f]);
+      restoreState(previous);
+      return prev.slice(0, prev.length - 1);
+    });
+  };
+
+  const redo = () => {
+    setFuture((prev) => {
+      if (prev.length === 0) return prev;
+      const next = prev[0];
+      setPast((p) => [...p, cloneState(currentStateRef.current)].slice(-50));
+      restoreState(next);
+      return prev.slice(1);
+    });
+  };
+
+  const handleFocus = () => {
+    focusStartState.current = cloneState(currentStateRef.current);
+  };
+
+  const handleBlur = () => {
+    if (!focusStartState.current) return;
+    if (
+      JSON.stringify(focusStartState.current) !== JSON.stringify(currentStateRef.current)
+    ) {
+      setPast((prev) => [...prev, focusStartState.current!].slice(-50));
+      setFuture([]);
+    }
+    focusStartState.current = null;
+  };
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -141,6 +217,24 @@ export default function WorkflowBuilderPage() {
             saveWorkflow();
           }
           break;
+        case "z":
+        case "Z":
+          if (e.metaKey || e.ctrlKey) {
+            e.preventDefault();
+            if (e.shiftKey) {
+              redo();
+            } else {
+              undo();
+            }
+          }
+          break;
+        case "y":
+        case "Y":
+          if (e.metaKey || e.ctrlKey) {
+            e.preventDefault();
+            redo();
+          }
+          break;
       }
     };
 
@@ -168,6 +262,7 @@ export default function WorkflowBuilderPage() {
   }, []);
 
   const addNode = (id: string, type: "agent" | "integration") => {
+    saveSnapshot();
     const count = nodes.length;
     const app = type === "agent" ? apps.find((a) => a.id === id) : undefined;
     const integration = type === "integration" ? integrations.find((i) => i.id === id) : undefined;
@@ -192,6 +287,7 @@ export default function WorkflowBuilderPage() {
   };
 
   const removeNode = (id: string) => {
+    saveSnapshot();
     setNodes((prev) => prev.filter((n) => n.id !== id));
     setEdges((prev) => prev.filter((e) => e.source !== id && e.target !== id));
     setSelectedNode(null);
@@ -199,6 +295,7 @@ export default function WorkflowBuilderPage() {
 
   const addEdge = () => {
     if (nodes.length < 2) return;
+    saveSnapshot();
     setEdges((prev) => [
       ...prev,
       { source: nodes[0].id, target: nodes[1].id, condition: "always" },
@@ -210,6 +307,7 @@ export default function WorkflowBuilderPage() {
   };
 
   const removeEdge = (idx: number) => {
+    saveSnapshot();
     setEdges((prev) => prev.filter((_, i) => i !== idx));
   };
 
@@ -287,12 +385,16 @@ export default function WorkflowBuilderPage() {
             className="os-input"
             value={name}
             onChange={(e) => setName(e.target.value)}
+            onFocus={handleFocus}
+            onBlur={handleBlur}
             placeholder="Workflow name"
           />
           <input
             className="os-input"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
+            onFocus={handleFocus}
+            onBlur={handleBlur}
             placeholder="Short description"
             style={{ marginTop: 8 }}
           />
@@ -412,6 +514,20 @@ export default function WorkflowBuilderPage() {
               }
             }}
             onMouseUp={() => {
+              if (draggingId && dragStartSnapshot.current) {
+                const oldNodes = dragStartSnapshot.current.nodes;
+                const nodeOld = oldNodes.find((n) => n.id === draggingId);
+                const nodeNew = nodes.find((n) => n.id === draggingId);
+                if (
+                  nodeOld &&
+                  nodeNew &&
+                  (nodeOld.x !== nodeNew.x || nodeOld.y !== nodeNew.y)
+                ) {
+                  setPast((prev) => [...prev, dragStartSnapshot.current!].slice(-50));
+                  setFuture([]);
+                }
+                dragStartSnapshot.current = null;
+              }
               setIsPanning(false);
               setDraggingId(null);
               setEdgeDraggingSource(null);
@@ -438,6 +554,7 @@ export default function WorkflowBuilderPage() {
                   onClick={() => setSelectedNode(node.id)}
                   onMouseDown={(e) => {
                     e.stopPropagation();
+                    dragStartSnapshot.current = cloneState(currentStateRef.current);
                     setDraggingId(node.id);
                     if (!canvasRef.current) return;
                     const rect = canvasRef.current.getBoundingClientRect();
@@ -449,12 +566,11 @@ export default function WorkflowBuilderPage() {
                   }}
                   onMouseUp={(e) => {
                     if (edgeDraggingSource && edgeDraggingSource !== node.id) {
-                      setEdges((prev) => {
-                        if (prev.some((edge) => edge.source === edgeDraggingSource && edge.target === node.id)) {
-                          return prev;
-                        }
-                        return [...prev, { source: edgeDraggingSource, target: node.id, condition: "always" }];
-                      });
+                      const exists = edges.some((edge) => edge.source === edgeDraggingSource && edge.target === node.id);
+                      if (!exists) {
+                        saveSnapshot();
+                        setEdges((prev) => [...prev, { source: edgeDraggingSource, target: node.id, condition: "always" }]);
+                      }
                     }
                     setEdgeDraggingSource(null);
                     e.stopPropagation();
@@ -537,6 +653,7 @@ export default function WorkflowBuilderPage() {
                       pointerEvents="all"
                       onClick={(e) => {
                         e.stopPropagation();
+                        saveSnapshot();
                         const nextCond =
                           edge.condition === "always" ? "success" : edge.condition === "success" ? "failure" : "always";
                         updateEdge(i, { condition: nextCond });
@@ -598,6 +715,8 @@ export default function WorkflowBuilderPage() {
             </svg>
             </div>            <div className="workflow-shortcuts">
               <strong>Shortcuts</strong>
+              <div>Undo: ⌘Z / Ctrl+Z</div>
+              <div>Redo: ⌘⇧Z / Ctrl+Shift+Z</div>
               <div>Zoom: + / −</div>
               <div>Pan: arrows</div>
               <div>Delete: del</div>
@@ -615,6 +734,13 @@ export default function WorkflowBuilderPage() {
                 alignItems: "center",
               }}
             >
+              <button className="btn btn-sm" onClick={undo} disabled={past.length === 0} title="Undo (⌘Z / Ctrl+Z)">
+                ⟲ Undo
+              </button>
+              <button className="btn btn-sm" onClick={redo} disabled={future.length === 0} title="Redo (⌘⇧Z / Ctrl+Shift+Z)">
+                ⟳ Redo
+              </button>
+              <div style={{ width: 1, height: 16, background: "var(--border)", margin: "0 4px" }} />
               <button className="btn btn-sm" onClick={() => setZoom((z) => Math.max(0.2, z - 0.2))}>
                 −
               </button>
@@ -737,6 +863,8 @@ export default function WorkflowBuilderPage() {
                     className="os-input"
                     value={selected.endpoint || ""}
                     onChange={(e) => updateNode(selected.id, { endpoint: e.target.value })}
+                    onFocus={handleFocus}
+                    onBlur={handleBlur}
                     placeholder="/path or full URL"
                   />
                   <label className="os-label" style={{ marginTop: 8 }}>
@@ -745,7 +873,10 @@ export default function WorkflowBuilderPage() {
                   <select
                     className="os-input"
                     value={selected.method || "GET"}
-                    onChange={(e) => updateNode(selected.id, { method: e.target.value })}
+                    onChange={(e) => {
+                      saveSnapshot();
+                      updateNode(selected.id, { method: e.target.value });
+                    }}
                   >
                     <option>GET</option>
                     <option>POST</option>
@@ -760,6 +891,8 @@ export default function WorkflowBuilderPage() {
                     rows={3}
                     value={selected.payload || ""}
                     onChange={(e) => updateNode(selected.id, { payload: e.target.value })}
+                    onFocus={handleFocus}
+                    onBlur={handleBlur}
                   />
                 </>
               ) : (
@@ -770,6 +903,8 @@ export default function WorkflowBuilderPage() {
                     rows={4}
                     value={selected.prompt}
                     onChange={(e) => updateNode(selected.id, { prompt: e.target.value })}
+                    onFocus={handleFocus}
+                    onBlur={handleBlur}
                   />
                 </>
               )}
@@ -781,6 +916,8 @@ export default function WorkflowBuilderPage() {
                 className="os-input"
                 value={selected.x}
                 onChange={(e) => updateNode(selected.id, { x: Number(e.target.value) })}
+                onFocus={handleFocus}
+                onBlur={handleBlur}
               />
               <label className="os-label" style={{ marginTop: 8 }}>
                 Position Y
@@ -790,6 +927,8 @@ export default function WorkflowBuilderPage() {
                 className="os-input"
                 value={selected.y}
                 onChange={(e) => updateNode(selected.id, { y: Number(e.target.value) })}
+                onFocus={handleFocus}
+                onBlur={handleBlur}
               />
               <button className="btn btn-danger" onClick={() => removeNode(selected.id)} style={{ marginTop: 12 }}>
                 Remove Node
@@ -807,13 +946,16 @@ export default function WorkflowBuilderPage() {
               <div key={i} className="module-alert" style={{ marginBottom: 8 }}>
                 <small>
                   {edge.source.slice(0, 6)} → {edge.target.slice(0, 6)}
-                </small>
-                <select
+                </small>                  <select
                   className="os-input"
                   value={edge.condition}
-                  onChange={(e) => updateEdge(i, { condition: e.target.value })}
+                  onChange={(e) => {
+                    saveSnapshot();
+                    updateEdge(i, { condition: e.target.value });
+                  }}
                   style={{ marginTop: 4 }}
                 >
+
                   <option value="always">always</option>
                   <option value="success">success</option>
                   <option value="failure">failure</option>
