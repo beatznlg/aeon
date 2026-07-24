@@ -378,17 +378,49 @@ export default function WorkflowBuilderPage() {
                 const source = nodes.find((n) => n.id === edge.source);
                 const target = nodes.find((n) => n.id === edge.target);
                 if (!source || !target) return null;
+                const x1 = source.x + 90;
+                const y1 = source.y + 35;
+                const x2 = target.x + 90;
+                const y2 = target.y + 35;
+                const mx = (x1 + x2) / 2;
+                const my = (y1 + y2) / 2;
                 return (
-                  <line
-                    key={i}
-                    x1={source.x + 90}
-                    y1={source.y + 35}
-                    x2={target.x + 90}
-                    y2={target.y + 35}
-                    stroke="var(--accent)"
-                    strokeWidth={2}
-                    markerEnd="url(#arrow)"
-                  />
+                  <g key={i}>
+                    <line
+                      x1={x1}
+                      y1={y1}
+                      x2={x2}
+                      y2={y2}
+                      stroke="transparent"
+                      strokeWidth={12}
+                      pointerEvents="all"
+                      className="workflow-edge-hit"
+                    />
+                    <line
+                      x1={x1}
+                      y1={y1}
+                      x2={x2}
+                      y2={y2}
+                      stroke="var(--accent)"
+                      strokeWidth={2}
+                      markerEnd="url(#arrow)"
+                      pointerEvents="none"
+                    />
+                    <g
+                      className="workflow-edge-delete"
+                      transform={`translate(${mx}, ${my})`}
+                      pointerEvents="all"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        removeEdge(i);
+                      }}
+                    >
+                      <circle r={8} fill="var(--danger, #ef4444)" />
+                      <text x={0} y={3} textAnchor="middle" fontSize={10} fill="white" pointerEvents="none">
+                        ×
+                      </text>
+                    </g>
+                  </g>
                 );
               })}
               {(() => {

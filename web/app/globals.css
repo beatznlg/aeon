@@ -101,3 +101,18 @@
   pointer-events: none;
   z-index: 5;
 }
+
+.workflow-edge-delete {
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.workflow-edge-hit:hover + line + .workflow-edge-delete,
+.workflow-edge-delete:hover {
+  opacity: 1;
+}
+
+.workflow-edge-delete:hover circle {
+  fill: var(--danger-hover, #dc2626);
+}
