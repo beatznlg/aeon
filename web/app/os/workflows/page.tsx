@@ -550,6 +550,91 @@ export default function WorkflowBuilderPage() {
                 {Math.round(zoom * 100)}%
               </div>
             </div>
+            {(() => {
+              const padding = 8;
+              const mapW = 200;
+              const mapH = 150;
+              if (nodes.length === 0) {
+                return (
+                  <div className="workflow-minimap">
+                    <span>No nodes</span>
+                  </div>
+                );
+              }
+              const xs = nodes.map((n) => n.x);
+              const ys = nodes.map((n) => n.y);
+              const minX = Math.min(...xs);
+              const maxX = Math.max(...xs);
+              const minY = Math.min(...ys);
+              const maxY = Math.max(...ys);
+              const contentW = Math.max(mapW, maxX - minX + 180);
+              const contentH = Math.max(mapH, maxY - minY + 70);
+              const scale = Math.min((mapW - padding * 2) / contentW, (mapH - padding * 2) / contentH);
+              const offsetX = (mapW - (maxX - minX + 180) * scale) / 2;
+              const offsetY = (mapH - (maxY - minY + 70) * scale) / 2;
+              const toMiniX = (x: number) => (x - minX + 90) * scale + offsetX;
+              const toMiniY = (y: number) => (y - minY + 35) * scale + offsetY;
+              const canvasW = canvasRef.current?.clientWidth || mapW;
+              const canvasH = canvasRef.current?.clientHeight || mapH;
+              const viewX = toMiniX(-pan.x / zoom);
+              const viewY = toMiniY(-pan.y / zoom);
+              const viewW = (canvasW / zoom) * scale;
+              const viewH = (canvasH / zoom) * scale;
+              return (
+                <div
+                  className="workflow-minimap"
+                  onClick={(e) => {
+                    const rect = (e.target as HTMLElement).getBoundingClientRect();
+                    const mx = e.clientX - rect.left;
+                    const my = e.clientY - rect.top;
+                    const wx = (mx - offsetX) / scale + minX - 90;
+                    const wy = (my - offsetY) / scale + minY - 35;
+                    setPan({ x: -wx * zoom, y: -wy * zoom });
+                  }}
+                >
+                  <svg width={mapW} height={mapH}>
+                    <rect x={0} y={0} width={mapW} height={mapH} fill="var(--bg, #1e293b)" opacity={0.8} rx={8} />
+                    {edges.map((edge, i) => {
+                      const source = nodes.find((n) => n.id === edge.source);
+                      const target = nodes.find((n) => n.id === edge.target);
+                      if (!source || !target) return null;
+                      return (
+                        <line
+                          key={i}
+                          x1={toMiniX(source.x + 90)}
+                          y1={toMiniY(source.y + 35)}
+                          x2={toMiniX(target.x + 90)}
+                          y2={toMiniY(target.y + 35)}
+                          stroke="var(--accent, #6366f1)"
+                          strokeWidth={1}
+                        />
+                      );
+                    })}
+                    {nodes.map((node) => (
+                      <rect
+                        key={node.id}
+                        x={toMiniX(node.x + 90) - 4}
+                        y={toMiniY(node.y + 35) - 4}
+                        width={8}
+                        height={8}
+                        rx={2}
+                        fill={node.type === "integration" ? "#f59e0b" : "#22c55e"}
+                      />
+                    ))}
+                    <rect
+                      x={viewX}
+                      y={viewY}
+                      width={viewW}
+                      height={viewH}
+                      fill="none"
+                      stroke="white"
+                      strokeWidth={1}
+                      strokeDasharray="3,3"
+                    />
+                  </svg>
+                </div>
+              );
+            })()}
           </div>
         </div>
 
