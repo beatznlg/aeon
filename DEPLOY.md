@@ -46,17 +46,28 @@ docker build --build-arg STUB_MODE=true -t aeon-server:stub .
 docker run -p 5000:5000 aeon-server:stub
 ```
 
-### Full local stack (AEON + Postgres + Prometheus + Alertmanager + Grafana)
+### Full local stack (AEON + web + Postgres + Prometheus + Alertmanager + Grafana)
 
 ```bash
 docker compose up --build
 ```
 
 Then open:
+- AEON web:     http://localhost:3001
 - AEON kernel: http://localhost:5000
-- Prometheus: http://localhost:9090
+- Prometheus:  http://localhost:9090
 - Alertmanager: http://localhost:9093
-- Grafana: http://localhost:3000 (admin / admin)
+- Grafana:     http://localhost:3000 (admin / admin)
+
+### Web frontend only
+
+```bash
+cd web
+npm install
+npm run dev
+```
+
+The dev server runs at http://localhost:3000 and proxies chat requests to the AEON server via `AEON_PYTHON_URL` (default `http://127.0.0.1:5000`).
 
 ## Monitoring-only stack
 

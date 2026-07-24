@@ -2,6 +2,7 @@
 #
 # Services:
 #   - aeon-server:   AEON Python kernel (:5000)
+#   - web:           Next.js chat frontend (:3001)
 #   - postgres:      Postgres 15 for Supabase-compatible local state (:5432)
 #   - prometheus:    Prometheus (:9090)
 #   - alertmanager:  Alertmanager (:9093)
@@ -12,6 +13,7 @@
 #
 # URLs:
 #   AEON kernel:    http://localhost:5000
+#   AEON web:       http://localhost:3001
 #   Prometheus:     http://localhost:9090
 #   Alertmanager:   http://localhost:9093
 #   Grafana:        http://localhost:3000  (admin / admin)
@@ -104,6 +106,21 @@ services:
       - ./monitoring/.env
     networks:
       - aeon
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    container_name: aeon-web
+    ports:
+      - "3001:3000"
+    environment:
+      AEON_PYTHON_URL: "http://aeon-server:5000"
+    networks:
+      - aeon
+    depends_on:
+      aeon-server:
+        condition: service_healthy
 
   grafana:
     image: grafana/grafana:11.0.0
