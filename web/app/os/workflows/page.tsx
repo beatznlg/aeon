@@ -384,6 +384,13 @@ export default function WorkflowBuilderPage() {
                 const y2 = target.y + 35;
                 const mx = (x1 + x2) / 2;
                 const my = (y1 + y2) / 2;
+                const edgeColor =
+                  edge.condition === "success"
+                    ? "#22c55e"
+                    : edge.condition === "failure"
+                    ? "#ef4444"
+                    : "var(--accent, #6366f1)";
+                const markerId = `arrow-${edge.condition || "always"}`;
                 return (
                   <g key={i}>
                     <line
@@ -401,14 +408,30 @@ export default function WorkflowBuilderPage() {
                       y1={y1}
                       x2={x2}
                       y2={y2}
-                      stroke="var(--accent)"
+                      stroke={edgeColor}
                       strokeWidth={2}
-                      markerEnd="url(#arrow)"
+                      markerEnd={`url(#${markerId})`}
                       pointerEvents="none"
                     />
                     <g
+                      className="workflow-edge-label"
+                      transform={`translate(${mx}, ${my - 14})`}
+                      pointerEvents="all"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const nextCond =
+                          edge.condition === "always" ? "success" : edge.condition === "success" ? "failure" : "always";
+                        updateEdge(i, { condition: nextCond });
+                      }}
+                    >
+                      <rect x="-25" y="-10" width="50" height="20" rx="10" fill={edgeColor} />
+                      <text x={0} y={3} textAnchor="middle" fontSize={10} fill="white" fontWeight="bold" pointerEvents="none">
+                        {edge.condition}
+                      </text>
+                    </g>
+                    <g
                       className="workflow-edge-delete"
-                      transform={`translate(${mx}, ${my})`}
+                      transform={`translate(${mx}, ${my + 14})`}
                       pointerEvents="all"
                       onClick={(e) => {
                         e.stopPropagation();
@@ -441,8 +464,17 @@ export default function WorkflowBuilderPage() {
                 );
               })()}
               <defs>
+                <marker id="arrow-always" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+                  <path d="M0,0 L0,6 L9,3 z" fill="var(--accent, #6366f1)" />
+                </marker>
+                <marker id="arrow-success" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+                  <path d="M0,0 L0,6 L9,3 z" fill="#22c55e" />
+                </marker>
+                <marker id="arrow-failure" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+                  <path d="M0,0 L0,6 L9,3 z" fill="#ef4444" />
+                </marker>
                 <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
-                  <path d="M0,0 L0,6 L9,3 z" fill="var(--accent)" />
+                  <path d="M0,0 L0,6 L9,3 z" fill="var(--accent, #6366f1)" />
                 </marker>
               </defs>
             </svg>

@@ -108,7 +108,18 @@
   transition: opacity 0.15s ease;
 }
 
-.workflow-edge-hit:hover + line + .workflow-edge-delete,
+.workflow-edge-label {
+  cursor: pointer;
+  transition: opacity 0.15s ease, filter 0.15s ease;
+}
+
+.workflow-edge-label:hover rect {
+  filter: brightness(1.15);
+}
+
+.workflow-edge-hit:hover ~ .workflow-edge-label,
+.workflow-edge-label:hover,
+.workflow-edge-hit:hover ~ .workflow-edge-delete,
 .workflow-edge-delete:hover {
   opacity: 1;
 }
