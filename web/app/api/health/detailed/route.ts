@@ -2,13 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 
 const AEON_URL = process.env.AEON_PYTHON_URL || "http://127.0.0.1:5000";
 
-export async function POST(req: NextRequest) {
+export async function GET(_req: NextRequest) {
   try {
-    const body = await req.json();
-    const res = await fetch(`${AEON_URL}/chat`, {
-      method: "POST",
+    const res = await fetch(`${AEON_URL}/health/detailed`, {
+      method: "GET",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
     });
     const text = await res.text();
     let data: any;
