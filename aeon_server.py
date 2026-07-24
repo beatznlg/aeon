@@ -531,6 +531,7 @@ def get_os() -> AeonOS:
     with _aeon_os_lock:
         if _aeon_os_instance is None:
             _aeon_os_instance = AeonOS(root=AEON_ROOT)
+            _aeon_os_instance.integration_manager = get_integration_manager()
         return _aeon_os_instance
 
 

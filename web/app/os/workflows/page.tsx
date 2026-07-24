@@ -11,12 +11,24 @@ type AppDefinition = {
   color: string;
 };
 
+type Integration = {
+  id: string;
+  name: string;
+  type: string;
+  enabled: boolean;
+};
+
 type WorkflowNode = {
   id: string;
   app_id: string;
   prompt: string;
   x: number;
   y: number;
+  type?: "agent" | "integration";
+  integration_id?: string;
+  endpoint?: string;
+  method?: string;
+  payload?: string;
 };
 
 type WorkflowEdge = {
@@ -39,6 +51,7 @@ const generateId = () => Math.random().toString(36).slice(2, 9);
 
 export default function WorkflowBuilderPage() {
   const [apps, setApps] = useState<AppDefinition[]>([]);
+  const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -55,11 +68,13 @@ export default function WorkflowBuilderPage() {
     Promise.all([
       fetch("/api/os/apps", { cache: "no-store" }).then((r) => r.json()),
       fetch("/api/os/workflows", { cache: "no-store" }).then((r) => r.json()),
+      fetch("/api/os/integrations", { cache: "no-store" }).then((r) => r.json()),
     ])
-      .then(([appsData, workflowsData]) => {
+      .then(([appsData, workflowsData, intData]) => {
         if (appsData.ok) setApps(appsData.apps || []);
         if (workflowsData.ok) setWorkflows(workflowsData.workflows || []);
         else setError(workflowsData.error || "failed to load workflows");
+        if (intData.ok) setIntegrations(intData.integrations || []);
         setLoading(false);
       })
       .catch((e) => {
@@ -68,13 +83,19 @@ export default function WorkflowBuilderPage() {
       });
   }, []);
 
-  const addNode = (appId: string) => {
+  const addNode = (id: string, type: "agent" | "integration") => {
     const count = nodes.length;
-    const app = apps.find((a) => a.id === appId);
+    const app = type === "agent" ? apps.find((a) => a.id === id) : undefined;
+    const integration = type === "integration" ? integrations.find((i) => i.id === id) : undefined;
     const newNode: WorkflowNode = {
       id: generateId(),
-      app_id: appId,
+      app_id: type === "agent" ? id : "",
+      integration_id: type === "integration" ? id : "",
+      type,
       prompt: app ? `Run ${app.name} analysis` : "",
+      endpoint: type === "integration" ? "" : undefined,
+      method: type === "integration" ? "GET" : undefined,
+      payload: type === "integration" ? "" : undefined,
       x: 120 + (count % 4) * 220,
       y: 120 + Math.floor(count / 4) * 160,
     };
@@ -197,21 +218,39 @@ export default function WorkflowBuilderPage() {
         </div>
 
         <div className="module-widget">
-          <h3>Add Module Node</h3>
+          <h3>Add Node</h3>
           <select
             className="os-input"
             onChange={(e) => {
               if (e.target.value) {
-                addNode(e.target.value);
+                addNode(e.target.value, "agent");
                 e.target.value = "";
               }
             }}
             defaultValue=""
           >
-            <option value="">Select a module…</option>
+            <option value="">+ Agent node…</option>
             {apps.map((app) => (
               <option key={app.id} value={app.id}>
                 {app.icon} {app.name}
+              </option>
+            ))}
+          </select>
+          <select
+            className="os-input"
+            style={{ marginTop: 8 }}
+            onChange={(e) => {
+              if (e.target.value) {
+                addNode(e.target.value, "integration");
+                e.target.value = "";
+              }
+            }}
+            defaultValue=""
+          >
+            <option value="">+ Integration node…</option>
+            {integrations.map((i) => (
+              <option key={i.id} value={i.id}>
+                🔌 {i.name}
               </option>
             ))}
           </select>
@@ -245,15 +284,17 @@ export default function WorkflowBuilderPage() {
           <div className="workflow-canvas">
             {nodes.map((node) => {
               const app = apps.find((a) => a.id === node.app_id);
+              const integration = integrations.find((i) => i.id === node.integration_id);
+              const isIntegration = node.type === "integration";
               return (
                 <div
                   key={node.id}
-                  className={`workflow-node ${selectedNode === node.id ? "selected" : ""}`}
+                  className={`workflow-node ${selectedNode === node.id ? "selected" : ""} ${isIntegration ? "integration" : ""}`}
                   style={{ left: node.x, top: node.y, borderColor: app?.color || "var(--accent)" }}
                   onClick={() => setSelectedNode(node.id)}
                 >
                   <div className="workflow-node-title">
-                    {app?.icon} {app?.name || node.app_id}
+                    {isIntegration ? `🔌 ${integration?.name || node.integration_id}` : `${app?.icon || "🤖"} ${app?.name || node.app_id}`}
                   </div>
                   <div className="workflow-node-id">{node.id.slice(0, 6)}</div>
                 </div>
@@ -291,15 +332,58 @@ export default function WorkflowBuilderPage() {
           {selected ? (
             <>
               <div style={{ marginBottom: 8 }}>
-                <strong>{apps.find((a) => a.id === selected.app_id)?.name || selected.app_id}</strong>
+                <strong>
+                  {selected.type === "integration"
+                    ? `🔌 ${integrations.find((i) => i.id === selected.integration_id)?.name || selected.integration_id}`
+                    : apps.find((a) => a.id === selected.app_id)?.name || selected.app_id}
+                </strong>
+                <span className="os-status-pill active" style={{ marginLeft: 8 }}>
+                  {selected.type === "integration" ? "integration" : "agent"}
+                </span>
               </div>
-              <label className="os-label">Prompt</label>
-              <textarea
-                className="os-input"
-                rows={4}
-                value={selected.prompt}
-                onChange={(e) => updateNode(selected.id, { prompt: e.target.value })}
-              />
+              {selected.type === "integration" ? (
+                <>
+                  <label className="os-label">Endpoint</label>
+                  <input
+                    className="os-input"
+                    value={selected.endpoint || ""}
+                    onChange={(e) => updateNode(selected.id, { endpoint: e.target.value })}
+                    placeholder="/path or full URL"
+                  />
+                  <label className="os-label" style={{ marginTop: 8 }}>
+                    Method
+                  </label>
+                  <select
+                    className="os-input"
+                    value={selected.method || "GET"}
+                    onChange={(e) => updateNode(selected.id, { method: e.target.value })}
+                  >
+                    <option>GET</option>
+                    <option>POST</option>
+                    <option>PUT</option>
+                    <option>DELETE</option>
+                  </select>
+                  <label className="os-label" style={{ marginTop: 8 }}>
+                    JSON Payload (use {'{input}'} for previous output)
+                  </label>
+                  <textarea
+                    className="os-input"
+                    rows={3}
+                    value={selected.payload || ""}
+                    onChange={(e) => updateNode(selected.id, { payload: e.target.value })}
+                  />
+                </>
+              ) : (
+                <>
+                  <label className="os-label">Prompt</label>
+                  <textarea
+                    className="os-input"
+                    rows={4}
+                    value={selected.prompt}
+                    onChange={(e) => updateNode(selected.id, { prompt: e.target.value })}
+                  />
+                </>
+              )}
               <label className="os-label" style={{ marginTop: 8 }}>
                 Position X
               </label>

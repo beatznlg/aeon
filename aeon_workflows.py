@@ -27,12 +27,17 @@ from aeon_os import AeonOS, OS_ROOT
 
 @dataclass
 class WorkflowNode:
-    """A single step in a workflow, backed by one AEON module/app."""
+    """A single step in a workflow, backed by one AEON module/app or integration."""
     id: str
     app_id: str
     prompt: str
     x: float = 0.0
     y: float = 0.0
+    type: str = "agent"  # 'agent' or 'integration'
+    integration_id: Optional[str] = None
+    endpoint: str = ""
+    method: str = "GET"
+    payload: str = ""
 
 
 @dataclass
@@ -60,7 +65,18 @@ class WorkflowDefinition:
             "name": self.name,
             "description": self.description,
             "nodes": [
-                {"id": n.id, "app_id": n.app_id, "prompt": n.prompt, "x": n.x, "y": n.y}
+                {
+                    "id": n.id,
+                    "app_id": n.app_id,
+                    "prompt": n.prompt,
+                    "x": n.x,
+                    "y": n.y,
+                    "type": n.type,
+                    "integration_id": n.integration_id,
+                    "endpoint": n.endpoint,
+                    "method": n.method,
+                    "payload": n.payload,
+                }
                 for n in self.nodes
             ],
             "edges": [
@@ -73,11 +89,28 @@ class WorkflowDefinition:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "WorkflowDefinition":
+        raw_nodes = data.get("nodes", [])
+        nodes = []
+        for n in raw_nodes:
+            nodes.append(
+                WorkflowNode(
+                    id=n["id"],
+                    app_id=n.get("app_id", ""),
+                    prompt=n.get("prompt", ""),
+                    x=n.get("x", 0.0),
+                    y=n.get("y", 0.0),
+                    type=n.get("type", "agent"),
+                    integration_id=n.get("integration_id"),
+                    endpoint=n.get("endpoint", ""),
+                    method=n.get("method", "GET"),
+                    payload=n.get("payload", ""),
+                )
+            )
         return cls(
             id=data["id"],
             name=data["name"],
             description=data["description"],
-            nodes=[WorkflowNode(**n) for n in data.get("nodes", [])],
+            nodes=nodes,
             edges=[WorkflowEdge(**e) for e in data.get("edges", [])],
             created_at=data.get("created_at", time.time()),
             updated_at=data.get("updated_at", time.time()),
@@ -143,6 +176,9 @@ class WorkflowEngine:
         results: List[Dict[str, Any]] = []
         current_input = initial_input
 
+        # Integration manager may be attached to the orchestrator by aeon_server.
+        integration_manager = getattr(os_orchestrator, "integration_manager", None)
+
         while ordered_ids:
             node_id = ordered_ids.pop(0)
             if node_id in visited:
@@ -152,17 +188,41 @@ class WorkflowEngine:
             if not node:
                 continue
 
-            prompt = node.prompt
-            if current_input:
-                prompt = f"Context from previous step: {current_input}\n\n{prompt}"
+            node_type = getattr(node, "type", "agent")
 
             try:
-                tick_result = os_orchestrator.tick("default", node.app_id, prompt)
-                output = tick_result.get("data", tick_result) if isinstance(tick_result, dict) else tick_result
-                current_input = str(output)[:500]
+                if node_type == "integration":
+                    if integration_manager is None:
+                        raise RuntimeError("integration_manager not attached to AeonOS")
+                    if not node.integration_id:
+                        raise ValueError("integration node missing integration_id")
+                    parsed_payload: Optional[Any] = None
+                    if node.payload:
+                        payload_str = node.payload.replace("{input}", current_input)
+                        try:
+                            parsed_payload = json.loads(payload_str)
+                        except Exception:
+                            parsed_payload = payload_str
+                    output = integration_manager.run(
+                        node.integration_id,
+                        endpoint=node.endpoint or "",
+                        method=node.method or "GET",
+                        payload=parsed_payload,
+                    )
+                    current_input = str(output.get("data", output))[:500]
+                    node_label = node.integration_id
+                else:
+                    prompt = node.prompt
+                    if current_input:
+                        prompt = f"Context from previous step: {current_input}\n\n{prompt}"
+                    tick_result = os_orchestrator.tick("default", node.app_id, prompt)
+                    output = tick_result.get("data", tick_result) if isinstance(tick_result, dict) else tick_result
+                    current_input = str(output)[:500]
+                    node_label = node.app_id
+
                 results.append({
                     "node_id": node_id,
-                    "app_id": node.app_id,
+                    "app_id": node_label,
                     "ok": True,
                     "output": output,
                 })
@@ -172,7 +232,7 @@ class WorkflowEngine:
             except Exception as e:
                 results.append({
                     "node_id": node_id,
-                    "app_id": node.app_id,
+                    "app_id": node.integration_id if node_type == "integration" else node.app_id,
                     "ok": False,
                     "error": str(e),
                 })
