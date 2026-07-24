@@ -20,6 +20,8 @@ This document describes how to build, run, and deploy the AEON Python kernel in 
 | `AEON_PYTHON_PORT` | No | Bind port (default `5000`) |
 | `AEON_ROOT` | No | Runtime state directory (default `/home/aeon/app/aeon_state`) |
 | `AEON_LOG_LEVEL` | No | Python log level (default `INFO`) |
+| `AEON_DATABASE_URL` | Yes** | Postgres connection URL, e.g. `postgresql+psycopg2://user:pass@host/db` |
+| `AEON_JWT_SECRET` | Yes | HMAC secret for signing JWT access tokens (≥32 bytes in prod) |
 | `SUPABASE_URL` | Yes* | Supabase project URL |
 | `SUPABASE_ANON_KEY` | Yes* | Supabase anon key |
 | `SUPABASE_SERVICE_ROLE_KEY` | Yes* | Supabase service role key |
@@ -29,6 +31,7 @@ This document describes how to build, run, and deploy the AEON Python kernel in 
 | `GH_TOKEN` | No | For GitHub integrations |
 
 *Required for cloud persistence; the kernel can run in stub mode without them.
+**Required when using the SQLAlchemy/Postgres identity and workspace persistence layer (Phase 0 Foundation). Falls back to SQLite for local/offline development if unset.
 
 ## Local development with Docker
 

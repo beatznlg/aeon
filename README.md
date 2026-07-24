@@ -110,6 +110,61 @@ and you still have to pick the T4 GPU runtime + tick "Notebook access" on each
 
 ---
 
+## Phase 0 Foundation — local auth & Postgres (development)
+
+AEON OS now uses SQLAlchemy + Postgres for identity, multi-tenancy, and
+persistence. The quickest way to run it locally is:
+
+1. Install PostgreSQL 14 and create a database/user:
+
+   ```bash
+   sudo apt-get install -y postgresql postgresql-contrib
+   sudo pg_ctlcluster 14 main start
+   sudo -u postgres psql -c "CREATE USER aeon WITH PASSWORD 'aeon_test' CREATEDB;"
+   sudo -u postgres psql -c "CREATE DATABASE aeon OWNER aeon;"
+   ```
+
+2. Apply the Supabase migrations in order:
+
+   ```bash
+   psql -h localhost -U aeon -d aeon -f supabase/migrations/0000_users_and_audit.sql
+   psql -h localhost -U aeon -d aeon -f supabase/migrations/0001_workspace_rbac.sql
+   psql -h localhost -U aeon -d aeon -f supabase/migrations/0002_seed_admin.sql
+   psql -h localhost -U aeon -d aeon -f supabase/migrations/0003_governance.sql
+   psql -h localhost -U aeon -d aeon -f supabase/migrations/0004_phase0_foundation.sql
+   ```
+
+3. Start the Flask server:
+
+   ```bash
+   export AEON_DATABASE_URL="postgresql+psycopg2://aeon:aeon_test@localhost:5432/aeon"
+   export AEON_JWT_SECRET="change-me-in-production"
+   python aeon_server.py
+   ```
+
+4. Log in with the seeded admin:
+
+   ```bash
+   curl -X POST http://localhost:5000/auth/login \
+     -H "Content-Type: application/json" \
+     -d '{"email":"beatznlg@gmail.com","password":"AeonDevAdmin2024!"}'
+   ```
+
+   > ⚠️ The development-only admin password is documented in
+   > `supabase/migrations/0002_seed_admin.sql`. Change it in production
+   > or use the password-reset flow.
+
+### Required environment variables for Phase 0
+
+| Variable | Example | Purpose |
+|---|---|---|
+| `AEON_DATABASE_URL` | `postgresql+psycopg2://aeon:aeon_test@localhost:5432/aeon` | Postgres connection for SQLAlchemy |
+| `AEON_JWT_SECRET` | long random string | HMAC secret for signing access tokens |
+| `ADMIN_EMAIL` | `beatznlg@gmail.com` | Fallback bootstrap admin email |
+| `ADMIN_PASSWORD_HASH` | `pbkdf2:sha256:...` | Fallback bootstrap admin hash |
+
+---
+
 ## Architecture (one file, layered)
 
 | Layer | What it does |
