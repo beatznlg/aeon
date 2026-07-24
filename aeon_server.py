@@ -45,6 +45,7 @@ import aeon_workflows  # patches AeonOS with workflow/swarm helpers
 from aeon_integrations import IntegrationManager, IntegrationConfig, WebhookDelivery
 from aeon_usage import UsageMeter, BillingCalculator, HealthCollector
 from aeon_governance import GovernanceManager, get_governance
+from aeon_auth import require_auth, require_role, require_workspace_access, get_current_user_context
 
 app = Flask(__name__)
 
@@ -337,6 +338,46 @@ def live():
     return jsonify({"ok": True, "status": "alive"}), 200
 
 
+# ── Auth routes ────────────────────────────────────────────────────────────
+@app.route("/auth/login", methods=["POST"])
+def auth_login():
+    """Issue a short-lived JWT access token for a valid user."""
+    from aeon_auth import create_access_token, _FallbackAdmin
+    from werkzeug.security import check_password_hash
+    from aeon_db import get_db
+
+    data = request.json or {}
+    email = (data.get("email") or "").strip().lower()
+    password = data.get("password", "")
+    if not email or not password:
+        return jsonify({"ok": False, "error": "email and password required"}), 400
+
+    # Fallback admin (dev/bootstrap)
+    if _FallbackAdmin.matches(email, password):
+        token = create_access_token(_FallbackAdmin.id, _FallbackAdmin.email, _FallbackAdmin.role, _FallbackAdmin.workspace_id)
+        return jsonify({"ok": True, "token": token, "user": {"id": _FallbackAdmin.id, "email": _FallbackAdmin.email, "role": _FallbackAdmin.role}})
+
+    db = get_db()
+    user = db.get_user_by_email(email)
+    if not user or not check_password_hash(user.password, password):
+        return jsonify({"ok": False, "error": "invalid credentials"}), 401
+
+    # Pick the first workspace membership as the default workspace context.
+    workspace_id = None
+    try:
+        memberships = db.list_workspace_members(user.id)
+        if memberships:
+            workspace_id = memberships[0].workspace_id
+    except Exception:
+        pass
+    token = create_access_token(user.id, user.email, user.role, workspace_id)
+    return jsonify({
+        "ok": True,
+        "token": token,
+        "user": {"id": user.id, "email": user.email, "name": user.name, "role": user.role, "workspace_id": workspace_id},
+    })
+
+
 @app.route("/ready", methods=["GET"])
 def ready():
     """Readiness probe: environment, loaded agents, and job queue."""
@@ -354,7 +395,15 @@ def ready():
 
 
 def _governance_context() -> Dict[str, Any]:
-    """Extract optional governance identifiers from the request body/headers."""
+    """Extract authenticated user context for audit and governance."""
+    ctx = get_current_user_context() or {}
+    if ctx:
+        return {
+            "user_id": ctx.get("user_id"),
+            "workspace_id": ctx.get("workspace_id"),
+            "email": ctx.get("email"),
+        }
+    # Legacy header fallback for existing integrations
     data = request.json or {}
     return {
         "user_id": data.get("user_id") or request.headers.get("X-User-Id"),
@@ -364,6 +413,7 @@ def _governance_context() -> Dict[str, Any]:
 
 
 @app.route("/chat", methods=["POST"])
+@require_auth
 def chat():
     """Global chat endpoint. Uses the 'default' agent context."""
     data = request.json or {}
@@ -398,6 +448,7 @@ def chat():
 
 
 @app.route("/apps/<app_id>/chat", methods=["POST"])
+@require_auth
 def app_chat(app_id: str):
     """Module-aware chat endpoint."""
     data = request.json or {}
@@ -436,6 +487,7 @@ def app_chat(app_id: str):
 
 
 @app.route("/apps/<app_id>/tick", methods=["POST"])
+@require_auth
 def app_tick(app_id: str):
     """Run one agent tick for the given app."""
     data = request.json or {}
@@ -482,6 +534,7 @@ def app_tick(app_id: str):
 
 
 @app.route("/apps/<app_id>/reflect", methods=["POST"])
+@require_auth
 def app_reflect(app_id: str):
     """Return the agent's current reflection."""
     try:
@@ -537,6 +590,7 @@ def get_os() -> AeonOS:
 
 # ── Workflow endpoints ─────────────────────────────────────────────────────
 @app.route("/workflows", methods=["GET", "POST"])
+@require_auth
 def workflows_index():
     """List all workflows or create a new one."""
     os_inst = get_os()
@@ -556,6 +610,7 @@ def workflows_index():
 
 
 @app.route("/workflows/<workflow_id>", methods=["GET", "DELETE"])
+@require_auth
 def workflow_detail(workflow_id: str):
     os_inst = get_os()
     if request.method == "GET":
@@ -571,6 +626,7 @@ def workflow_detail(workflow_id: str):
 
 
 @app.route("/workflows/<workflow_id>/run", methods=["POST"])
+@require_auth
 def workflow_run(workflow_id: str):
     data = request.json or {}
     initial_input = (data.get("initial_input") or "").strip()
@@ -601,6 +657,7 @@ def workflow_run(workflow_id: str):
 
 # ── Swarm endpoints ────────────────────────────────────────────────────────
 @app.route("/swarm/run", methods=["POST"])
+@require_auth
 def swarm_run():
     data = request.json or {}
     app_ids = data.get("app_ids") or []
@@ -665,6 +722,7 @@ def get_governance_manager() -> GovernanceManager:
 
 # ── Governance endpoints ────────────────────────────────────────────────────
 @app.route("/governance/audit", methods=["GET"])
+@require_auth
 def governance_audit():
     workspace_id = request.args.get("workspace_id")
     action = request.args.get("action")
@@ -682,6 +740,7 @@ def governance_audit():
 
 
 @app.route("/governance/compliance", methods=["GET", "POST"])
+@require_auth
 def governance_compliance():
     if request.method == "GET":
         check_type = request.args.get("check_type", "pii_scan")
@@ -697,6 +756,7 @@ def governance_compliance():
 
 
 @app.route("/governance/retention", methods=["GET", "POST"])
+@require_auth
 def governance_retention():
     if request.method == "GET":
         workspace_id = request.args.get("workspace_id")
@@ -724,6 +784,7 @@ def get_integration_manager() -> IntegrationManager:
 
 
 @app.route("/integrations", methods=["GET", "POST"])
+@require_auth
 def integrations_index():
     mgr = get_integration_manager()
     if request.method == "GET":
@@ -736,6 +797,7 @@ def integrations_index():
 
 
 @app.route("/integrations/<integration_id>", methods=["GET", "DELETE"])
+@require_auth
 def integration_detail(integration_id: str):
     mgr = get_integration_manager()
     if request.method == "GET":
@@ -750,6 +812,7 @@ def integration_detail(integration_id: str):
 
 
 @app.route("/integrations/<integration_id>/run", methods=["POST"])
+@require_auth
 def integration_run(integration_id: str):
     data = request.json or {}
     endpoint = data.get("endpoint", "")
@@ -781,6 +844,7 @@ def integration_run(integration_id: str):
 
 
 @app.route("/proxy", methods=["POST"])
+@require_auth
 def proxy_request():
     data = request.json or {}
     integration_id = data.get("integration_id")
@@ -815,6 +879,7 @@ def proxy_request():
 
 
 @app.route("/webhooks/receive/<integration_id>", methods=["POST"])
+@require_auth
 def webhook_receive(integration_id: str):
     mgr = get_integration_manager()
     raw = request.get_data()
@@ -842,6 +907,7 @@ def webhook_receive(integration_id: str):
 
 
 @app.route("/webhooks/deliveries", methods=["GET"])
+@require_auth
 def webhook_deliveries():
     limit = min(100, max(1, request.args.get("limit", 100, type=int)))
     return jsonify({"ok": True, "deliveries": get_integration_manager().list_deliveries(limit=limit)})
@@ -849,6 +915,7 @@ def webhook_deliveries():
 
 # ── Usage, Billing & Observability endpoints ───────────────────────────────
 @app.route("/usage", methods=["POST"])
+@require_auth
 def usage_record():
     """Record one or more usage events."""
     data = request.json or {}
@@ -878,6 +945,7 @@ def usage_record():
 
 
 @app.route("/usage/summary", methods=["GET"])
+@require_auth
 def usage_summary():
     workspace_id = request.args.get("workspace_id")
     days = min(365, max(1, request.args.get("days", 30, type=int)))
@@ -886,12 +954,14 @@ def usage_summary():
 
 
 @app.route("/billing/<workspace_id>", methods=["GET"])
+@require_workspace_access
 def billing_status(workspace_id: str):
     days = min(365, max(1, request.args.get("days", 30, type=int)))
     return jsonify({"ok": True, "billing": get_billing_calculator().workspace_status(workspace_id, days=days)})
 
 
 @app.route("/billing/<workspace_id>/plan", methods=["POST"])
+@require_workspace_access
 def billing_set_plan(workspace_id: str):
     data = request.json or {}
     plan_id = data.get("plan_id", "free")
@@ -910,6 +980,7 @@ def billing_set_plan(workspace_id: str):
 
 
 @app.route("/billing/<workspace_id>/credits", methods=["POST"])
+@require_workspace_access
 def billing_add_credits(workspace_id: str):
     data = request.json or {}
     amount = float(data.get("amount", 0))
@@ -927,6 +998,7 @@ def billing_add_credits(workspace_id: str):
 
 
 @app.route("/health/detailed", methods=["GET"])
+@require_auth
 def health_detailed():
     with _agent_lock:
         vitals = [
@@ -993,6 +1065,7 @@ def get_rag_orchestrator():
 
 
 @app.route("/prompts", methods=["GET", "POST"])
+@require_auth
 def prompts_index():
     reg = get_prompt_registry()
     ctx = _governance_context()
@@ -1015,6 +1088,7 @@ def prompts_index():
 
 
 @app.route("/prompts/<prompt_id>", methods=["GET", "DELETE"])
+@require_auth
 def prompt_detail(prompt_id: str):
     reg = get_prompt_registry()
     ctx = _governance_context()
@@ -1038,6 +1112,7 @@ def prompt_detail(prompt_id: str):
 
 
 @app.route("/knowledge-bases", methods=["GET", "POST"])
+@require_auth
 def knowledge_bases_index():
     mgr = get_kb_manager()
     ctx = _governance_context()
@@ -1060,6 +1135,7 @@ def knowledge_bases_index():
 
 
 @app.route("/knowledge-bases/<kb_id>", methods=["GET", "DELETE"])
+@require_auth
 def knowledge_base_detail(kb_id: str):
     mgr = get_kb_manager()
     ctx = _governance_context()
@@ -1083,6 +1159,7 @@ def knowledge_base_detail(kb_id: str):
 
 
 @app.route("/knowledge-bases/<kb_id>/documents", methods=["POST"])
+@require_auth
 def knowledge_base_upload(kb_id: str):
     data = request.json or {}
     text = (data.get("text") or "").strip()
@@ -1108,6 +1185,7 @@ def knowledge_base_upload(kb_id: str):
 
 
 @app.route("/knowledge-bases/<kb_id>/query", methods=["POST"])
+@require_auth
 def knowledge_base_query(kb_id: str):
     data = request.json or {}
     query = (data.get("query") or "").strip()
@@ -1134,6 +1212,7 @@ def knowledge_base_query(kb_id: str):
 
 
 @app.route("/knowledge-bases/<kb_id>/stats", methods=["GET"])
+@require_auth
 def knowledge_base_stats(kb_id: str):
     try:
         stats = get_kb_manager().stats(kb_id)
@@ -1145,6 +1224,7 @@ def knowledge_base_stats(kb_id: str):
 
 
 @app.route("/rag/chat", methods=["POST"])
+@require_auth
 def rag_chat():
     data = request.json or {}
     query = (data.get("query") or "").strip()

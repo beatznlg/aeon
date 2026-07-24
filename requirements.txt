@@ -30,3 +30,9 @@ numpy
 flask>=3.0
 web3
 supabase>=2.0
+
+# --- identity, multi-tenancy, persistence ---
+sqlalchemy>=2.0
+psycopg2-binary>=2.9
+pyjwt>=2.8
+werkzeug>=3.0

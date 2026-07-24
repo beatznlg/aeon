@@ -15,6 +15,8 @@ from pathlib import Path
 from typing import Optional, Dict, List, Any
 from dataclasses import dataclass, field, asdict
 
+from aeon_db import get_db, Database
+
 # Import the AEON kernel we already built
 from aeon import (
     ReflectiveAgent,
@@ -40,10 +42,26 @@ class WorkspaceManager:
     """
     Multi-tenant workspace isolation for AEON OS.
     Each workspace gets its own state directory, memory, goals, and ledger.
+
+    Phase 0 Foundation: when AEON_DATABASE_URL is configured, workspace
+    metadata is also mirrored to Postgres for tenant isolation, RBAC, and
+    auditability. File-system storage remains as the runtime state backend
+    so existing agents keep working without a migration.
     """
-    def __init__(self, root: Path = OS_ROOT):
+    def __init__(self, root: Path = OS_ROOT, db: Optional[Database] = None):
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
+        self._db = db
+        self._tenant = "default"
+
+    @property
+    def db(self) -> Optional[Database]:
+        if self._db is None and os.environ.get("AEON_DATABASE_URL"):
+            try:
+                self._db = get_db()
+            except Exception:
+                pass
+        return self._db
 
     def _workspace_path(self, workspace_id: str) -> Path:
         safe_id = hashlib.sha256(workspace_id.encode()).hexdigest()[:16]
@@ -58,6 +76,24 @@ class WorkspaceManager:
             "created": time.time(),
         }
         (path / "meta.json").write_text(json.dumps(meta))
+
+        # Mirror to DB if available
+        if self.db:
+            try:
+                from aeon_db import Workspace as DBWorkspace
+                with self.db.session() as s:
+                    existing = s.query(DBWorkspace).filter_by(slug=workspace_id).first()
+                    if not existing:
+                        ws = DBWorkspace(
+                            id=str(workspace_id) if len(str(workspace_id)) == 36 else None,
+                            tenant_id=tenant,
+                            slug=str(workspace_id),
+                            name=str(workspace_id).replace("-", " ").title(),
+                        )
+                        s.add(ws)
+                        s.commit()
+            except Exception:
+                pass
         return path
 
     def exists(self, workspace_id: str) -> bool:
@@ -69,6 +105,25 @@ class WorkspaceManager:
         return self._workspace_path(workspace_id)
 
     def list_workspaces(self) -> List[Dict[str, Any]]:
+        # Prefer DB when available
+        if self.db:
+            try:
+                from aeon_db import Workspace as DBWorkspace
+                with self.db.session() as s:
+                    rows = s.query(DBWorkspace).all()
+                    return [
+                        {
+                            "workspace_id": r.id,
+                            "tenant_id": r.tenant_id,
+                            "slug": r.slug,
+                            "name": r.name,
+                            "plan": r.plan,
+                            "created": r.created_at.timestamp() if r.created_at else time.time(),
+                        }
+                        for r in rows
+                    ]
+            except Exception:
+                pass
         ws_dir = self.root / "workspaces"
         if not ws_dir.exists():
             return []
