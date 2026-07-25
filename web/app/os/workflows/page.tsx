@@ -29,6 +29,7 @@ type WorkflowNode = {
   endpoint?: string;
   method?: string;
   payload?: string;
+  provider?: string;
 };
 
 type WorkflowEdge = {
@@ -41,6 +42,7 @@ type Workflow = {
   id: string;
   name: string;
   description: string;
+  provider?: string;
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
   created_at: number;
@@ -76,6 +78,8 @@ export default function WorkflowBuilderPage() {
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [runResult, setRunResult] = useState<any>(null);
+  const [workflowProvider, setWorkflowProvider] = useState("");
+  const [nodeTrace, setNodeTrace] = useState<Record<string, "ok" | "fail" | "running" | null>>({});
 
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const dragOffset = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -301,6 +305,16 @@ export default function WorkflowBuilderPage() {
     localStorage.setItem("aeon_workflow_draft", JSON.stringify(stateToSave));
   }, [name, description, nodes, edges, past, future, loading]);
 
+  const PROVIDERS = [
+    { id: "", name: "Workflow default" },
+    { id: "stub", name: "Stub" },
+    { id: "openai", name: "OpenAI" },
+    { id: "anthropic", name: "Claude" },
+    { id: "ollama", name: "Ollama" },
+    { id: "hf", name: "Hugging Face" },
+    { id: "qwen", name: "Qwen Local" },
+  ];
+
   const addNode = (id: string, type: "agent" | "integration") => {
     saveSnapshot();
     const count = nodes.length;
@@ -379,13 +393,28 @@ export default function WorkflowBuilderPage() {
   const runWorkflow = async (workflowId: string) => {
     setRunning(true);
     setRunResult(null);
+
+    // Set all nodes to "running" state
+    const runningTrace: Record<string, "running"> = {};
+    nodes.forEach((n) => { runningTrace[n.id] = "running"; });
+    setNodeTrace(runningTrace);
+
     const res = await fetch(`/api/os/workflows/${workflowId}/run`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ initial_input: "" }),
+      body: JSON.stringify({ initial_input: "", provider: workflowProvider || undefined }),
     });
     const data = await res.json();
     setRunResult(data);
+
+    // Update trace with execution results
+    const trace: Record<string, "ok" | "fail" | null> = {};
+    if (data.ok && data.results) {
+      data.results.forEach((r: any) => {
+        trace[r.node_id] = r.ok ? "ok" : "fail";
+      });
+    }
+    setNodeTrace(trace);
     setRunning(false);
   };
 
@@ -440,6 +469,20 @@ export default function WorkflowBuilderPage() {
             placeholder="Short description"
             style={{ marginTop: 8 }}
           />
+          <label className="os-label" style={{ marginTop: 8 }}>
+            Default LLM Provider
+          </label>
+          <select
+            className="os-input"
+            value={workflowProvider}
+            onChange={(e) => setWorkflowProvider(e.target.value)}
+          >
+            {PROVIDERS.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
           <button className="btn btn-primary" onClick={saveWorkflow} style={{ marginTop: 12 }}>
             💾 Save Workflow
           </button>
@@ -588,11 +631,21 @@ export default function WorkflowBuilderPage() {
               const app = apps.find((a) => a.id === node.app_id);
               const integration = integrations.find((i) => i.id === node.integration_id);
               const isIntegration = node.type === "integration";
+              const traceStatus = nodeTrace[node.id];
+              let traceBorderColor = app?.color || "var(--accent, #6366f1)";
+              if (traceStatus === "ok") traceBorderColor = "#22c55e";
+              else if (traceStatus === "fail") traceBorderColor = "#ef4444";
+              else if (traceStatus === "running") traceBorderColor = "#f59e0b";
               return (
                 <div
                   key={node.id}
-                  className={`workflow-node ${selectedNode === node.id ? "selected" : ""} ${isIntegration ? "integration" : ""}`}
-                  style={{ left: node.x, top: node.y, borderColor: app?.color || "var(--accent)" }}
+                  className={`workflow-node ${selectedNode === node.id ? "selected" : ""} ${isIntegration ? "integration" : ""} ${traceStatus ? "traced" : ""}`}
+                  style={{
+                    left: node.x,
+                    top: node.y,
+                    borderColor: traceBorderColor,
+                    boxShadow: traceStatus === "running" ? "0 0 16px rgba(245, 158, 11, 0.5)" : traceStatus === "ok" ? "0 0 12px rgba(34, 197, 94, 0.3)" : undefined,
+                  }}
                   onClick={() => setSelectedNode(node.id)}
                   onMouseDown={(e) => {
                     e.stopPropagation();
@@ -646,6 +699,11 @@ export default function WorkflowBuilderPage() {
                     {isIntegration ? `🔌 ${integration?.name || node.integration_id}` : `${app?.icon || ""} ${app?.name || node.app_id}`}
                   </div>
                   <div className="workflow-node-id">{node.id.slice(0, 6)}</div>
+                  {traceStatus && (
+                    <div className="workflow-node-trace" title={`Status: ${traceStatus}`}>
+                      {traceStatus === "ok" ? "✓" : traceStatus === "fail" ? "✗" : "⟳"}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -951,6 +1009,23 @@ export default function WorkflowBuilderPage() {
                     onFocus={handleFocus}
                     onBlur={handleBlur}
                   />
+                  <label className="os-label" style={{ marginTop: 8 }}>
+                    LLM Provider Override
+                  </label>
+                  <select
+                    className="os-input"
+                    value={selected.provider || ""}
+                    onChange={(e) => {
+                      saveSnapshot();
+                      updateNode(selected.id, { provider: e.target.value || undefined });
+                    }}
+                  >
+                    {PROVIDERS.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
                 </>
               )}
               <label className="os-label" style={{ marginTop: 8 }}>
@@ -1017,7 +1092,49 @@ export default function WorkflowBuilderPage() {
       {runResult && (
         <section className="module-widget" style={{ marginTop: 24 }}>
           <h3>Last Run Result</h3>
-          <pre className="os-pre">{JSON.stringify(runResult, null, 2)}</pre>
+          {runResult.summary ? (
+            <div className="run-summary">
+              <div className="run-summary-bar">
+                <span className="run-summary-ok">✓ {runResult.summary.ok_nodes} succeeded</span>
+                {runResult.summary.failed_nodes > 0 && (
+                  <span className="run-summary-fail">✗ {runResult.summary.failed_nodes} failed</span>
+                )}
+                <span className="run-summary-total">{runResult.summary.total_nodes} nodes</span>
+                <span className="run-summary-latency">
+                  {runResult.summary.total_latency_s.toFixed(2)}s total
+                </span>
+                {runResult.provider && (
+                  <span className="run-summary-provider">Provider: {runResult.provider}</span>
+                )}
+                {runResult.workspace_id && (
+                  <span className="run-summary-workspace">Workspace: {runResult.workspace_id.slice(0, 8)}</span>
+                )}
+              </div>
+              {runResult.results && (
+                <div className="run-results-list">
+                  {runResult.results.map((r: any, i: number) => (
+                    <div key={i} className={`run-result-item ${r.ok ? "ok" : "fail"}`}>
+                      <div className="run-result-header">
+                        <span className={`run-result-status ${r.ok ? "ok" : "fail"}`}>
+                          {r.ok ? "✓" : "✗"}
+                        </span>
+                        <span className="run-result-app">{r.app_id}</span>
+                        {r.provider && <span className="run-result-provider">{r.provider}</span>}
+                        {r.latency_s !== undefined && (
+                          <span className="run-result-latency">{r.latency_s.toFixed(2)}s</span>
+                        )}
+                      </div>
+                      {!r.ok && r.error && (
+                        <div className="run-result-error">{r.error}</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            <pre className="os-pre">{JSON.stringify(runResult, null, 2)}</pre>
+          )}
         </section>
       )}
     </div>

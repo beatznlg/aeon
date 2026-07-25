@@ -42,6 +42,10 @@ export default function KnowledgePage() {
   const [selectedKb, setSelectedKb] = useState<string>("");
   const [docId, setDocId] = useState("");
   const [docText, setDocText] = useState("");
+  const [docFile, setDocFile] = useState<File | null>(null);
+  const [uploadMode, setUploadMode] = useState<"text" | "file">("text");
+  const [uploadResult, setUploadResult] = useState<{ doc_id: string; chunks: number; preview?: any[] } | null>(null);
+  const [showPreview, setShowPreview] = useState(false);
 
   const [query, setQuery] = useState("");
   const [chunks, setChunks] = useState<Chunk[]>([]);
@@ -106,16 +110,38 @@ export default function KnowledgePage() {
   const uploadDoc = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedKb) return;
+    setUploadResult(null);
+    setError(null);
+
+    let text = docText;
+    let fileName = "";
+
+    if (uploadMode === "file" && docFile) {
+      text = await docFile.text();
+      fileName = docFile.name;
+    }
+
+    if (!text.trim()) {
+      setError("Document text is empty");
+      return;
+    }
+
     try {
       const res = await fetch(`/api/os/ai/knowledge-bases/${selectedKb}/documents`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ doc_id: docId || undefined, text: docText }),
+        body: JSON.stringify({
+          doc_id: docId || undefined,
+          text: text,
+          metadata: { file_name: fileName, preview: true },
+        }),
       });
       const data = await res.json();
       if (data.ok) {
+        setUploadResult(data);
         setDocText("");
         setDocId("");
+        setDocFile(null);
         fetchKbs();
       } else {
         setError(data.error || "failed to upload document");
@@ -209,12 +235,58 @@ export default function KnowledgePage() {
             Document ID (optional)
             <input value={docId} onChange={(e) => setDocId(e.target.value)} placeholder="auto-generated" />
           </label>
-          <label className="span-2">
-            Document text
-            <textarea value={docText} onChange={(e) => setDocText(e.target.value)} rows={6} required />
-          </label>
-          <button type="submit" className="btn btn-primary">Upload & Chunk</button>
+          <div className="upload-mode-toggle">
+            <button type="button" className={`btn btn-sm ${uploadMode === "text" ? "btn-primary" : ""}`} onClick={() => setUploadMode("text")}>
+              Paste Text
+            </button>
+            <button type="button" className={`btn btn-sm ${uploadMode === "file" ? "btn-primary" : ""}`} onClick={() => setUploadMode("file")}>
+              Upload File
+            </button>
+          </div>
+          {uploadMode === "text" ? (
+            <label className="span-2">
+              Document text
+              <textarea value={docText} onChange={(e) => setDocText(e.target.value)} rows={6} />
+            </label>
+          ) : (
+            <label className="span-2">
+              File (txt, md, csv, json)
+              <input type="file" accept=".txt,.md,.csv,.json,.py,.js,.ts,.jsx,.tsx" onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) setDocFile(file);
+              }} />
+              {docFile && <p style={{ marginTop: 4, fontSize: "0.8rem", color: "var(--fg-soft)" }}>{docFile.name} ({(docFile.size / 1024).toFixed(1)} KB)</p>}
+            </label>
+          )}
+          <button type="submit" className="btn btn-primary" disabled={uploadMode === "file" && !docFile}>
+            Upload & Chunk
+          </button>
         </form>
+
+        {uploadResult && (
+          <div className="upload-result" style={{ marginTop: 16 }}>
+            <div className="module-alert" style={{ borderLeft: "3px solid #22c55e", color: "#22c55e" }}>
+              ✅ Document uploaded — {uploadResult.chunks} chunks created
+            </div>
+            {uploadResult.preview && uploadResult.preview.length > 0 && (
+              <div style={{ marginTop: 12 }}>
+                <button className="btn btn-sm" onClick={() => setShowPreview(!showPreview)}>
+                  {showPreview ? "Hide" : "Show"} Chunk Preview ({uploadResult.preview.length})
+                </button>
+                {showPreview && (
+                  <div className="chunk-preview-list" style={{ marginTop: 8 }}>
+                    {uploadResult.preview.map((chunk: any, i: number) => (
+                      <div key={i} className="chunk-preview-item">
+                        <div className="chunk-preview-header">Chunk #{chunk.index}</div>
+                        <div className="chunk-preview-text">{chunk.text}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </section>
 
       <section className="os-card" style={{ marginBottom: 24 }}>

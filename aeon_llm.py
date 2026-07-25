@@ -250,6 +250,137 @@ def get_llm_provider(provider: str = None, model: str = None) -> LLMProvider:
     return StubProvider()
 
 
+_PROVIDER_METADATA = [
+    {
+        "id": "stub",
+        "name": "Stub (No AI)",
+        "icon": "\u25c7",
+        "color": "#71717a",
+        "models": ["deterministic stub"],
+        "desc": "Fallback mode for testing and development. Returns deterministic responses without any API calls.",
+        "configured": True,
+        "env_var": None,
+    },
+    {
+        "id": "openai",
+        "name": "OpenAI",
+        "icon": "\u26a1",
+        "color": "#10a37f",
+        "models": ["gpt-4o-mini", "gpt-4o", "gpt-4-turbo"],
+        "desc": "Industry-leading language models with strong reasoning, coding, and instruction-following.",
+        "configured": bool(os.environ.get("OPENAI_API_KEY")),
+        "env_var": "OPENAI_API_KEY",
+    },
+    {
+        "id": "anthropic",
+        "name": "Anthropic (Claude)",
+        "icon": "\u2726",
+        "color": "#d97706",
+        "models": ["claude-3-5-sonnet-20240620", "claude-3-haiku"],
+        "desc": "Advanced AI assistants focused on safety, with exceptional reasoning and coding abilities.",
+        "configured": bool(os.environ.get("ANTHROPIC_API_KEY")),
+        "env_var": "ANTHROPIC_API_KEY",
+    },
+    {
+        "id": "ollama",
+        "name": "Ollama (Local)",
+        "icon": "\ud83e\udd99",
+        "color": "#8b5cf6",
+        "models": ["llama3", "mistral", "gemma", "qwen2.5"],
+        "desc": "Run LLMs locally on your infrastructure. Perfect for air-gapped deployments.",
+        "configured": True,
+        "env_var": "OLLAMA_BASE_URL",
+    },
+    {
+        "id": "hf",
+        "name": "Hugging Face Inference",
+        "icon": "\ud83e\udd17",
+        "color": "#fbbf24",
+        "models": ["Qwen/Qwen2.5-3B-Instruct", "microsoft/Phi-3-mini-4k-instruct"],
+        "desc": "Access thousands of open-source models via the Hugging Face Inference API.",
+        "configured": bool(os.environ.get("HUGGINGFACE_TOKEN") or os.environ.get("AEON_HF_TOKEN")),
+        "env_var": "HUGGINGFACE_TOKEN",
+    },
+    {
+        "id": "qwen",
+        "name": "Qwen Local (GPU)",
+        "icon": "\ud83e\udde0",
+        "color": "#6366f1",
+        "models": ["Qwen/Qwen2.5-3B-Instruct (quantized)"],
+        "desc": "Built-in small language model that runs on GPU. Downloads automatically on first use.",
+        "configured": True,
+        "env_var": None,
+    },
+]
+
+
+def list_providers() -> list:
+    """
+    Return metadata for all available providers, including status and active flag.
+    Re-checks env vars so the UI always reflects the current configuration.
+    """
+    import copy
+    current = os.environ.get("AEON_LLM_PROVIDER", "stub").lower()
+    providers = []
+    for p in _PROVIDER_METADATA:
+        entry = copy.deepcopy(p)
+        # Re-check configured status for providers that need API keys
+        if entry["id"] == "openai":
+            entry["configured"] = bool(os.environ.get("OPENAI_API_KEY"))
+        elif entry["id"] == "anthropic":
+            entry["configured"] = bool(os.environ.get("ANTHROPIC_API_KEY"))
+        elif entry["id"] == "hf":
+            entry["configured"] = bool(os.environ.get("HUGGINGFACE_TOKEN") or os.environ.get("AEON_HF_TOKEN"))
+        entry["active"] = (entry["id"] == current)
+        providers.append(entry)
+    return providers
+
+
+def set_active_provider(provider_id: str) -> dict:
+    """
+    Switch the active LLM provider at runtime.
+    Updates os.environ and the aeon.QW module global so all subsequent
+    chat/agent calls use the new provider.
+    Returns {"ok": True, "provider": provider_id} or {"ok": False, "error": ...}.
+    """
+    valid_ids = {p["id"] for p in _PROVIDER_METADATA}
+    pid = provider_id.lower().strip()
+    if pid not in valid_ids:
+        return {"ok": False, "error": f"unknown provider '{provider_id}'. Valid: {sorted(valid_ids)}"}
+
+    # Update env var so subsequent get_llm_provider() calls pick it up
+    os.environ["AEON_LLM_PROVIDER"] = pid
+
+    # Update the aeon module's QW global directly for in-memory switching
+    try:
+        import aeon as _aeon_module
+        _aeon_module.QW = get_llm_provider(pid)
+    except ImportError:
+        pass  # aeon.py may not be loaded yet (e.g. server cold start before first chat)
+
+    return {"ok": True, "provider": pid}
+
+
+def test_provider(provider_id: str = None, prompt: str = None) -> dict:
+    """Test a provider with a simple prompt and return the result."""
+    try:
+        prov = get_llm_provider(provider_id)
+        test_prompt = prompt or "Say exactly: 'AEON LLM provider test: OK' and nothing else."
+        ts = time.time()
+        result = prov.generate(test_prompt, system="You are a test harness. Respond concisely.", max_new_tokens=80)
+        elapsed = round(time.time() - ts, 3)
+        return {
+            "ok": True,
+            "provider": provider_id or os.environ.get("AEON_LLM_PROVIDER", "stub"),
+            "backend": result.get("backend", "unknown"),
+            "text": (result.get("text") or "")[:200],
+            "tokens_used": result.get("tokens_used", 0),
+            "latency_s": elapsed,
+        }
+    except Exception as e:
+        return {"ok": False, "error": f"{type(e).__name__}: {e}"}
+
+
 if __name__ == "__main__":
     # CLI quick test: python aeon_llm.py "hello"
     import sys

@@ -26,6 +26,9 @@ tiktoken
 # --- numerics ---
 numpy
 
+# --- payment processing ---
+stripe>=9.0
+
 # --- optional / future ---
 flask>=3.0
 web3

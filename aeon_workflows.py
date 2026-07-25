@@ -38,6 +38,7 @@ class WorkflowNode:
     endpoint: str = ""
     method: str = "GET"
     payload: str = ""
+    provider: Optional[str] = None  # LLM provider override per node
 
 
 @dataclass
@@ -56,6 +57,7 @@ class WorkflowDefinition:
     description: str
     nodes: List[WorkflowNode]
     edges: List[WorkflowEdge]
+    provider: Optional[str] = None  # Default LLM provider for the whole workflow
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
 
@@ -64,6 +66,7 @@ class WorkflowDefinition:
             "id": self.id,
             "name": self.name,
             "description": self.description,
+            "provider": self.provider,
             "nodes": [
                 {
                     "id": n.id,
@@ -76,6 +79,7 @@ class WorkflowDefinition:
                     "endpoint": n.endpoint,
                     "method": n.method,
                     "payload": n.payload,
+                    "provider": n.provider,
                 }
                 for n in self.nodes
             ],
@@ -104,6 +108,7 @@ class WorkflowDefinition:
                     endpoint=n.get("endpoint", ""),
                     method=n.get("method", "GET"),
                     payload=n.get("payload", ""),
+                    provider=n.get("provider"),
                 )
             )
         return cls(
@@ -112,6 +117,7 @@ class WorkflowDefinition:
             description=data["description"],
             nodes=nodes,
             edges=[WorkflowEdge(**e) for e in data.get("edges", [])],
+            provider=data.get("provider"),
             created_at=data.get("created_at", time.time()),
             updated_at=data.get("updated_at", time.time()),
         )
@@ -159,7 +165,12 @@ class WorkflowEngine:
             return True
         return False
 
-    def run(self, workflow_id: str, os_orchestrator: AeonOS, initial_input: str = "") -> Dict[str, Any]:
+    def run(self, workflow_id: str, os_orchestrator: AeonOS,
+            initial_input: str = "", workspace_id: str = None) -> Dict[str, Any]:
+        """
+        Execute a workflow with workspace-scoped agents and per-node provider overrides.
+        workspace_id: If provided, uses workspace-scoped agents from Phase 2a.
+        """
         workflow = self.load(workflow_id)
         if workflow is None:
             return {"ok": False, "error": "workflow not found"}
@@ -179,6 +190,11 @@ class WorkflowEngine:
         # Integration manager may be attached to the orchestrator by aeon_server.
         integration_manager = getattr(os_orchestrator, "integration_manager", None)
 
+        # Resolve the effective provider: node-level > workflow-level > env default
+        default_provider = workflow.provider or os.environ.get("AEON_LLM_PROVIDER")
+
+        wsid = workspace_id or "default"
+
         while ordered_ids:
             node_id = ordered_ids.pop(0)
             if node_id in visited:
@@ -189,6 +205,8 @@ class WorkflowEngine:
                 continue
 
             node_type = getattr(node, "type", "agent")
+            effective_provider = node.provider or default_provider
+            t0 = time.time()
 
             try:
                 if node_type == "integration":
@@ -215,30 +233,69 @@ class WorkflowEngine:
                     prompt = node.prompt
                     if current_input:
                         prompt = f"Context from previous step: {current_input}\n\n{prompt}"
-                    tick_result = os_orchestrator.tick("default", node.app_id, prompt)
+
+                    # Apply provider override if specified
+                    if effective_provider:
+                        from aeon_llm import get_llm_provider
+                        import aeon as _aeon
+                        _aeon.QW = get_llm_provider(effective_provider)
+                        os.environ["AEON_LLM_PROVIDER"] = effective_provider
+
+                    # Use workspace-scoped agent if workspace_id provided
+                    if wsid and wsid != "default":
+                        # Create/use a workspace-scoped agent key
+                        tick_result = os_orchestrator.tick(wsid, node.app_id, prompt)
+                    else:
+                        tick_result = os_orchestrator.tick("default", node.app_id, prompt)
+
                     output = tick_result.get("data", tick_result) if isinstance(tick_result, dict) else tick_result
                     current_input = str(output)[:500]
                     node_label = node.app_id
 
+                elapsed = round(time.time() - t0, 3)
                 results.append({
                     "node_id": node_id,
                     "app_id": node_label,
+                    "type": node_type,
                     "ok": True,
+                    "provider": effective_provider,
+                    "latency_s": elapsed,
                     "output": output,
                 })
                 for next_id in adjacency.get(node_id, []):
                     if next_id not in visited and next_id not in ordered_ids:
                         ordered_ids.append(next_id)
             except Exception as e:
+                elapsed = round(time.time() - t0, 3)
                 results.append({
                     "node_id": node_id,
                     "app_id": node.integration_id if node_type == "integration" else node.app_id,
+                    "type": node_type,
                     "ok": False,
+                    "provider": effective_provider,
+                    "latency_s": elapsed,
                     "error": str(e),
                 })
                 break
 
-        return {"ok": True, "workflow_id": workflow_id, "results": results}
+        # Compute summary
+        total_nodes = len(results)
+        ok_nodes = sum(1 for r in results if r.get("ok"))
+        total_latency = sum(r.get("latency_s", 0) for r in results)
+
+        return {
+            "ok": True,
+            "workflow_id": workflow_id,
+            "workspace_id": wsid,
+            "provider": default_provider,
+            "summary": {
+                "total_nodes": total_nodes,
+                "ok_nodes": ok_nodes,
+                "failed_nodes": total_nodes - ok_nodes,
+                "total_latency_s": round(total_latency, 3),
+            },
+            "results": results,
+        }
 
 
 class SwarmManager:

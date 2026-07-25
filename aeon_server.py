@@ -42,10 +42,13 @@ logger = logging.getLogger("aeon_server")
 from aeon import ReflectiveAgent
 from aeon_os import AeonOS
 import aeon_workflows  # patches AeonOS with workflow/swarm helpers
-from aeon_integrations import IntegrationManager, IntegrationConfig, WebhookDelivery
+from aeon_integrations import IntegrationManager, IntegrationConfig, WebhookDelivery, get_integration_catalog
 from aeon_usage import UsageMeter, BillingCalculator, HealthCollector
 from aeon_governance import GovernanceManager, get_governance
 from aeon_auth import require_auth, require_role, require_workspace_access, get_current_user_context
+from aeon_llm import list_providers, set_active_provider, test_provider as _test_llm_provider, get_llm_provider
+from aeon_api_keys import ApiKeyManager
+from aeon_stripe import get_stripe_client, init_stripe
 
 app = Flask(__name__)
 
@@ -54,6 +57,9 @@ HOST = os.environ.get("AEON_PYTHON_HOST", "0.0.0.0")
 PORT = int(os.environ.get("AEON_PYTHON_PORT", "5000"))
 AEON_ROOT = Path(os.environ.get("AEON_ROOT", "./aeon_state/server"))
 AEON_ROOT.mkdir(parents=True, exist_ok=True)
+
+# Initialize Stripe client at startup
+init_stripe(AEON_ROOT)
 
 
 # ── Environment validation ───────────────────────────────────────────────────
@@ -338,6 +344,10 @@ def live():
     return jsonify({"ok": True, "status": "alive"}), 200
 
 
+# Initialize Stripe at startup
+init_stripe(AEON_ROOT)
+
+
 # ── Auth routes ────────────────────────────────────────────────────────────
 @app.route("/auth/login", methods=["POST"])
 def auth_login():
@@ -419,6 +429,208 @@ def auth_me():
     })
 
 
+@app.route("/auth/register", methods=["POST"])
+def auth_register():
+    """Register a new user account (self-service).
+    Creates the user, a default workspace, and a membership.
+    Returns a JWT so the user can immediately start chatting.
+    """
+    from aeon_auth import create_access_token
+    from werkzeug.security import generate_password_hash
+    from aeon_db import get_db, User, Workspace, Membership
+
+    data = request.json or {}
+    email = (data.get("email") or "").strip().lower()
+    password = data.get("password", "")
+    name = (data.get("name") or "").strip() or email.split("@")[0]
+
+    if not email or not password:
+        return jsonify({"ok": False, "error": "email and password required"}), 400
+    if len(password) < 6:
+        return jsonify({"ok": False, "error": "password must be at least 6 characters"}), 400
+
+    db = get_db()
+    existing = db.get_user_by_email(email)
+    if existing:
+        return jsonify({"ok": False, "error": "email already registered"}), 409
+
+    try:
+        user = User(
+            email=email,
+            name=name,
+            password=generate_password_hash(password),
+            role="VIEWER",
+        )
+        with db.session() as s:
+            s.add(user)
+            s.flush()
+
+            # Create a personal workspace for the new user
+            slug = f"ws-{user.id[:8]}"
+            workspace = Workspace(
+                slug=slug,
+                name=f"{name}'s Workspace",
+                plan="free",
+            )
+            s.add(workspace)
+            s.flush()
+
+            # Add user as ADMIN of their workspace
+            membership = Membership(
+                workspace_id=workspace.id,
+                user_id=user.id,
+                role="ADMIN",
+            )
+            s.add(membership)
+            s.commit()
+
+            workspace_id = str(workspace.id)
+
+        token = create_access_token(user.id, user.email, user.role, workspace_id)
+        logger.info("New user registered: %s (workspace: %s)", email, slug)
+        return jsonify({
+            "ok": True,
+            "token": token,
+            "user": {
+                "id": str(user.id),
+                "email": user.email,
+                "name": user.name,
+                "role": user.role,
+                "workspace_id": workspace_id,
+            },
+        }), 201
+    except Exception as e:
+        logger.exception("Registration failed: %s", e)
+        return jsonify({"ok": False, "error": f"registration failed: {e}"}), 500
+
+
+@app.route("/workspaces", methods=["GET"])
+@require_auth
+def workspaces_list():
+    """List workspaces the authenticated user belongs to."""
+    from aeon_db import get_db
+    ctx = g.user
+    user_id = ctx.get("user_id")
+    db = get_db()
+    memberships = db.list_user_memberships(user_id)
+    workspaces = []
+    for m in memberships:
+        ws = db.get_workspace(str(m.workspace_id))
+        if ws:
+            workspaces.append({
+                "id": str(ws.id),
+                "slug": ws.slug,
+                "name": ws.name,
+                "plan": ws.plan,
+                "role": m.role,
+            })
+    return jsonify({"ok": True, "workspaces": workspaces})
+
+
+@app.route("/workspaces/<workspace_id>/chat", methods=["POST"])
+@require_auth
+def workspace_chat(workspace_id: str):
+    """Workspace-scoped chat with isolated agent state per workspace."""
+    from aeon_db import get_db
+    data = request.json or {}
+    query = (data.get("query") or "").strip()
+    if not query:
+        return jsonify({"ok": False, "error": "missing query"}), 400
+    ctx = _governance_context()
+
+    # Verify workspace access
+    user_id = ctx.get("user_id")
+    db = get_db()
+    membership = db.get_membership(workspace_id, user_id)
+    if not membership:
+        return jsonify({"ok": False, "error": "workspace access denied"}), 403
+
+    try:
+        # Per-request provider override
+        provider_override = data.get("provider")
+        if provider_override:
+            import aeon as _aeon
+            _aeon.QW = get_llm_provider(str(provider_override))
+            os.environ["AEON_LLM_PROVIDER"] = str(provider_override)
+
+        # Use workspace_id as the agent key for isolated state
+        agent = get_agent(f"ws-{workspace_id}")
+        result = agent.act(query)
+        metrics_collector.inc("aeon_chat_requests_total")
+        metrics_collector.inc("aeon_agent_ticks_total", labels={"app_id": f"ws-{workspace_id}"})
+
+        get_governance_manager().log_audit(
+            action="WORKSPACE_CHAT",
+            module="workspace",
+            user_id=user_id,
+            workspace_id=workspace_id,
+            email=ctx.get("email"),
+            metadata={"backend": result.get("backend", "unknown"), "provider_override": provider_override},
+        )
+        return jsonify({"ok": True, "data": result, "backend": result.get("backend", "unknown")})
+    except Exception as e:
+        get_governance_manager().log_audit(
+            action="WORKSPACE_CHAT_ERROR",
+            module="workspace",
+            user_id=user_id,
+            workspace_id=workspace_id,
+            email=ctx.get("email"),
+            metadata={"error": str(e)},
+        )
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/workspaces/<workspace_id>/history", methods=["GET"])
+@require_auth
+def workspace_history(workspace_id: str):
+    """Return conversation history for a workspace.
+    Tries Supabase `episodes` table first, falls back to local agent memory.
+    """
+    from aeon_db import get_db
+    ctx = g.user
+    user_id = ctx.get("user_id")
+    db = get_db()
+    membership = db.get_membership(workspace_id, user_id)
+    if not membership:
+        return jsonify({"ok": False, "error": "workspace access denied"}), 403
+
+    limit = min(100, max(1, request.args.get("limit", 50, type=int)))
+
+    # Try Supabase episodes table first
+    try:
+        supabase_url = os.environ.get("SUPABASE_URL")
+        supabase_key = os.environ.get("SUPABASE_ANON_KEY") or os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+        if supabase_url and supabase_key:
+            import requests
+            r = requests.get(
+                f"{supabase_url}/rest/v1/episodes",
+                headers={
+                    "apikey": supabase_key,
+                    "Authorization": f"Bearer {supabase_key}",
+                },
+                params={
+                    "ref": f"eq.ws-{workspace_id}",
+                    "order": "id.desc",
+                    "limit": limit,
+                },
+                timeout=10,
+            )
+            if r.ok:
+                episodes = r.json()
+                episodes.reverse()
+                return jsonify({"ok": True, "history": episodes, "source": "supabase"})
+    except Exception:
+        pass
+
+    # Fall back to local agent memory
+    try:
+        agent = get_agent(f"ws-{workspace_id}")
+        context = agent.memory.recent_context(limit)
+        return jsonify({"ok": True, "history": context, "source": "local"})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/ready", methods=["GET"])
 def ready():
     """Readiness probe: environment, loaded agents, and job queue."""
@@ -456,13 +668,21 @@ def _governance_context() -> Dict[str, Any]:
 @app.route("/chat", methods=["POST"])
 @require_auth
 def chat():
-    """Global chat endpoint. Uses the 'default' agent context."""
+    """Global chat endpoint. Uses the 'default' agent context.
+    Supports per-request provider override via the 'provider' field.
+    """
     data = request.json or {}
     query = (data.get("query") or "").strip()
     if not query:
         return jsonify({"ok": False, "error": "missing query"}), 400
     ctx = _governance_context()
     try:
+        # Per-request provider override; fall back to the active global QW
+        provider_override = data.get("provider")
+        if provider_override:
+            import aeon as _aeon
+            _aeon.QW = get_llm_provider(str(provider_override))
+            os.environ["AEON_LLM_PROVIDER"] = str(provider_override)
         agent = get_agent("default")
         result = agent.act(query)
         metrics_collector.inc("aeon_chat_requests_total")
@@ -473,7 +693,7 @@ def chat():
             user_id=ctx.get("user_id"),
             workspace_id=ctx.get("workspace_id"),
             email=ctx.get("email"),
-            metadata={"backend": result.get("backend", "unknown")},
+            metadata={"backend": result.get("backend", "unknown"), "provider_override": provider_override},
         )
         return jsonify({"ok": True, "data": result, "backend": result.get("backend", "unknown")})
     except Exception as e:
@@ -672,14 +892,16 @@ def workflow_run(workflow_id: str):
     data = request.json or {}
     initial_input = (data.get("initial_input") or "").strip()
     ctx = _governance_context()
+    workspace_id = ctx.get("workspace_id") or data.get("workspace_id")
     try:
-        result = get_os().run_workflow(workflow_id, initial_input)
+        # Pass workspace_id so workflow runner uses workspace-scoped agents
+        result = get_os().run_workflow(workflow_id, initial_input, workspace_id=workspace_id)
         metrics_collector.inc("aeon_workflow_runs_total", labels={"workflow_id": workflow_id, "ok": str(result.get("ok", True))})
         get_governance_manager().log_audit(
             action="WORKFLOW_RUN",
             module="workflow",
             user_id=ctx.get("user_id"),
-            workspace_id=ctx.get("workspace_id"),
+            workspace_id=workspace_id,
             email=ctx.get("email"),
             metadata={"workflow_id": workflow_id, "ok": result.get("ok", True)},
         )
@@ -689,7 +911,7 @@ def workflow_run(workflow_id: str):
             action="WORKFLOW_RUN_ERROR",
             module="workflow",
             user_id=ctx.get("user_id"),
-            workspace_id=ctx.get("workspace_id"),
+            workspace_id=workspace_id,
             email=ctx.get("email"),
             metadata={"workflow_id": workflow_id, "error": str(e)},
         )
@@ -728,6 +950,167 @@ def swarm_run():
             metadata={"app_ids": app_ids, "error": str(e)},
         )
         return jsonify({"ok": False, "error": str(e)}), 500
+
+
+# ── API Key Management endpoints ───────────────────────────────────────
+_api_key_manager: Optional[ApiKeyManager] = None
+
+
+def get_api_key_manager() -> ApiKeyManager:
+    global _api_key_manager
+    if _api_key_manager is None:
+        _api_key_manager = ApiKeyManager(AEON_ROOT)
+    return _api_key_manager
+
+
+def _extract_api_key() -> Optional[str]:
+    """Extract an API key from the request headers."""
+    auth = request.headers.get("Authorization", "")
+    if auth.lower().startswith("bearer "):
+        return auth[7:].strip()
+    key = request.headers.get("X-API-Key")
+    if key:
+        return key.strip()
+    return None
+
+
+def require_api_key(f):
+    """Decorator to validate an API key on a route."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        plaintext = _extract_api_key()
+        if not plaintext:
+            return jsonify({"ok": False, "error": "missing API key"}), 401
+        mgr = get_api_key_manager()
+        key = mgr.validate_key(plaintext)
+        if not key:
+            return jsonify({"ok": False, "error": "invalid API key"}), 401
+        # Check rate limit
+        if not mgr.check_rate_limit(key.key_hash):
+            return jsonify({"ok": False, "error": "API key rate limit exceeded"}), 429
+        g.api_key = key
+        return f(*args, **kwargs)
+    return decorated
+
+
+@app.route("/api-keys", methods=["GET", "POST"])
+@require_auth
+def api_keys_index():
+    """List API keys for a workspace or create a new one."""
+    ctx = _governance_context()
+    workspace_id = ctx.get("workspace_id") or request.args.get("workspace_id", "default")
+    mgr = get_api_key_manager()
+
+    if request.method == "GET":
+        keys = mgr.list_keys(workspace_id=workspace_id)
+        return jsonify({"ok": True, "keys": [k.to_dict() for k in keys], "workspace_id": workspace_id})
+
+    # POST — create a new key
+    data = request.json or {}
+    name = data.get("name", "Unnamed Key")
+    rate_limit = min(10000, max(1, int(data.get("rate_limit_per_min", 100))))
+    key, plaintext = mgr.create_key(
+        name=name,
+        workspace_id=workspace_id,
+        user_id=ctx.get("user_id"),
+        rate_limit_per_min=rate_limit,
+    )
+    get_governance_manager().log_audit(
+        action="API_KEY_CREATED",
+        module="api_keys",
+        user_id=ctx.get("user_id"),
+        workspace_id=workspace_id,
+        email=ctx.get("email"),
+        metadata={"key_id": key.id, "name": name},
+    )
+    # Return the plaintext key exactly once — it cannot be retrieved again!
+    return jsonify({"ok": True, "key": key.to_dict(), "plaintext_key": plaintext})
+
+
+@app.route("/api-keys/<key_id>", methods=["GET", "DELETE", "PATCH"])
+@require_auth
+def api_key_detail(key_id: str):
+    """Get, revoke, or update an API key."""
+    mgr = get_api_key_manager()
+    ctx = _governance_context()
+    workspace_id = ctx.get("workspace_id", "default")
+
+    if request.method == "GET":
+        key = mgr.get_key_by_id(key_id)
+        if not key or key.workspace_id != workspace_id:
+            return jsonify({"ok": False, "error": "key not found"}), 404
+        return jsonify({"ok": True, "key": key.to_dict()})
+
+    if request.method == "DELETE":
+        key = mgr.get_key_by_id(key_id)
+        if not key or key.workspace_id != workspace_id:
+            return jsonify({"ok": False, "error": "key not found"}), 404
+        if mgr.revoke_key(key_id):
+            get_governance_manager().log_audit(
+                action="API_KEY_REVOKED",
+                module="api_keys",
+                user_id=ctx.get("user_id"),
+                workspace_id=workspace_id,
+                email=ctx.get("email"),
+                metadata={"key_id": key_id, "name": key.name},
+            )
+            return jsonify({"ok": True})
+        return jsonify({"ok": False, "error": "key not found"}), 404
+
+    # PATCH — update key metadata
+    data = request.json or {}
+    key = mgr.get_key_by_id(key_id)
+    if not key or key.workspace_id != workspace_id:
+        return jsonify({"ok": False, "error": "key not found"}), 404
+    updated = mgr.update_key(
+        key_id,
+        name=data.get("name"),
+        enabled=data.get("enabled"),
+        rate_limit_per_min=data.get("rate_limit_per_min"),
+    )
+    if updated:
+        get_governance_manager().log_audit(
+            action="API_KEY_UPDATED",
+            module="api_keys",
+            user_id=ctx.get("user_id"),
+            workspace_id=workspace_id,
+            email=ctx.get("email"),
+            metadata={"key_id": key_id, "changes": list(data.keys())},
+        )
+        return jsonify({"ok": True, "key": updated.to_dict()})
+    return jsonify({"ok": False, "error": "update failed"}), 500
+
+
+@app.route("/api-keys/<key_id>/usage", methods=["GET"])
+@require_auth
+def api_key_usage(key_id: str):
+    """Get usage statistics for a specific API key."""
+    mgr = get_api_key_manager()
+    ctx = _governance_context()
+    workspace_id = ctx.get("workspace_id", "default")
+    days = min(365, max(1, request.args.get("days", 30, type=int)))
+
+    key = mgr.get_key_by_id(key_id)
+    if not key or key.workspace_id != workspace_id:
+        return jsonify({"ok": False, "error": "key not found"}), 404
+
+    stats = mgr.get_usage_stats(key_id=key_id, days=days)
+    return jsonify({"ok": True, "usage": stats})
+
+
+@app.route("/api-keys/usage/summary", methods=["GET"])
+@require_auth
+def api_keys_usage_summary():
+    """Get aggregate usage statistics for all keys in a workspace."""
+    ctx = _governance_context()
+    workspace_id = ctx.get("workspace_id") or request.args.get("workspace_id", "default")
+    days = min(365, max(1, request.args.get("days", 30, type=int)))
+    mgr = get_api_key_manager()
+    stats = mgr.get_usage_stats(workspace_id=workspace_id, days=days)
+    keys = mgr.list_keys(workspace_id=workspace_id)
+    stats["total_keys"] = len(keys)
+    stats["active_keys"] = len([k for k in keys if k.enabled])
+    return jsonify({"ok": True, "usage": stats})
 
 
 # ── Usage / Billing / Observability endpoints ────────────────────────────
@@ -947,6 +1330,12 @@ def webhook_receive(integration_id: str):
     return jsonify({"ok": True, "delivery_id": delivery.id})
 
 
+@app.route("/integrations/catalog", methods=["GET"])
+def integrations_catalog():
+    """Return the catalog of available integration types (marketplace)."""
+    return jsonify({"ok": True, "catalog": get_integration_catalog()})
+
+
 @app.route("/webhooks/deliveries", methods=["GET"])
 @require_auth
 def webhook_deliveries():
@@ -955,6 +1344,55 @@ def webhook_deliveries():
 
 
 # ── Usage, Billing & Observability endpoints ───────────────────────────────
+@app.route("/billing/<workspace_id>/plan", methods=["POST"])
+@require_workspace_access
+def billing_set_plan(workspace_id: str):
+    """Upgrade/downgrade a workspace plan."""
+    data = request.json or {}
+    plan_id = data.get("plan_id", "free")
+    credits = float(data.get("credits", 0))
+    
+    valid_plans = list(get_billing_calculator().plans.keys())
+    if plan_id not in valid_plans:
+        return jsonify({"ok": False, "error": f"invalid plan '{plan_id}'. Valid: {valid_plans}"}), 400
+    
+    try:
+        get_billing_calculator().set_plan(workspace_id, plan_id, credits)
+        status = get_billing_calculator().workspace_status(workspace_id)
+        get_governance_manager().log_audit(
+            action="BILLING_PLAN_CHANGE",
+            module="billing",
+            workspace_id=workspace_id,
+            metadata={"plan_id": plan_id, "credits": credits},
+        )
+        return jsonify({"ok": True, "billing": status})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/billing/<workspace_id>/credits", methods=["POST"])
+@require_workspace_access
+def billing_add_credits(workspace_id: str):
+    """Add credits to a workspace (simulated payment)."""
+    data = request.json or {}
+    amount = float(data.get("amount", 0))
+    if amount <= 0:
+        return jsonify({"ok": False, "error": "amount must be positive"}), 400
+    
+    try:
+        get_billing_calculator().add_credits(workspace_id, amount)
+        status = get_billing_calculator().workspace_status(workspace_id)
+        get_governance_manager().log_audit(
+            action="BILLING_CREDITS_ADDED",
+            module="billing",
+            workspace_id=workspace_id,
+            metadata={"amount": amount, "new_credits": status["credits"]},
+        )
+        return jsonify({"ok": True, "billing": status})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/usage", methods=["POST"])
 @require_auth
 def usage_record():
@@ -1001,41 +1439,128 @@ def billing_status(workspace_id: str):
     return jsonify({"ok": True, "billing": get_billing_calculator().workspace_status(workspace_id, days=days)})
 
 
-@app.route("/billing/<workspace_id>/plan", methods=["POST"])
-@require_workspace_access
-def billing_set_plan(workspace_id: str):
+# ── Stripe Payment Integration endpoints ──────────────────────────────────
+@app.route("/stripe/checkout", methods=["POST"])
+@require_auth
+def stripe_checkout():
+    """Create a Stripe Checkout Session for workspace subscription upgrade.
+    Falls back to simulated upgrade when Stripe is not configured.
+    """
     data = request.json or {}
-    plan_id = data.get("plan_id", "free")
-    credits = float(data.get("credits", 0))
+    workspace_id = data.get("workspace_id", "")
+    plan_id = data.get("plan_id", "team")
+    success_url = data.get("success_url", "")
+    cancel_url = data.get("cancel_url", "")
     ctx = _governance_context()
-    get_billing_calculator().set_plan(workspace_id, plan_id, credits)
-    get_governance_manager().log_audit(
-        action="BILLING_PLAN_SET",
-        module="billing",
-        user_id=ctx.get("user_id"),
-        workspace_id=workspace_id,
-        email=ctx.get("email"),
-        metadata={"plan_id": plan_id, "credits": credits},
-    )
-    return jsonify({"ok": True})
+
+    if not workspace_id:
+        workspace_id = ctx.get("workspace_id", "")
+    if not workspace_id:
+        return jsonify({"ok": False, "error": "workspace_id required"}), 400
+
+    try:
+        client = get_stripe_client()
+        result = client.create_checkout_session(
+            workspace_id=workspace_id,
+            plan_id=plan_id,
+            success_url=success_url or "https://app.aeon.ai/os/billing",
+            cancel_url=cancel_url or "https://app.aeon.ai/os/billing",
+            customer_email=ctx.get("email", ""),
+        )
+        get_governance_manager().log_audit(
+            action="STRIPE_CHECKOUT_CREATED",
+            module="billing",
+            user_id=ctx.get("user_id"),
+            workspace_id=workspace_id,
+            email=ctx.get("email"),
+            metadata={"plan_id": plan_id, "simulated": result.get("simulated", False)},
+        )
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
-@app.route("/billing/<workspace_id>/credits", methods=["POST"])
-@require_workspace_access
-def billing_add_credits(workspace_id: str):
+@app.route("/stripe/portal", methods=["POST"])
+@require_auth
+def stripe_portal():
+    """Create a Stripe Billing Portal session for managing subscriptions."""
     data = request.json or {}
-    amount = float(data.get("amount", 0))
+    workspace_id = data.get("workspace_id", "")
+    return_url = data.get("return_url", "")
     ctx = _governance_context()
-    get_billing_calculator().add_credits(workspace_id, amount)
+
+    if not workspace_id:
+        workspace_id = ctx.get("workspace_id", "")
+    if not workspace_id:
+        return jsonify({"ok": False, "error": "workspace_id required"}), 400
+
+    try:
+        client = get_stripe_client()
+        result = client.create_portal_session(
+            workspace_id=workspace_id,
+            return_url=return_url or "https://app.aeon.ai/os/billing",
+        )
+        get_governance_manager().log_audit(
+            action="STRIPE_PORTAL_CREATED",
+            module="billing",
+            user_id=ctx.get("user_id"),
+            workspace_id=workspace_id,
+            email=ctx.get("email"),
+            metadata={"simulated": result.get("simulated", False)},
+        )
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/stripe/webhook", methods=["POST"])
+def stripe_webhook_receive():
+    """Receive Stripe webhook events. Does NOT require auth — Stripe signs the payload."""
+    raw_body = request.get_data()
+    signature = request.headers.get("Stripe-Signature", "")
+    client = get_stripe_client()
+
+    if not client.available:
+        logger.warning("Stripe webhook received but Stripe is not configured")
+        return jsonify({"ok": False, "error": "Stripe not configured"}), 503
+
+    result = client.handle_webhook(raw_body, signature)
+    if not result.get("ok"):
+        return jsonify(result), 400
+
     get_governance_manager().log_audit(
-        action="BILLING_CREDITS_ADDED",
+        action="STRIPE_WEBHOOK",
         module="billing",
-        user_id=ctx.get("user_id"),
-        workspace_id=workspace_id,
-        email=ctx.get("email"),
-        metadata={"amount": amount},
+        metadata={"type": result.get("type"), "handled": result.get("handled")},
     )
-    return jsonify({"ok": True})
+    return jsonify(result)
+
+
+@app.route("/stripe/subscription/<workspace_id>", methods=["GET"])
+@require_auth
+def stripe_subscription_status(workspace_id: str):
+    """Get the Stripe subscription status for a workspace."""
+    try:
+        status = get_stripe_client().get_subscription_status(workspace_id)
+        return jsonify({"ok": True, **status})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/stripe/config", methods=["GET"])
+@require_auth
+def stripe_config():
+    """Return Stripe configuration status."""
+    client = get_stripe_client()
+    return jsonify({
+        "ok": True,
+        "available": client.available,
+        "mode": "test" if "sk_test_" in os.environ.get("STRIPE_API_KEY", "") else "live" if client.available else None,
+        "prices_configured": all(
+            os.environ.get(k, "").strip()
+            for k in ["STRIPE_PRICE_TEAM"]
+        ) if client.available else False,
+    })
 
 
 @app.route("/health/detailed", methods=["GET"])
@@ -1073,6 +1598,49 @@ def metrics_index():
 
     body = metrics_collector.render()
     return Response(body, mimetype="text/plain; version=0.0.4; charset=utf-8")
+
+
+# ── LLM Provider Management endpoints (Phase 1) ─────────────────────────
+@app.route("/llm/providers", methods=["GET"])
+@require_auth
+def llm_providers():
+    """Return all available LLM providers with their configuration status."""
+    return jsonify({"ok": True, "providers": list_providers()})
+
+
+@app.route("/llm/switch", methods=["POST"])
+@require_auth
+def llm_switch():
+    """Switch the active LLM provider at runtime."""
+    data = request.json or {}
+    provider_id = data.get("provider", "").strip().lower()
+    if not provider_id:
+        return jsonify({"ok": False, "error": "provider required"}), 400
+    result = set_active_provider(provider_id)
+    if not result.get("ok"):
+        return jsonify(result), 400
+    ctx = _governance_context()
+    get_governance_manager().log_audit(
+        action="LLM_PROVIDER_SWITCH",
+        module="llm",
+        user_id=ctx.get("user_id"),
+        workspace_id=ctx.get("workspace_id"),
+        email=ctx.get("email"),
+        metadata={"provider": provider_id},
+    )
+    logger.info("LLM provider switched to: %s", provider_id)
+    return jsonify(result)
+
+
+@app.route("/llm/test", methods=["POST"])
+@require_auth
+def llm_test():
+    """Test a provider (or the current active one) with a simple prompt."""
+    data = request.json or {}
+    provider_id = data.get("provider") or None
+    prompt = data.get("prompt") or None
+    result = _test_llm_provider(provider_id, prompt)
+    return jsonify(result)
 
 
 # ── Prompt Registry & RAG endpoints ──────────────────────────────────────────

@@ -207,11 +207,109 @@ class HuggingFaceAdapter(BaseAdapter):
             return {"ok": False, "error": str(e), "url": url}
 
 
+class SlackAdapter(BaseAdapter):
+    def run(self, endpoint: str = "", method: str = "GET", payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        token = self.config.secrets.get("token") or os.environ.get("SLACK_BOT_TOKEN", "")
+        channel = self.config.options.get("channel", "#general")
+        if not token and not endpoint:
+            return {"ok": False, "error": "missing SLACK_BOT_TOKEN"}
+
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        }
+
+        # If no explicit endpoint, default to sending a message
+        if not endpoint:
+            url = "https://slack.com/api/chat.postMessage"
+            body = {
+                "channel": channel,
+                "text": (payload or {}).get("text", "AEON OS notification"),
+            }
+            if (payload or {}).get("blocks"):
+                body["blocks"] = payload["blocks"]
+        else:
+            base = self.config.base_url or "https://slack.com/api"
+            url = f"{base.rstrip('/')}/{endpoint.lstrip('/')}"
+            body = payload
+
+        try:
+            resp = requests.post(url, headers=headers, json=body, timeout=30)
+            data = _safe_json(resp)
+            # Slack API returns {"ok": true/false} even on 200
+            slack_ok = data.get("ok", resp.status_code < 400) if isinstance(data, dict) else resp.status_code < 400
+            return {
+                "ok": slack_ok,
+                "status": resp.status_code,
+                "data": data,
+                "url": url,
+                "error": data.get("error", "") if isinstance(data, dict) else "",
+            }
+        except Exception as e:
+            return {"ok": False, "error": str(e), "url": url}
+
+
 def _safe_json(resp: requests.Response) -> Any:
     try:
         return resp.json()
     except Exception:
         return resp.text[:1000]
+
+
+# === integration catalog =================================================
+
+INTEGRATION_CATALOG = [
+    {
+        "id": "rest",
+        "name": "Generic REST API",
+        "icon": "🌐",
+        "description": "Connect to any REST API with bearer token or custom headers. Supports GET, POST, PUT, DELETE.",
+        "required_secrets": ["base_url", "token"],
+        "optional_secrets": ["headers"],
+        "adapter_type": "rest",
+    },
+    {
+        "id": "github",
+        "name": "GitHub",
+        "icon": "🐙",
+        "description": "Access GitHub API: list repos, issues, PRs, search code. Uses GH_TOKEN or fine-grained PAT.",
+        "required_secrets": ["token"],
+        "optional_secrets": [],
+        "adapter_type": "github",
+    },
+    {
+        "id": "slack",
+        "name": "Slack",
+        "icon": "💬",
+        "description": "Send messages to channels, list conversations, and integrate with Slack workspaces. Uses SLACK_BOT_TOKEN.",
+        "required_secrets": ["token"],
+        "optional_secrets": [],
+        "adapter_type": "slack",
+    },
+    {
+        "id": "supabase",
+        "name": "Supabase",
+        "icon": "⚡",
+        "description": "Query Supabase tables, manage Row Level Security, and interact with your Postgres database.",
+        "required_secrets": ["anon_key"],
+        "optional_secrets": ["service_role_key"],
+        "adapter_type": "supabase",
+    },
+    {
+        "id": "huggingface",
+        "name": "Hugging Face Inference",
+        "icon": "🤗",
+        "description": "Call any model on the Hugging Face Inference API. Configure model ID and parameters.",
+        "required_secrets": ["token"],
+        "optional_secrets": [],
+        "adapter_type": "huggingface",
+    },
+]
+
+
+def get_integration_catalog() -> List[Dict[str, Any]]:
+    """Return the catalog of available integration types with metadata."""
+    return list(INTEGRATION_CATALOG)
 
 
 # === adapter factory =====================================================
@@ -222,6 +320,7 @@ ADAPTER_MAP = {
     "supabase": SupabaseAdapter,
     "github": GitHubAdapter,
     "huggingface": HuggingFaceAdapter,
+    "slack": SlackAdapter,
 }
 
 

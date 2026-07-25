@@ -13,8 +13,16 @@ const NAV_ITEMS = [
     section: "Core",
     links: [
       { href: "/", label: "Dashboard", icon: "◈" },
+      { href: "/chat", label: "Chat", icon: "💬" },
       { href: "/os", label: "OS Modules", icon: "⊞" },
       { href: "/llm", label: "LLM Brain", icon: "⚡" },
+      { href: "/os/api-keys", label: "API Keys", icon: "🔑" },
+      { href: "/os/billing", label: "Billing & Plans", icon: "💰" },
+      { href: "/os/observability", label: "Observability", icon: "📊" },
+      { href: "/os/monitoring", label: "Monitoring", icon: "📈" },
+      { href: "/os/knowledge", label: "Knowledge", icon: "📚" },
+      { href: "/os/rag-chat", label: "RAG Chat", icon: "🧠" },
+      { href: "/os/ai-studio", label: "AI Studio", icon: "🤖" },
     ],
   },
   {

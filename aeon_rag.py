@@ -391,11 +391,18 @@ class KnowledgeBaseManager:
         embedder = get_embedder(kb.embedding_provider)
         embeddings = embedder.embed(chunks)
 
+        # Support optional preview of chunks before embedding
+        preview = []
+        if metadata and metadata.get("preview"):
+            preview = [{"index": i, "text": c[:200]} for i, c in enumerate(chunks[:10])]
+            metadata.pop("preview", None)
+
         doc_record = {
             "doc_id": doc_id,
             "kb_id": kb_id,
             "text_length": len(text),
             "chunk_count": len(chunks),
+            "file_name": (metadata or {}).get("file_name", ""),
             "metadata": metadata or {},
             "created_at": _now(),
         }
@@ -422,7 +429,7 @@ class KnowledgeBaseManager:
         self._index[kb_id]["document_count"] = self._index[kb_id].get("document_count", 0) + 1
         self._index[kb_id]["chunk_count"] = self._index[kb_id].get("chunk_count", 0) + len(chunks)
         self._save_index()
-        return {"doc_id": doc_id, "chunks": len(chunk_records)}
+        return {"doc_id": doc_id, "chunks": len(chunk_records), "preview": preview}
 
     def query(self, kb_id: str, query: str, top_k: int = 5, mode: str = "hybrid") -> List[Dict[str, Any]]:
         kb = self.get_kb(kb_id)
