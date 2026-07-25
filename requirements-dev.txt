@@ -1,0 +1,12 @@
+# AEON OS — development dependencies
+# Install with: pip install -r requirements-dev.txt
+
+# Testing
+pytest>=7.0
+pytest-flask>=1.2.0
+
+# Linting / formatting
+ruff>=0.4.0
+
+# Type checking (optional)
+mypy>=1.0
