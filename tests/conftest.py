@@ -42,9 +42,18 @@ class FakeAgent:
         return {"evolved": True}
 
 
+class _FakeSwarmManager:
+    def status(self, swarm_id=None):
+        return {"ok": True, "swarm_id": swarm_id, "running": {}}
+
+    def messages(self, swarm_id):
+        return []
+
+
 class FakeAeonOS:
     def __init__(self, root=None):
         self.root = root
+        self.swarm_manager = _FakeSwarmManager()
 
     def list_workflows(self):
         return []
@@ -61,8 +70,8 @@ class FakeAeonOS:
     def run_workflow(self, workflow_id, initial_input, workspace_id=None):
         return {"ok": True, "workflow_id": workflow_id, "output": initial_input}
 
-    def run_swarm(self, app_ids, prompt):
-        return {"ok": True, "app_ids": app_ids, "prompt": prompt}
+    def run_swarm(self, app_ids, prompt, roles=None):
+        return {"ok": True, "app_ids": app_ids, "prompt": prompt, "roles": roles}
 
 
 class FakeWorkflowDefinition:

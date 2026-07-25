@@ -1078,11 +1078,12 @@ def swarm_run():
     data = request.json or {}
     app_ids = data.get("app_ids") or []
     prompt = (data.get("prompt") or "").strip()
+    roles = data.get("roles") or {}
     ctx = _governance_context()
     if not app_ids or not prompt:
         return jsonify({"ok": False, "error": "app_ids and prompt required"}), 400
     try:
-        result = get_os().run_swarm(app_ids, prompt)
+        result = get_os().run_swarm(app_ids, prompt, roles=roles)
         metrics_collector.inc("aeon_swarm_runs_total", labels={"ok": str(result.get("ok", True))})
         get_governance_manager().log_audit(
             action="SWARM_RUN",
@@ -1090,7 +1091,7 @@ def swarm_run():
             user_id=ctx.get("user_id"),
             workspace_id=ctx.get("workspace_id"),
             email=ctx.get("email"),
-            metadata={"app_ids": app_ids, "ok": result.get("ok", True)},
+            metadata={"app_ids": app_ids, "roles": roles, "ok": result.get("ok", True)},
         )
         return jsonify(result)
     except Exception as e:
@@ -1102,6 +1103,30 @@ def swarm_run():
             email=ctx.get("email"),
             metadata={"app_ids": app_ids, "error": str(e)},
         )
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/swarm/<swarm_id>", methods=["GET"])
+@require_auth
+@require_workspace_role("VIEWER")
+def swarm_status(swarm_id: str):
+    """Get the status of a running or completed swarm."""
+    try:
+        status = get_os().swarm_manager.status(swarm_id)
+        return jsonify(status)
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/swarm/<swarm_id>/messages", methods=["GET"])
+@require_auth
+@require_workspace_role("VIEWER")
+def swarm_messages(swarm_id: str):
+    """Get the message bus log for a swarm."""
+    try:
+        messages = get_os().swarm_manager.messages(swarm_id)
+        return jsonify({"ok": True, "swarm_id": swarm_id, "messages": messages})
+    except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
 

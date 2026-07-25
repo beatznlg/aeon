@@ -298,28 +298,17 @@ class WorkflowEngine:
         }
 
 
-class SwarmManager:
-    """Coordinate multiple ReflectiveAgents (one per module) for a shared task."""
+from aeon_swarm import SwarmManager as _SwarmManager
 
-    def __init__(self, root: Path):
-        self.root = Path(root)
-        self.swarm_dir = self.root / "swarms"
-        self.swarm_dir.mkdir(parents=True, exist_ok=True)
-        self._running: dict[str, dict[str, Any]] = {}
 
-    def coordinate(self, app_ids: list[str], prompt: str, os_orchestrator: AeonOS) -> dict[str, Any]:
-        results: dict[str, Any] = {}
-        for app_id in app_ids:
-            try:
-                tick_result = os_orchestrator.tick("default", app_id, prompt)
-                output = tick_result.get("data", tick_result) if isinstance(tick_result, dict) else tick_result
-                results[app_id] = {"ok": True, "output": output}
-            except Exception as e:
-                results[app_id] = {"ok": False, "error": str(e)}
-        return {"ok": True, "prompt": prompt, "agents": app_ids, "results": results}
+class SwarmManager(_SwarmManager):
+    """Coordinate multiple ReflectiveAgents (one per module) for a shared task.
 
-    def status(self) -> dict[str, Any]:
-        return {"ok": True, "running": self._running}
+    In Phase 14 this becomes a thin re-export of the full ``aeon_swarm.SwarmManager``
+    so existing imports of :class:`SwarmManager` keep working.
+    """
+
+    pass
 
 
 def _patch_aeon_os() -> None:
@@ -348,8 +337,8 @@ def _patch_aeon_os() -> None:
     def run_workflow(self, workflow_id: str, initial_input: str = "") -> dict[str, Any]:
         return self.workflow_engine.run(workflow_id, self, initial_input)
 
-    def run_swarm(self, app_ids: list[str], prompt: str) -> dict[str, Any]:
-        return self.swarm_manager.coordinate(app_ids, prompt, self)
+    def run_swarm(self, app_ids: list[str], prompt: str, roles: dict[str, str] | None = None) -> dict[str, Any]:
+        return self.swarm_manager.coordinate(app_ids, prompt, self, roles=roles)
 
     AeonOS.save_workflow = save_workflow  # type: ignore
     AeonOS.get_workflow = get_workflow  # type: ignore

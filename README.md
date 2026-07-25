@@ -99,6 +99,7 @@ AEON_ADMIN_NAME=AEON Admin
 | **6** | Vector Store & RAG — KB, Documents, Hybrid Search | ✅ |
 | **7** | Monitoring & Alerting — Prometheus, Grafana | ✅ |
 | **10** | Developer Experience — OpenAPI, SDKs, Quickstarts | ✅ |
+| **14** | Advanced Agent Orchestration — Multi-Agent Swarms | ✅ |
 
 ---
 
@@ -183,6 +184,41 @@ pip-audit -r requirements.txt -r requirements-dev.txt --desc
 ```
 
 AEON now pins `transformers>=5.5.0` and `sentence-transformers>=5.6.1`, which clears the previous `transformers` 4.x RCE findings. The remaining project dependencies pass `pip-audit` cleanly.
+
+---
+
+## 🤖 Advanced Agent Orchestration (Phase 14)
+
+AEON can now coordinate multiple agents as a swarm to solve complex tasks:
+
+- **Role-based agents**: planner, executor, reviewer, and summarizer roles.
+- **Task allocation**: the planner decomposes a prompt into `SwarmTask`s and assigns them to agents by capability/role.
+- **Message bus**: every swarm has an shared inbox and broadcast log.
+- **Reflection loop**: the reviewer agent reflects on task outputs and can request corrective follow-ups.
+- **Safe evolution hook**: the reviewer can emit `tool_improvement` JSON suggestions; they are returned for explicit review and are never auto-executed.
+
+### Swarm API
+
+```bash
+POST /swarm/run
+{
+  "app_ids": ["researcher", "writer", "reviewer", "editor"],
+  "prompt": "Write a security runbook for the new API",
+  "roles": {
+    "researcher": "planner",
+    "writer": "executor",
+    "reviewer": "reviewer",
+    "editor": "summarizer"
+  }
+}
+```
+
+```bash
+GET  /swarm/<swarm_id>
+GET  /swarm/<swarm_id>/messages
+```
+
+The `POST /swarm/run` response includes the `swarm_id`, per-agent `roles`, the task breakdown, reflection, summary, and any evolution suggestions.
 
 ---
 
