@@ -17,7 +17,31 @@ This guide deploys the **AEON Python backend** to [Railway](https://railway.app)
 
 ## 1. Backend — Deploy to Railway
 
-### 1.1 Create a Railway Project
+### 1.1 Automated Setup (Recommended)
+
+Install the Railway CLI and run the helper script:
+
+```bash
+# 1. Install Railway CLI
+npm install -g @railway/cli
+
+# 2. Login (opens browser or uses token)
+railway login
+
+# 3. Run the setup helper
+./scripts/setup-railway.sh [my-project-name]
+```
+
+This script will:
+- Create a Railway project
+- Provision a PostgreSQL database
+- Add the `aeon-backend` service from the repo
+- Set required environment variables
+- Deploy the backend
+
+### 1.2 Manual Setup
+
+If you prefer the dashboard:
 
 1. Go to [Railway Dashboard](https://railway.app/dashboard).
 2. Click **New Project** → **Deploy from GitHub repo** → select `beatznlg/aeon`.
