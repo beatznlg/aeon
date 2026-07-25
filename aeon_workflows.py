@@ -14,15 +14,15 @@ Usage:
     os.run_swarm(["cybersecurity", "finance"], "assess risk")
 """
 
-import os
-import json
-import time
 import hashlib
-from pathlib import Path
-from typing import Optional, Dict, List, Any
+import json
+import os
+import time
 from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
 
-from aeon_os import AeonOS, OS_ROOT
+from aeon_os import OS_ROOT, AeonOS
 
 
 @dataclass
@@ -34,11 +34,11 @@ class WorkflowNode:
     x: float = 0.0
     y: float = 0.0
     type: str = "agent"  # 'agent' or 'integration'
-    integration_id: Optional[str] = None
+    integration_id: str | None = None
     endpoint: str = ""
     method: str = "GET"
     payload: str = ""
-    provider: Optional[str] = None  # LLM provider override per node
+    provider: str | None = None  # LLM provider override per node
 
 
 @dataclass
@@ -55,13 +55,13 @@ class WorkflowDefinition:
     id: str
     name: str
     description: str
-    nodes: List[WorkflowNode]
-    edges: List[WorkflowEdge]
-    provider: Optional[str] = None  # Default LLM provider for the whole workflow
+    nodes: list[WorkflowNode]
+    edges: list[WorkflowEdge]
+    provider: str | None = None  # Default LLM provider for the whole workflow
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "id": self.id,
             "name": self.name,
@@ -92,7 +92,7 @@ class WorkflowDefinition:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "WorkflowDefinition":
+    def from_dict(cls, data: dict[str, Any]) -> "WorkflowDefinition":
         raw_nodes = data.get("nodes", [])
         nodes = []
         for n in raw_nodes:
@@ -139,7 +139,7 @@ class WorkflowEngine:
         workflow.updated_at = time.time()
         self._path_for(workflow.id).write_text(json.dumps(workflow.to_dict(), indent=2))
 
-    def load(self, workflow_id: str) -> Optional[WorkflowDefinition]:
+    def load(self, workflow_id: str) -> WorkflowDefinition | None:
         path = self._path_for(workflow_id)
         if not path.exists():
             return None
@@ -148,7 +148,7 @@ class WorkflowEngine:
         except Exception:
             return None
 
-    def list_workflows(self) -> List[Dict[str, Any]]:
+    def list_workflows(self) -> list[dict[str, Any]]:
         workflows = []
         for path in self.workflow_dir.glob("*.json"):
             try:
@@ -166,7 +166,7 @@ class WorkflowEngine:
         return False
 
     def run(self, workflow_id: str, os_orchestrator: AeonOS,
-            initial_input: str = "", workspace_id: str = None) -> Dict[str, Any]:
+            initial_input: str = "", workspace_id: str = None) -> dict[str, Any]:
         """
         Execute a workflow with workspace-scoped agents and per-node provider overrides.
         workspace_id: If provided, uses workspace-scoped agents from Phase 2a.
@@ -178,13 +178,13 @@ class WorkflowEngine:
         if not node_map:
             return {"ok": False, "error": "workflow has no nodes"}
 
-        adjacency: Dict[str, List[str]] = {n.id: [] for n in workflow.nodes}
+        adjacency: dict[str, list[str]] = {n.id: [] for n in workflow.nodes}
         for edge in workflow.edges:
             adjacency.setdefault(edge.source, []).append(edge.target)
 
         ordered_ids = [workflow.nodes[0].id]
         visited: set = set()
-        results: List[Dict[str, Any]] = []
+        results: list[dict[str, Any]] = []
         current_input = initial_input
 
         # Integration manager may be attached to the orchestrator by aeon_server.
@@ -214,7 +214,7 @@ class WorkflowEngine:
                         raise RuntimeError("integration_manager not attached to AeonOS")
                     if not node.integration_id:
                         raise ValueError("integration node missing integration_id")
-                    parsed_payload: Optional[Any] = None
+                    parsed_payload: Any | None = None
                     if node.payload:
                         payload_str = node.payload.replace("{input}", current_input)
                         try:
@@ -236,8 +236,8 @@ class WorkflowEngine:
 
                     # Apply provider override if specified
                     if effective_provider:
-                        from aeon_llm import get_llm_provider
                         import aeon as _aeon
+                        from aeon_llm import get_llm_provider
                         _aeon.QW = get_llm_provider(effective_provider)
                         os.environ["AEON_LLM_PROVIDER"] = effective_provider
 
@@ -305,10 +305,10 @@ class SwarmManager:
         self.root = Path(root)
         self.swarm_dir = self.root / "swarms"
         self.swarm_dir.mkdir(parents=True, exist_ok=True)
-        self._running: Dict[str, Dict[str, Any]] = {}
+        self._running: dict[str, dict[str, Any]] = {}
 
-    def coordinate(self, app_ids: List[str], prompt: str, os_orchestrator: AeonOS) -> Dict[str, Any]:
-        results: Dict[str, Any] = {}
+    def coordinate(self, app_ids: list[str], prompt: str, os_orchestrator: AeonOS) -> dict[str, Any]:
+        results: dict[str, Any] = {}
         for app_id in app_ids:
             try:
                 tick_result = os_orchestrator.tick("default", app_id, prompt)
@@ -318,7 +318,7 @@ class SwarmManager:
                 results[app_id] = {"ok": False, "error": str(e)}
         return {"ok": True, "prompt": prompt, "agents": app_ids, "results": results}
 
-    def status(self) -> Dict[str, Any]:
+    def status(self) -> dict[str, Any]:
         return {"ok": True, "running": self._running}
 
 
@@ -336,19 +336,19 @@ def _patch_aeon_os() -> None:
     def save_workflow(self, workflow: WorkflowDefinition) -> None:
         self.workflow_engine.save(workflow)
 
-    def get_workflow(self, workflow_id: str) -> Optional[WorkflowDefinition]:
+    def get_workflow(self, workflow_id: str) -> WorkflowDefinition | None:
         return self.workflow_engine.load(workflow_id)
 
-    def list_workflows(self) -> List[Dict[str, Any]]:
+    def list_workflows(self) -> list[dict[str, Any]]:
         return self.workflow_engine.list_workflows()
 
     def delete_workflow(self, workflow_id: str) -> bool:
         return self.workflow_engine.delete(workflow_id)
 
-    def run_workflow(self, workflow_id: str, initial_input: str = "") -> Dict[str, Any]:
+    def run_workflow(self, workflow_id: str, initial_input: str = "") -> dict[str, Any]:
         return self.workflow_engine.run(workflow_id, self, initial_input)
 
-    def run_swarm(self, app_ids: List[str], prompt: str) -> Dict[str, Any]:
+    def run_swarm(self, app_ids: list[str], prompt: str) -> dict[str, Any]:
         return self.swarm_manager.coordinate(app_ids, prompt, self)
 
     AeonOS.save_workflow = save_workflow  # type: ignore

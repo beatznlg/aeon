@@ -16,17 +16,13 @@ Usage:
     status = health.snapshot()
 """
 
-import os
 import json
-import time
 import secrets as _secrets
-from pathlib import Path
-from typing import Optional, Dict, List, Any
-from dataclasses import dataclass, field
+import time
 from collections import defaultdict
-
-import requests
-
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
 
 # === models ===================================================================
 
@@ -34,15 +30,15 @@ import requests
 class UsageEvent:
     id: str
     timestamp: float
-    user_id: Optional[str]
-    workspace_id: Optional[str]
+    user_id: str | None
+    workspace_id: str | None
     action: str
     module: str
     quantity: float
     cost: float
-    metadata: Dict[str, Any]
+    metadata: dict[str, Any]
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "id": self.id,
             "timestamp": self.timestamp,
@@ -56,7 +52,7 @@ class UsageEvent:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "UsageEvent":
+    def from_dict(cls, data: dict[str, Any]) -> "UsageEvent":
         return cls(
             id=data["id"],
             timestamp=data["timestamp"],
@@ -74,7 +70,7 @@ class UsageEvent:
 class BillingPlan:
     id: str
     name: str
-    limits: Dict[str, float]
+    limits: dict[str, float]
     price_per_request: float
     price_per_1k_tokens: float
 
@@ -107,9 +103,9 @@ class UsageMeter:
         module: str = "global",
         quantity: float = 1.0,
         cost: float = 0.0,
-        user_id: Optional[str] = None,
-        workspace_id: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        user_id: str | None = None,
+        workspace_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> UsageEvent:
         event = UsageEvent(
             id=_generate_id(),
@@ -126,7 +122,7 @@ class UsageMeter:
             f.write(json.dumps(event.to_dict(), ensure_ascii=False) + "\n")
         return event
 
-    def iter_events(self, workspace_id: Optional[str] = None, days: int = 30):
+    def iter_events(self, workspace_id: str | None = None, days: int = 30):
         if not self.events_file.exists():
             return
         cutoff = _now() - (days * 24 * 60 * 60)
@@ -147,14 +143,14 @@ class UsageMeter:
 
     def get_summary(
         self,
-        workspace_id: Optional[str] = None,
+        workspace_id: str | None = None,
         days: int = 30,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         total_quantity = 0.0
         total_cost = 0.0
-        by_action: Dict[str, Dict[str, float]] = defaultdict(lambda: {"quantity": 0.0, "cost": 0.0, "count": 0})
-        by_module: Dict[str, Dict[str, float]] = defaultdict(lambda: {"quantity": 0.0, "cost": 0.0, "count": 0})
-        by_day: Dict[str, Dict[str, float]] = defaultdict(lambda: {"quantity": 0.0, "cost": 0.0, "count": 0})
+        by_action: dict[str, dict[str, float]] = defaultdict(lambda: {"quantity": 0.0, "cost": 0.0, "count": 0})
+        by_module: dict[str, dict[str, float]] = defaultdict(lambda: {"quantity": 0.0, "cost": 0.0, "count": 0})
+        by_day: dict[str, dict[str, float]] = defaultdict(lambda: {"quantity": 0.0, "cost": 0.0, "count": 0})
         total_count = 0
 
         for event in self.iter_events(workspace_id=workspace_id, days=days):
@@ -217,7 +213,7 @@ DEFAULT_PLANS = {
 class BillingCalculator:
     """Compute workspace usage against plan quotas."""
 
-    def __init__(self, root: Path, meter: Optional[UsageMeter] = None):
+    def __init__(self, root: Path, meter: UsageMeter | None = None):
         self.root = Path(root)
         self.billing_dir = self.root / "billing"
         self.billing_dir.mkdir(parents=True, exist_ok=True)
@@ -225,7 +221,7 @@ class BillingCalculator:
         self.meter = meter or UsageMeter(root)
         self.plans = DEFAULT_PLANS
 
-    def _load_state(self) -> Dict[str, Any]:
+    def _load_state(self) -> dict[str, Any]:
         if self.state_file.exists():
             try:
                 return json.loads(self.state_file.read_text(encoding="utf-8"))
@@ -233,7 +229,7 @@ class BillingCalculator:
                 pass
         return {}
 
-    def _save_state(self, state: Dict[str, Any]) -> None:
+    def _save_state(self, state: dict[str, Any]) -> None:
         self.state_file.write_text(json.dumps(state, indent=2), encoding="utf-8")
 
     def get_plan(self, plan_id: str) -> BillingPlan:
@@ -257,7 +253,7 @@ class BillingCalculator:
         state[workspace_id]["updated_at"] = _now()
         self._save_state(state)
 
-    def workspace_status(self, workspace_id: str, days: int = 30) -> Dict[str, Any]:
+    def workspace_status(self, workspace_id: str, days: int = 30) -> dict[str, Any]:
         state = self._load_state()
         ws = state.get(workspace_id, {"workspace_id": workspace_id, "plan_id": "free", "credits": 0.0})
         plan = self.get_plan(ws.get("plan_id", "free"))
@@ -306,10 +302,10 @@ class HealthCollector:
 
     def snapshot(
         self,
-        agent_vitals: Optional[List[Dict[str, Any]]] = None,
+        agent_vitals: list[dict[str, Any]] | None = None,
         queue_size: int = 0,
-        integrations: Optional[List[Dict[str, Any]]] = None,
-    ) -> Dict[str, Any]:
+        integrations: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
         return {
             "ok": True,
             "timestamp": _now(),
@@ -320,7 +316,7 @@ class HealthCollector:
             "storage": self._storage_status(),
         }
 
-    def _storage_status(self) -> Dict[str, Any]:
+    def _storage_status(self) -> dict[str, Any]:
         try:
             usage_dir = self.root / "usage"
             events_file = usage_dir / "events.jsonl"

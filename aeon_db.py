@@ -13,12 +13,19 @@ Env:
 import os
 import uuid
 from datetime import datetime, timezone
-from typing import Optional, List, Dict, Any
 
-from sqlalchemy import create_engine, Column, String, Text, DateTime, ForeignKey, JSON, Boolean, UniqueConstraint, Index, event
-from sqlalchemy.orm import declarative_base, relationship, sessionmaker, Session
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID
-
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Column,
+    DateTime,
+    ForeignKey,
+    String,
+    Text,
+    UniqueConstraint,
+    create_engine,
+)
+from sqlalchemy.orm import Session, declarative_base, relationship, sessionmaker
 
 Base = declarative_base()
 
@@ -127,7 +134,7 @@ def get_database_url() -> str:
 class Database:
     """Thin wrapper around SQLAlchemy engine and session factory."""
 
-    def __init__(self, url: Optional[str] = None):
+    def __init__(self, url: str | None = None):
         self.url = url or get_database_url()
         self.engine = create_engine(self.url, future=True)
         self.SessionLocal = sessionmaker(bind=self.engine, expire_on_commit=False)
@@ -138,38 +145,38 @@ class Database:
     def session(self) -> Session:
         return self.SessionLocal()
 
-    def get_user_by_email(self, email: str) -> Optional[User]:
+    def get_user_by_email(self, email: str) -> User | None:
         with self.session() as s:
             return s.query(User).filter_by(email=email).first()
 
-    def get_user_by_id(self, user_id: str) -> Optional[User]:
+    def get_user_by_id(self, user_id: str) -> User | None:
         with self.session() as s:
             return s.query(User).filter_by(id=str(user_id)).first()
 
-    def get_workspace(self, workspace_id: str) -> Optional[Workspace]:
+    def get_workspace(self, workspace_id: str) -> Workspace | None:
         with self.session() as s:
             return s.query(Workspace).filter_by(id=str(workspace_id)).first()
 
-    def get_workspace_by_slug(self, slug: str, tenant_id: Optional[str] = None) -> Optional[Workspace]:
+    def get_workspace_by_slug(self, slug: str, tenant_id: str | None = None) -> Workspace | None:
         with self.session() as s:
             q = s.query(Workspace).filter_by(slug=slug)
             if tenant_id:
                 q = q.filter_by(tenant_id=str(tenant_id))
             return q.first()
 
-    def get_membership(self, workspace_id: str, user_id: str) -> Optional[Membership]:
+    def get_membership(self, workspace_id: str, user_id: str) -> Membership | None:
         with self.session() as s:
             return s.query(Membership).filter_by(workspace_id=str(workspace_id), user_id=str(user_id)).first()
 
-    def list_workspace_members(self, workspace_id: str) -> List[Membership]:
+    def list_workspace_members(self, workspace_id: str) -> list[Membership]:
         with self.session() as s:
             return s.query(Membership).filter_by(workspace_id=str(workspace_id)).all()
 
-    def list_user_memberships(self, user_id: str) -> List[Membership]:
+    def list_user_memberships(self, user_id: str) -> list[Membership]:
         with self.session() as s:
             return s.query(Membership).filter_by(user_id=str(user_id)).all()
 
-    def ensure_default_workspace(self, tenant_id: Optional[str] = None) -> Workspace:
+    def ensure_default_workspace(self, tenant_id: str | None = None) -> Workspace:
         """Create a default workspace if none exists (idempotent)."""
         with self.session() as s:
             ws = s.query(Workspace).filter_by(slug="default").first()
@@ -188,7 +195,7 @@ class Database:
 
 
 # === Singleton-ish global DB instance ========================================
-_db: Optional[Database] = None
+_db: Database | None = None
 
 
 def get_db() -> Database:

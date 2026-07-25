@@ -23,12 +23,12 @@ Usage:
         ...
 """
 
-import os
 import json
-import time
 import logging
+import os
+import time
 from pathlib import Path
-from typing import Optional, Dict, Any, List
+from typing import Any
 
 logger = logging.getLogger("aeon_stripe")
 
@@ -76,7 +76,7 @@ class StripeClient:
 
     # ── Customer helpers ────────────────────────────────────────────────
 
-    def _load_json(self, path: Path) -> Dict[str, Any]:
+    def _load_json(self, path: Path) -> dict[str, Any]:
         if path.exists():
             try:
                 return json.loads(path.read_text(encoding="utf-8"))
@@ -84,10 +84,10 @@ class StripeClient:
                 pass
         return {}
 
-    def _save_json(self, path: Path, data: Dict[str, Any]):
+    def _save_json(self, path: Path, data: dict[str, Any]):
         path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
-    def get_or_create_customer(self, workspace_id: str, email: str = "", name: str = "") -> Optional[str]:
+    def get_or_create_customer(self, workspace_id: str, email: str = "", name: str = "") -> str | None:
         """Return Stripe Customer ID for a workspace, creating one if needed."""
         customers = self._load_json(self._customers_file)
         existing = customers.get(workspace_id)
@@ -115,14 +115,14 @@ class StripeClient:
             logger.error("Failed to create Stripe customer: %s", e)
             return None
 
-    def get_stripe_customer_id(self, workspace_id: str) -> Optional[str]:
+    def get_stripe_customer_id(self, workspace_id: str) -> str | None:
         customers = self._load_json(self._customers_file)
         existing = customers.get(workspace_id)
         return existing.get("stripe_customer_id") if existing else None
 
     # ── Subscription helpers ────────────────────────────────────────────
 
-    def get_subscription_id(self, workspace_id: str) -> Optional[str]:
+    def get_subscription_id(self, workspace_id: str) -> str | None:
         subs = self._load_json(self._subscriptions_file)
         entry = subs.get(workspace_id)
         return entry.get("subscription_id") if entry else None
@@ -151,7 +151,7 @@ class StripeClient:
 
     # ── Price ID resolution ─────────────────────────────────────────────
 
-    def _price_id_for_plan(self, plan_id: str) -> Optional[str]:
+    def _price_id_for_plan(self, plan_id: str) -> str | None:
         """Map a plan ID to a Stripe Price ID from env vars."""
         mapping = {
             "free": "STRIPE_PRICE_FREE",
@@ -173,7 +173,7 @@ class StripeClient:
         cancel_url: str,
         customer_email: str = "",
         customer_name: str = "",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Create a Stripe Checkout Session for a subscription plan.
 
         Returns a dict with 'url' (redirect URL) or an error.
@@ -218,7 +218,7 @@ class StripeClient:
         self,
         workspace_id: str,
         return_url: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Create a Stripe Billing Portal session for managing subscriptions.
 
         Returns a dict with 'url' (redirect URL) or an error.
@@ -261,7 +261,7 @@ class StripeClient:
 
     # ── Webhook handler ─────────────────────────────────────────────────
 
-    def handle_webhook(self, raw_body: bytes, signature_header: str) -> Dict[str, Any]:
+    def handle_webhook(self, raw_body: bytes, signature_header: str) -> dict[str, Any]:
         """Verify and process a Stripe webhook event.
 
         Returns {'ok': True, 'type': ..., 'handled': True/False}
@@ -289,7 +289,7 @@ class StripeClient:
         result = self._handle_event(event_type, data)
         return {"ok": True, "type": event_type, **result}
 
-    def _handle_event(self, event_type: str, data: Dict[str, Any]) -> Dict[str, Any]:
+    def _handle_event(self, event_type: str, data: dict[str, Any]) -> dict[str, Any]:
         """Route webhook events to the appropriate handler."""
         handlers = {
             "checkout.session.completed": self._handle_checkout_completed,
@@ -305,7 +305,7 @@ class StripeClient:
             return handler(data)
         return {"handled": False, "reason": f"Unhandled event type: {event_type}"}
 
-    def _handle_checkout_completed(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    def _handle_checkout_completed(self, data: dict[str, Any]) -> dict[str, Any]:
         """Handle checkout.session.completed — subscribe the workspace."""
         metadata = data.get("metadata", {})
         workspace_id = metadata.get("workspace_id")
@@ -332,7 +332,7 @@ class StripeClient:
         logger.info("Checkout completed: workspace=%s plan=%s sub=%s", workspace_id, plan_id, subscription_id)
         return {"handled": True, "workspace_id": workspace_id, "plan_id": plan_id}
 
-    def _handle_subscription_updated(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    def _handle_subscription_updated(self, data: dict[str, Any]) -> dict[str, Any]:
         """Sync subscription status changes."""
         metadata = data.get("metadata", {})
         subscription_id = data.get("id")
@@ -380,7 +380,7 @@ class StripeClient:
         logger.info("Subscription updated: workspace=%s plan=%s status=%s", workspace_id, plan_id, local_status)
         return {"handled": True, "workspace_id": workspace_id, "plan_id": plan_id, "status": local_status}
 
-    def _handle_subscription_deleted(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    def _handle_subscription_deleted(self, data: dict[str, Any]) -> dict[str, Any]:
         """Downgrade to free plan when subscription is deleted."""
         subscription_id = data.get("id")
         customer_id = data.get("customer")
@@ -405,9 +405,9 @@ class StripeClient:
         logger.info("Subscription deleted: workspace=%s (downgraded to free)", workspace_id)
         return {"handled": True, "workspace_id": workspace_id, "plan_id": "free"}
 
-    def _handle_invoice_paid(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    def _handle_invoice_paid(self, data: dict[str, Any]) -> dict[str, Any]:
         """Handle successful invoice payments — could add credits or log."""
-        subscription_id = data.get("subscription")
+        data.get("subscription")
         amount_paid = data.get("amount_paid", 0) / 100.0  # cents -> dollars
         customer_id = data.get("customer")
 
@@ -430,7 +430,7 @@ class StripeClient:
         logger.info("Invoice paid: customer=%s amount=%.2f", customer_id, amount_paid)
         return {"handled": True, "workspace_id": workspace_id, "amount": amount_paid}
 
-    def _handle_invoice_failed(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    def _handle_invoice_failed(self, data: dict[str, Any]) -> dict[str, Any]:
         """Flag subscription as past_due when payment fails."""
         subscription_id = data.get("subscription")
         customer_id = data.get("customer")
@@ -453,7 +453,7 @@ class StripeClient:
 
     # ── Status helpers ──────────────────────────────────────────────────
 
-    def get_subscription_status(self, workspace_id: str) -> Dict[str, Any]:
+    def get_subscription_status(self, workspace_id: str) -> dict[str, Any]:
         """Return the Stripe subscription status for a workspace.
 
         Returns a dict with plan_id, status, and subscription_id if found.
@@ -498,8 +498,8 @@ class StripeClient:
 
 # ── Singleton ──────────────────────────────────────────────────────────────
 
-_stripe_client: Optional[StripeClient] = None
-_stripe_root: Optional[Path] = None
+_stripe_client: StripeClient | None = None
+_stripe_root: Path | None = None
 
 
 def init_stripe(root: Path):

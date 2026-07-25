@@ -18,19 +18,18 @@ Next.js routes proxy when AEON_PYTHON_URL is set, e.g.:
   AEON_PYTHON_URL=http://127.0.0.1:5000
 """
 
-import os
-import sys
-import re
 import json
-import time
-import queue
 import logging
+import os
+import queue
 import threading
-from pathlib import Path
+import time
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
 from functools import wraps
-from flask import Flask, request, jsonify, g, Response
+from pathlib import Path
+from typing import Any
+
+from flask import Flask, Response, g, jsonify, request
 
 # ── Logging setup ────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -39,16 +38,17 @@ logging.basicConfig(
 )
 logger = logging.getLogger("aeon_server")
 
-from aeon import ReflectiveAgent
-from aeon_os import AeonOS
 import aeon_workflows  # patches AeonOS with workflow/swarm helpers
-from aeon_integrations import IntegrationManager, IntegrationConfig, WebhookDelivery, get_integration_catalog
-from aeon_usage import UsageMeter, BillingCalculator, HealthCollector
-from aeon_governance import GovernanceManager, get_governance
-from aeon_auth import require_auth, require_role, require_workspace_access, get_current_user_context
-from aeon_llm import list_providers, set_active_provider, test_provider as _test_llm_provider, get_llm_provider
+from aeon import ReflectiveAgent
 from aeon_api_keys import ApiKeyManager
+from aeon_auth import get_current_user_context, require_auth, require_workspace_access
+from aeon_governance import GovernanceManager, get_governance
+from aeon_integrations import IntegrationManager, WebhookDelivery, get_integration_catalog
+from aeon_llm import get_llm_provider, list_providers, set_active_provider
+from aeon_llm import test_provider as _test_llm_provider
+from aeon_os import AeonOS
 from aeon_stripe import get_stripe_client, init_stripe
+from aeon_usage import BillingCalculator, HealthCollector, UsageMeter
 
 app = Flask(__name__)
 
@@ -63,7 +63,7 @@ init_stripe(AEON_ROOT)
 
 
 # ── Environment validation ───────────────────────────────────────────────────
-def validate_environment() -> Dict[str, Any]:
+def validate_environment() -> dict[str, Any]:
     """Check environment variables and return a readiness report."""
     checks = {
         "SUPABASE_URL": "optional",
@@ -73,7 +73,7 @@ def validate_environment() -> Dict[str, Any]:
         "OPENAI_API_KEY": "optional",
         "ANTHROPIC_API_KEY": "optional",
     }
-    report: Dict[str, Any] = {"ok": True, "missing": [], "warnings": []}
+    report: dict[str, Any] = {"ok": True, "missing": [], "warnings": []}
     for name, kind in checks.items():
         if not os.environ.get(name):
             if kind == "required":
@@ -92,7 +92,7 @@ class RateLimiter:
         self.max_requests = max_requests
         self.window_seconds = window_seconds
         self._lock = threading.Lock()
-        self._buckets: Dict[str, list] = {}
+        self._buckets: dict[str, list] = {}
 
     def is_allowed(self, key: str) -> bool:
         now = time.time()
@@ -127,22 +127,22 @@ class MetricsCollector:
 
     def __init__(self):
         self._lock = threading.Lock()
-        self._counters: Dict[str, Dict[tuple, int]] = {}
-        self._histograms: Dict[str, Dict[tuple, Dict[str, Any]]] = {}
-        self._gauges: Dict[str, float] = {}
+        self._counters: dict[str, dict[tuple, int]] = {}
+        self._histograms: dict[str, dict[tuple, dict[str, Any]]] = {}
+        self._gauges: dict[str, float] = {}
 
-    def inc(self, name: str, amount: int = 1, labels: Optional[Dict[str, str]] = None):
+    def inc(self, name: str, amount: int = 1, labels: dict[str, str] | None = None):
         label_key = tuple(sorted((labels or {}).items()))
         with self._lock:
             self._counters.setdefault(name, {})[label_key] = self._counters.get(name, {}).get(label_key, 0) + amount
 
-    def observe(self, name: str, value: float, labels: Optional[Dict[str, str]] = None):
+    def observe(self, name: str, value: float, labels: dict[str, str] | None = None):
         label_key = tuple(sorted((labels or {}).items()))
         with self._lock:
             hist = self._histograms.setdefault(name, {})
             if label_key not in hist:
                 hist[label_key] = {
-                    "buckets": {b: 0 for b in self.BUCKETS},
+                    "buckets": dict.fromkeys(self.BUCKETS, 0),
                     "sum": 0.0,
                     "count": 0,
                 }
@@ -160,7 +160,7 @@ class MetricsCollector:
     def _escape_label(self, value: str) -> str:
         return str(value).replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
 
-    def _format_labels(self, labels: Dict[str, str]) -> str:
+    def _format_labels(self, labels: dict[str, str]) -> str:
         return ",".join(f'{k}="{self._escape_label(v)}"' for k, v in sorted(labels.items()))
 
     def render(self) -> str:
@@ -195,7 +195,7 @@ class MetricsCollector:
 
         return "\n".join(lines) + "\n"
 
-    def snapshot_summary(self) -> Dict[str, Any]:
+    def snapshot_summary(self) -> dict[str, Any]:
         with self._lock:
             return {
                 "counters": {name: {str(k): v for k, v in labels_values.items()} for name, labels_values in self._counters.items()},
@@ -249,7 +249,7 @@ def _handle_exception(e):
 
 # ── Agent cache (one per app_id) ─────────────────────────────────────────────
 _agent_lock = threading.Lock()
-_agents: Dict[str, ReflectiveAgent] = {}
+_agents: dict[str, ReflectiveAgent] = {}
 
 
 def get_agent(app_id: str) -> ReflectiveAgent:
@@ -270,8 +270,8 @@ class JobQueue:
     """Tiny in-memory background task queue backed by a daemon worker thread."""
 
     def __init__(self, workers: int = 2):
-        self._queue: queue.Queue[Optional[tuple]] = queue.Queue()
-        self._results: Dict[str, Any] = {}
+        self._queue: queue.Queue[tuple | None] = queue.Queue()
+        self._results: dict[str, Any] = {}
         self._threads = []
         for _ in range(workers):
             t = threading.Thread(target=self._worker_loop, daemon=True)
@@ -313,13 +313,13 @@ class JobQueue:
             finally:
                 self._queue.task_done()
 
-    def submit(self, app_id: str, action: str, payload: Dict[str, Any]) -> str:
+    def submit(self, app_id: str, action: str, payload: dict[str, Any]) -> str:
         job_id = f"{app_id}-{action}-{int(time.time() * 1000)}-{id(payload)}"
         self._results[job_id] = {"status": "queued", "submitted_at": datetime.now(timezone.utc).isoformat()}
         self._queue.put((job_id, app_id, action, payload))
         return job_id
 
-    def status(self, job_id: str) -> Optional[Dict[str, Any]]:
+    def status(self, job_id: str) -> dict[str, Any] | None:
         return self._results.get(job_id)
 
     def shutdown(self):
@@ -352,8 +352,9 @@ init_stripe(AEON_ROOT)
 @app.route("/auth/login", methods=["POST"])
 def auth_login():
     """Issue a short-lived JWT access token for a valid user."""
-    from aeon_auth import create_access_token, _FallbackAdmin
     from werkzeug.security import check_password_hash
+
+    from aeon_auth import _FallbackAdmin, create_access_token
     from aeon_db import get_db
 
     data = request.json or {}
@@ -435,9 +436,10 @@ def auth_register():
     Creates the user, a default workspace, and a membership.
     Returns a JWT so the user can immediately start chatting.
     """
-    from aeon_auth import create_access_token
     from werkzeug.security import generate_password_hash
-    from aeon_db import get_db, User, Workspace, Membership
+
+    from aeon_auth import create_access_token
+    from aeon_db import Membership, User, Workspace, get_db
 
     data = request.json or {}
     email = (data.get("email") or "").strip().lower()
@@ -647,7 +649,7 @@ def ready():
     return jsonify(readiness), status
 
 
-def _governance_context() -> Dict[str, Any]:
+def _governance_context() -> dict[str, Any]:
     """Extract authenticated user context for audit and governance."""
     ctx = get_current_user_context() or {}
     if ctx:
@@ -836,7 +838,7 @@ def list_agents():
 
 # ── OS orchestrator singleton (for workflows / swarm) ─────────────────────
 _aeon_os_lock = threading.Lock()
-_aeon_os_instance: Optional[AeonOS] = None
+_aeon_os_instance: AeonOS | None = None
 
 
 def get_os() -> AeonOS:
@@ -953,7 +955,7 @@ def swarm_run():
 
 
 # ── API Key Management endpoints ───────────────────────────────────────
-_api_key_manager: Optional[ApiKeyManager] = None
+_api_key_manager: ApiKeyManager | None = None
 
 
 def get_api_key_manager() -> ApiKeyManager:
@@ -963,7 +965,7 @@ def get_api_key_manager() -> ApiKeyManager:
     return _api_key_manager
 
 
-def _extract_api_key() -> Optional[str]:
+def _extract_api_key() -> str | None:
     """Extract an API key from the request headers."""
     auth = request.headers.get("Authorization", "")
     if auth.lower().startswith("bearer "):
@@ -1114,9 +1116,9 @@ def api_keys_usage_summary():
 
 
 # ── Usage / Billing / Observability endpoints ────────────────────────────
-_usage_meter: Optional[UsageMeter] = None
-_billing_calculator: Optional[BillingCalculator] = None
-_health_collector: Optional[HealthCollector] = None
+_usage_meter: UsageMeter | None = None
+_billing_calculator: BillingCalculator | None = None
+_health_collector: HealthCollector | None = None
 
 
 def get_usage_meter() -> UsageMeter:
@@ -1197,7 +1199,7 @@ def governance_retention():
 
 
 # ── Integration / API Gateway endpoints ────────────────────────────────────
-_integration_manager: Optional[IntegrationManager] = None
+_integration_manager: IntegrationManager | None = None
 
 
 def get_integration_manager() -> IntegrationManager:
@@ -1351,11 +1353,11 @@ def billing_set_plan(workspace_id: str):
     data = request.json or {}
     plan_id = data.get("plan_id", "free")
     credits = float(data.get("credits", 0))
-    
+
     valid_plans = list(get_billing_calculator().plans.keys())
     if plan_id not in valid_plans:
         return jsonify({"ok": False, "error": f"invalid plan '{plan_id}'. Valid: {valid_plans}"}), 400
-    
+
     try:
         get_billing_calculator().set_plan(workspace_id, plan_id, credits)
         status = get_billing_calculator().workspace_status(workspace_id)
@@ -1378,7 +1380,7 @@ def billing_add_credits(workspace_id: str):
     amount = float(data.get("amount", 0))
     if amount <= 0:
         return jsonify({"ok": False, "error": "amount must be positive"}), 400
-    
+
     try:
         get_billing_calculator().add_credits(workspace_id, amount)
         status = get_billing_calculator().workspace_status(workspace_id)
@@ -1692,9 +1694,9 @@ def llm_test():
 
 
 # ── Prompt Registry & RAG endpoints ──────────────────────────────────────────
-_prompt_registry: Optional[Any] = None
-_kb_manager: Optional[Any] = None
-_rag_orchestrator: Optional[Any] = None
+_prompt_registry: Any | None = None
+_kb_manager: Any | None = None
+_rag_orchestrator: Any | None = None
 
 
 def get_prompt_registry():

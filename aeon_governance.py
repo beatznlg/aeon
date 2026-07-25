@@ -13,18 +13,17 @@ Usage:
     gm.log_audit(action="CHAT", module="global", user_id="...", workspace_id="...", metadata={...})
 """
 
-import os
-import re
 import json
-import time
+import os
 import queue
+import re
 import threading
-from dataclasses import dataclass, field, asdict
+import time
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import requests
-
 
 # === PII patterns ==========================================================
 
@@ -37,7 +36,7 @@ PII_PATTERNS = [
 ]
 
 
-def detect_pii(text: str) -> List[Dict[str, Any]]:
+def detect_pii(text: str) -> list[dict[str, Any]]:
     """Return list of PII findings with type, matched text, and position."""
     findings = []
     if not text:
@@ -63,11 +62,11 @@ def redact_pii(text: str) -> str:
     return redacted
 
 
-def sanitize_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
+def sanitize_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
     """Recursively sanitize metadata dict, redacting PII in string values."""
     if not isinstance(metadata, dict):
         return metadata
-    cleaned: Dict[str, Any] = {}
+    cleaned: dict[str, Any] = {}
     for key, value in metadata.items():
         if isinstance(value, str):
             cleaned[key] = redact_pii(value)
@@ -89,14 +88,14 @@ def sanitize_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
 class AuditEvent:
     action: str
     module: str
-    user_id: Optional[str]
-    workspace_id: Optional[str]
-    email: Optional[str]
-    metadata: Dict[str, Any]
+    user_id: str | None
+    workspace_id: str | None
+    email: str | None
+    metadata: dict[str, Any]
     timestamp: float
     pii_redacted: bool = False
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
         data["metadata"] = sanitize_metadata(data["metadata"])
         return data
@@ -118,7 +117,7 @@ class GovernanceManager:
 
     def _worker_loop(self):
         while True:
-            batch: List[AuditEvent] = []
+            batch: list[AuditEvent] = []
             try:
                 item = self._queue.get(timeout=self.flush_interval)
                 if item is None:
@@ -145,10 +144,10 @@ class GovernanceManager:
         self,
         action: str,
         module: str = "global",
-        user_id: Optional[str] = None,
-        workspace_id: Optional[str] = None,
-        email: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        user_id: str | None = None,
+        workspace_id: str | None = None,
+        email: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> AuditEvent:
         meta = metadata or {}
         raw_text = json.dumps(meta)
@@ -170,7 +169,7 @@ class GovernanceManager:
         self._queue.put(event)
         return event
 
-    def _flush(self, events: List[AuditEvent]):
+    def _flush(self, events: list[AuditEvent]):
         if not self._supabase_url or not self._supabase_key:
             return
 
@@ -208,12 +207,12 @@ class GovernanceManager:
     # === Audit query ======================================================
     def query_audit(
         self,
-        workspace_id: Optional[str] = None,
-        action: Optional[str] = None,
-        module: Optional[str] = None,
+        workspace_id: str | None = None,
+        action: str | None = None,
+        module: str | None = None,
         limit: int = 100,
         offset: int = 0,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Query audit logs from Supabase with optional filters."""
         if not self._supabase_url or not self._supabase_key:
             return {"ok": True, "rows": [], "count": 0, "limit": limit, "offset": offset}
@@ -246,7 +245,7 @@ class GovernanceManager:
         except Exception as e:
             return {"ok": False, "error": str(e), "rows": [], "count": 0, "limit": limit, "offset": offset}
 
-    def run_pii_scan(self, workspace_id: Optional[str] = None) -> Dict[str, Any]:
+    def run_pii_scan(self, workspace_id: str | None = None) -> dict[str, Any]:
         """Scan recent audit metadata for PII and return findings."""
         result = self.query_audit(workspace_id=workspace_id, limit=500)
         rows = result.get("rows", [])
@@ -264,7 +263,7 @@ class GovernanceManager:
         status = "failed" if findings else "success"
         return {"ok": True, "check_type": "pii_scan", "status": status, "findings": findings, "scanned": len(rows)}
 
-    def run_retention_check(self, workspace_id: Optional[str] = None) -> Dict[str, Any]:
+    def run_retention_check(self, workspace_id: str | None = None) -> dict[str, Any]:
         """Check whether audit logs exceed configured retention."""
         if not self._supabase_url or not self._supabase_key:
             return {"ok": True, "check_type": "retention_run", "status": "warning", "findings": [], "note": "Supabase not configured"}
@@ -296,15 +295,15 @@ class GovernanceManager:
         except Exception as e:
             return {"ok": False, "check_type": "retention_run", "status": "failed", "findings": [str(e)]}
 
-    def run_consent_audit(self, workspace_id: Optional[str] = None) -> Dict[str, Any]:
+    def run_consent_audit(self, workspace_id: str | None = None) -> dict[str, Any]:
         """Return a consent audit placeholder — real implementation would query consent_logs."""
         return {"ok": True, "check_type": "consent_audit", "status": "success", "findings": [], "note": "Consent audit stub; populate consent_logs for real checks"}
 
-    def run_role_review(self, workspace_id: Optional[str] = None) -> Dict[str, Any]:
+    def run_role_review(self, workspace_id: str | None = None) -> dict[str, Any]:
         """Return a role review placeholder."""
         return {"ok": True, "check_type": "role_review", "status": "success", "findings": [], "note": "Role review stub; implement workspace membership query"}
 
-    def run_compliance_check(self, check_type: str, workspace_id: Optional[str] = None) -> Dict[str, Any]:
+    def run_compliance_check(self, check_type: str, workspace_id: str | None = None) -> dict[str, Any]:
         if check_type == "pii_scan":
             return self.run_pii_scan(workspace_id)
         if check_type == "retention_run":
@@ -316,7 +315,7 @@ class GovernanceManager:
         return {"ok": False, "error": f"unknown check_type: {check_type}"}
 
     # === Retention policies ================================================
-    def get_retention_policy(self, workspace_id: Optional[str] = None) -> Dict[str, Any]:
+    def get_retention_policy(self, workspace_id: str | None = None) -> dict[str, Any]:
         if not self._supabase_url or not self._supabase_key:
             return {"workspace_id": workspace_id, "retention_days": 365, "action": "archive"}
         try:
@@ -341,7 +340,7 @@ class GovernanceManager:
         except Exception as e:
             return {"workspace_id": workspace_id, "retention_days": 365, "action": "archive", "error": str(e)}
 
-    def set_retention_policy(self, workspace_id: str, retention_days: int, action: str = "archive") -> Dict[str, Any]:
+    def set_retention_policy(self, workspace_id: str, retention_days: int, action: str = "archive") -> dict[str, Any]:
         if not self._supabase_url or not self._supabase_key:
             return {"ok": False, "error": "Supabase not configured"}
         try:
@@ -372,7 +371,7 @@ class GovernanceManager:
 
 
 # === Singleton =============================================================
-_governance: Optional[GovernanceManager] = None
+_governance: GovernanceManager | None = None
 
 
 def get_governance() -> GovernanceManager:

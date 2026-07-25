@@ -56,6 +56,13 @@ select = [
 ignore = [
     "E501",  # line too long (handled by formatter)
     "B008",  # do not perform function calls in argument defaults
+    "E402",  # module-level import not at top (intentional in aeon.py / aeon_server.py)
+    "F841",  # local variable assigned but never used (may have side effects)
+    "N806",  # variable in function should be lowercase (math vars like Q/P)
+    "N818",  # exception name should end with Error (local Timeout classes)
+    "E701",  # multiple statements on one line (colon) - legacy style, safe to ignore
+    "E702",  # multiple statements on one line (semicolon) - legacy style, safe to ignore
+    "SIM105",  # use contextlib.suppress - legacy pattern, safe to ignore
 ]
 
 [tool.ruff.lint.pydocstyle]

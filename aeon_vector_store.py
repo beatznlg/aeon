@@ -13,26 +13,24 @@ Search modes:
 - hybrid: Reciprocal Rank Fusion of vector + keyword results
 """
 
-import os
-import re
 import json
 import math
-import time
+import os
+import re
 from abc import ABC, abstractmethod
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
 from collections import Counter
+from pathlib import Path
+from typing import Any
 
 import numpy as np
 
-
 # === helpers ==============================================================
 
-def _tokenize(text: str) -> List[str]:
+def _tokenize(text: str) -> list[str]:
     return [t for t in re.findall(r"[a-z0-9]+", text.lower()) if len(t) > 2]
 
 
-def _normalize(vec: List[float]) -> np.ndarray:
+def _normalize(vec: list[float]) -> np.ndarray:
     v = np.array(vec, dtype=np.float32)
     norm = np.linalg.norm(v)
     if norm == 0:
@@ -40,7 +38,7 @@ def _normalize(vec: List[float]) -> np.ndarray:
     return v / norm
 
 
-def _pad_embedding(vec: List[float], dim: int = 1536) -> List[float]:
+def _pad_embedding(vec: list[float], dim: int = 1536) -> list[float]:
     """Pad or truncate a vector to a fixed dimension for pgvector storage."""
     if len(vec) >= dim:
         return vec[:dim]
@@ -55,11 +53,11 @@ class KeywordScorer:
     def __init__(self, k1: float = 1.5, b: float = 0.75):
         self.k1 = k1
         self.b = b
-        self._docs: List[Tuple[str, str, List[str]]] = []  # (id, raw_text, tokens)
+        self._docs: list[tuple[str, str, list[str]]] = []  # (id, raw_text, tokens)
         self._avgdl = 0.0
-        self._idf: Dict[str, float] = {}
+        self._idf: dict[str, float] = {}
 
-    def index(self, chunks: List[Dict[str, Any]]):
+    def index(self, chunks: list[dict[str, Any]]):
         """Index chunk records."""
         self._docs = []
         total_len = 0
@@ -72,14 +70,14 @@ class KeywordScorer:
 
         # Compute IDF for each term
         n = len(self._docs)
-        df: Dict[str, int] = Counter()
+        df: dict[str, int] = Counter()
         for _, _, tokens in self._docs:
             seen = set(tokens)
             for t in seen:
                 df[t] += 1
         self._idf = {t: math.log((n - df[t] + 0.5) / (df[t] + 0.5) + 1.0) for t in df}
 
-    def score(self, query: str) -> List[Tuple[str, float]]:
+    def score(self, query: str) -> list[tuple[str, float]]:
         """Return list of (chunk_id, bm25_score) for the query."""
         if not self._docs:
             return []
@@ -111,21 +109,21 @@ class KeywordScorer:
 
 class VectorStore(ABC):
     @abstractmethod
-    def add_chunks(self, kb_id: str, doc_id: str, chunks: List[Dict[str, Any]]) -> None:
+    def add_chunks(self, kb_id: str, doc_id: str, chunks: list[dict[str, Any]]) -> None:
         """Persist chunk records for a document."""
         raise NotImplementedError
 
     @abstractmethod
-    def search_vector(self, kb_id: str, query_vec: List[float], top_k: int = 5) -> List[Dict[str, Any]]:
+    def search_vector(self, kb_id: str, query_vec: list[float], top_k: int = 5) -> list[dict[str, Any]]:
         """Return top_k chunks by vector similarity. Each result has id, doc_id, text, score."""
         raise NotImplementedError
 
     @abstractmethod
-    def search_keyword(self, kb_id: str, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
+    def search_keyword(self, kb_id: str, query: str, top_k: int = 5) -> list[dict[str, Any]]:
         """Return top_k chunks by keyword relevance."""
         raise NotImplementedError
 
-    def search_hybrid(self, kb_id: str, query: str, query_vec: List[float], top_k: int = 5) -> List[Dict[str, Any]]:
+    def search_hybrid(self, kb_id: str, query: str, query_vec: list[float], top_k: int = 5) -> list[dict[str, Any]]:
         """RRF fusion of vector and keyword results."""
         vector_results = self.search_vector(kb_id, query_vec, top_k=max(top_k, 20))
         keyword_results = self.search_keyword(kb_id, query, top_k=max(top_k, 20))
@@ -136,19 +134,19 @@ class VectorStore(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def stats(self, kb_id: str) -> Dict[str, Any]:
+    def stats(self, kb_id: str) -> dict[str, Any]:
         raise NotImplementedError
 
 
 def reciprocal_rank_fusion(
-    vector_results: List[Dict[str, Any]],
-    keyword_results: List[Dict[str, Any]],
+    vector_results: list[dict[str, Any]],
+    keyword_results: list[dict[str, Any]],
     top_k: int = 5,
     k: int = 60,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Combine ranked lists using Reciprocal Rank Fusion."""
-    scores: Dict[str, float] = {}
-    details: Dict[str, Dict[str, Any]] = {}
+    scores: dict[str, float] = {}
+    details: dict[str, dict[str, Any]] = {}
 
     for rank, item in enumerate(vector_results, start=1):
         idx = item["id"]
@@ -203,13 +201,13 @@ class DiskVectorStore(VectorStore):
                 except Exception:
                     continue
 
-    def add_chunks(self, kb_id: str, doc_id: str, chunks: List[Dict[str, Any]]) -> None:
+    def add_chunks(self, kb_id: str, doc_id: str, chunks: list[dict[str, Any]]) -> None:
         chunks_file = self._chunks_file(kb_id)
         with chunks_file.open("a", encoding="utf-8") as f:
             for chunk in chunks:
                 f.write(json.dumps(chunk, ensure_ascii=False) + "\n")
 
-    def search_vector(self, kb_id: str, query_vec: List[float], top_k: int = 5) -> List[Dict[str, Any]]:
+    def search_vector(self, kb_id: str, query_vec: list[float], top_k: int = 5) -> list[dict[str, Any]]:
         q = _normalize(query_vec)
         chunks = list(self._iter_chunks(kb_id))
         if not chunks:
@@ -232,7 +230,7 @@ class DiskVectorStore(VectorStore):
         scored.sort(key=lambda x: x["score"], reverse=True)
         return scored[:top_k]
 
-    def search_keyword(self, kb_id: str, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
+    def search_keyword(self, kb_id: str, query: str, top_k: int = 5) -> list[dict[str, Any]]:
         chunks = list(self._iter_chunks(kb_id))
         scorer = KeywordScorer()
         scorer.index(chunks)
@@ -258,7 +256,7 @@ class DiskVectorStore(VectorStore):
         if kb_path.exists():
             shutil.rmtree(kb_path, ignore_errors=True)
 
-    def stats(self, kb_id: str) -> Dict[str, Any]:
+    def stats(self, kb_id: str) -> dict[str, Any]:
         chunks = list(self._iter_chunks(kb_id))
         doc_ids = {rec.get("doc_id") for rec in chunks}
         return {
@@ -271,7 +269,7 @@ class DiskVectorStore(VectorStore):
 # === Supabase Vector Store =================================================
 
 try:
-    from supabase import create_client, Client
+    from supabase import Client, create_client
 except ImportError:  # pragma: no cover
     Client = None  # type: ignore
     create_client = None  # type: ignore
@@ -285,7 +283,7 @@ class SupabaseVectorStore(VectorStore):
             raise RuntimeError("supabase package not installed")
         self.client: Client = create_client(url, key)
 
-    def add_chunks(self, kb_id: str, doc_id: str, chunks: List[Dict[str, Any]]) -> None:
+    def add_chunks(self, kb_id: str, doc_id: str, chunks: list[dict[str, Any]]) -> None:
         if not chunks:
             return
         rows = []
@@ -302,7 +300,7 @@ class SupabaseVectorStore(VectorStore):
         for i in range(0, len(rows), 100):
             self.client.table("kb_chunks").insert(rows[i : i + 100]).execute()
 
-    def search_vector(self, kb_id: str, query_vec: List[float], top_k: int = 5) -> List[Dict[str, Any]]:
+    def search_vector(self, kb_id: str, query_vec: list[float], top_k: int = 5) -> list[dict[str, Any]]:
         vec = _pad_embedding(query_vec)
         # Use RPC for vector similarity if available; otherwise raw SQL fallback via rpc
         try:
@@ -327,7 +325,7 @@ class SupabaseVectorStore(VectorStore):
             # Fallback: select all and compute cosine in Python (fine for small KBs)
             return self._local_vector_search(kb_id, query_vec, top_k)
 
-    def _local_vector_search(self, kb_id: str, query_vec: List[float], top_k: int) -> List[Dict[str, Any]]:
+    def _local_vector_search(self, kb_id: str, query_vec: list[float], top_k: int) -> list[dict[str, Any]]:
         q = _normalize(query_vec)
         response = self.client.table("kb_chunks").select("*").eq("kb_id", kb_id).execute()
         results = []
@@ -346,7 +344,7 @@ class SupabaseVectorStore(VectorStore):
         results.sort(key=lambda x: x["score"], reverse=True)
         return results[:top_k]
 
-    def search_keyword(self, kb_id: str, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
+    def search_keyword(self, kb_id: str, query: str, top_k: int = 5) -> list[dict[str, Any]]:
         try:
             # Try RPC for ranked full-text search
             response = self.client.rpc(
@@ -370,7 +368,7 @@ class SupabaseVectorStore(VectorStore):
             # Fallback: fetch all and score locally
             return self._local_keyword_search(kb_id, query, top_k)
 
-    def _local_keyword_search(self, kb_id: str, query: str, top_k: int) -> List[Dict[str, Any]]:
+    def _local_keyword_search(self, kb_id: str, query: str, top_k: int) -> list[dict[str, Any]]:
         response = self.client.table("kb_chunks").select("*").eq("kb_id", kb_id).execute()
         chunks = response.data or []
         scorer = KeywordScorer()
@@ -392,7 +390,7 @@ class SupabaseVectorStore(VectorStore):
     def delete_kb(self, kb_id: str) -> None:
         self.client.table("kb_chunks").delete().eq("kb_id", kb_id).execute()
 
-    def stats(self, kb_id: str) -> Dict[str, Any]:
+    def stats(self, kb_id: str) -> dict[str, Any]:
         response = self.client.table("kb_chunks").select("*", count="exact").eq("kb_id", kb_id).execute()
         count = response.count if response.count is not None else len(response.data or [])
         doc_ids = {row.get("doc_id") for row in (response.data or [])}
@@ -405,7 +403,7 @@ class SupabaseVectorStore(VectorStore):
 
 # === Factory ===============================================================
 
-def create_vector_store(root: Path, backend: Optional[str] = None) -> VectorStore:
+def create_vector_store(root: Path, backend: str | None = None) -> VectorStore:
     """Create a vector store. Prefers Supabase if configured."""
     if backend == "supabase" or (backend is None and os.environ.get("SUPABASE_URL")):
         url = os.environ.get("SUPABASE_URL")

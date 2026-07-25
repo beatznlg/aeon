@@ -17,15 +17,15 @@ Usage:
     answer = rag.chat(kb_id, prompt_id, {"question": "What is AEON?"})
 """
 
+import hashlib
+import json
 import os
 import re
-import json
-import time
-import hashlib
 import secrets
+import time
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Optional, Dict, List, Any, Tuple
-from dataclasses import dataclass, field, asdict
+from typing import Any
 
 import numpy as np
 import requests
@@ -34,10 +34,7 @@ from aeon_llm import get_llm_provider
 from aeon_vector_store import (
     VectorStore,
     create_vector_store,
-    _generate_id as _store_generate_id,
-    _now as _store_now,
 )
-
 
 # === helpers ==============================================================
 
@@ -53,7 +50,7 @@ def _slugify(name: str) -> str:
     return re.sub(r"[^a-z0-9_]+", "-", name.lower()).strip("-")[:50]
 
 
-def _render_template(template: str, variables: Dict[str, Any]) -> str:
+def _render_template(template: str, variables: dict[str, Any]) -> str:
     """Simple {{var}} templating."""
     def repl(m):
         key = m.group(1).strip()
@@ -61,7 +58,7 @@ def _render_template(template: str, variables: Dict[str, Any]) -> str:
     return re.sub(r"\{\{\s*(\w+)\s*\}\}", repl, template)
 
 
-def _chunk_text(text: str, chunk_size: int = 512, overlap: int = 64) -> List[str]:
+def _chunk_text(text: str, chunk_size: int = 512, overlap: int = 64) -> list[str]:
     """Split text into overlapping chunks by sentences, falling back to words."""
     # Normalize whitespace
     text = re.sub(r"\s+", " ", text).strip()
@@ -113,7 +110,7 @@ def _chunk_text(text: str, chunk_size: int = 512, overlap: int = 64) -> List[str
 # === Embedding backends ===================================================
 
 class Embedder:
-    def embed(self, texts: List[str]) -> List[List[float]]:
+    def embed(self, texts: list[str]) -> list[list[float]]:
         raise NotImplementedError
 
 
@@ -123,7 +120,7 @@ class StubEmbedder(Embedder):
     def __init__(self, dim: int = 384):
         self.dim = dim
 
-    def embed(self, texts: List[str]) -> List[List[float]]:
+    def embed(self, texts: list[str]) -> list[list[float]]:
         out = []
         for text in texts:
             seed = int(hashlib.sha256(text.encode()).hexdigest()[:16], 16)
@@ -140,7 +137,7 @@ class OpenAIEmbedder(Embedder):
         self.model = model
         self.base_url = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
 
-    def embed(self, texts: List[str]) -> List[List[float]]:
+    def embed(self, texts: list[str]) -> list[list[float]]:
         if not self.api_key:
             raise RuntimeError("OpenAI API key not configured")
         r = requests.post(
@@ -165,7 +162,7 @@ class HFEmbedder(Embedder):
         self.token = token or os.environ.get("HUGGINGFACE_TOKEN")
         self.model = model
 
-    def embed(self, texts: List[str]) -> List[List[float]]:
+    def embed(self, texts: list[str]) -> list[list[float]]:
         if not self.token:
             raise RuntimeError("HuggingFace token not configured")
         r = requests.post(
@@ -201,10 +198,10 @@ class PromptTemplate:
     name: str
     template: str
     system: str
-    variables: List[str]
+    variables: list[str]
     provider: str
     model: str
-    tags: List[str]
+    tags: list[str]
     version: int
     created_at: float
     updated_at: float
@@ -225,7 +222,7 @@ class PromptRegistry:
         self.index_file = self.prompts_dir / "index.json"
         self._index = self._load_index()
 
-    def _load_index(self) -> Dict[str, Any]:
+    def _load_index(self) -> dict[str, Any]:
         if self.index_file.exists():
             try:
                 return json.loads(self.index_file.read_text(encoding="utf-8"))
@@ -236,10 +233,10 @@ class PromptRegistry:
     def _save_index(self):
         self.index_file.write_text(json.dumps(self._index, indent=2, ensure_ascii=False), encoding="utf-8")
 
-    def _extract_vars(self, template: str) -> List[str]:
+    def _extract_vars(self, template: str) -> list[str]:
         return sorted(set(re.findall(r"\{\{\s*(\w+)\s*\}\}", template)))
 
-    def save_prompt(self, data: Dict[str, Any]) -> PromptTemplate:
+    def save_prompt(self, data: dict[str, Any]) -> PromptTemplate:
         prompt_id = data.get("id") or _slugify(data.get("name", "untitled")) or _generate_id()
         existing = self._index.get(prompt_id)
         version = 1
@@ -276,7 +273,7 @@ class PromptRegistry:
         self._save_index()
         return prompt
 
-    def get_prompt(self, prompt_id: str) -> Optional[PromptTemplate]:
+    def get_prompt(self, prompt_id: str) -> PromptTemplate | None:
         entry = self._index.get(prompt_id)
         if not entry:
             return None
@@ -296,10 +293,10 @@ class PromptRegistry:
         self._save_index()
         return True
 
-    def list_prompts(self) -> List[Dict[str, Any]]:
+    def list_prompts(self) -> list[dict[str, Any]]:
         return list(self._index.values())
 
-    def render(self, prompt_id: str, variables: Dict[str, Any]) -> Tuple[str, str]:
+    def render(self, prompt_id: str, variables: dict[str, Any]) -> tuple[str, str]:
         prompt = self.get_prompt(prompt_id)
         if not prompt:
             return "", ""
@@ -325,14 +322,14 @@ class KnowledgeBase:
 
 
 class KnowledgeBaseManager:
-    def __init__(self, root: Path, vector_store: Optional[VectorStore] = None):
+    def __init__(self, root: Path, vector_store: VectorStore | None = None):
         self.root = Path(root)
         self.kb_dir = self.root / "knowledge_bases"
         self.kb_dir.mkdir(parents=True, exist_ok=True)
         self._index = self._load_index()
         self._vector_store = vector_store or create_vector_store(root)
 
-    def _load_index(self) -> Dict[str, Any]:
+    def _load_index(self) -> dict[str, Any]:
         if (self.kb_dir / "index.json").exists():
             try:
                 return json.loads((self.kb_dir / "index.json").read_text(encoding="utf-8"))
@@ -343,7 +340,7 @@ class KnowledgeBaseManager:
     def _save_index(self):
         (self.kb_dir / "index.json").write_text(json.dumps(self._index, indent=2, ensure_ascii=False), encoding="utf-8")
 
-    def create_kb(self, data: Dict[str, Any]) -> KnowledgeBase:
+    def create_kb(self, data: dict[str, Any]) -> KnowledgeBase:
         kb_id = data.get("id") or _slugify(data.get("name", "kb")) or _generate_id()
         kb = KnowledgeBase(
             id=kb_id,
@@ -362,7 +359,7 @@ class KnowledgeBaseManager:
         self._save_index()
         return kb
 
-    def get_kb(self, kb_id: str) -> Optional[KnowledgeBase]:
+    def get_kb(self, kb_id: str) -> KnowledgeBase | None:
         entry = self._index.get(kb_id)
         if not entry:
             return None
@@ -378,10 +375,10 @@ class KnowledgeBaseManager:
         self._save_index()
         return True
 
-    def list_kbs(self) -> List[Dict[str, Any]]:
+    def list_kbs(self) -> list[dict[str, Any]]:
         return list(self._index.values())
 
-    def add_document(self, kb_id: str, doc_id: str, text: str, metadata: Dict[str, Any] = None) -> Dict[str, Any]:
+    def add_document(self, kb_id: str, doc_id: str, text: str, metadata: dict[str, Any] = None) -> dict[str, Any]:
         kb = self.get_kb(kb_id)
         if not kb:
             raise ValueError("knowledge base not found")
@@ -410,7 +407,7 @@ class KnowledgeBaseManager:
             f.write(json.dumps(doc_record, ensure_ascii=False) + "\n")
 
         chunk_records = []
-        for i, (chunk_text, vec) in enumerate(zip(chunks, embeddings)):
+        for i, (chunk_text, vec) in enumerate(zip(chunks, embeddings, strict=False)):
             rec = {
                 "id": _generate_id(),
                 "doc_id": doc_id,
@@ -431,7 +428,7 @@ class KnowledgeBaseManager:
         self._save_index()
         return {"doc_id": doc_id, "chunks": len(chunk_records), "preview": preview}
 
-    def query(self, kb_id: str, query: str, top_k: int = 5, mode: str = "hybrid") -> List[Dict[str, Any]]:
+    def query(self, kb_id: str, query: str, top_k: int = 5, mode: str = "hybrid") -> list[dict[str, Any]]:
         kb = self.get_kb(kb_id)
         if not kb:
             raise ValueError("knowledge base not found")
@@ -449,7 +446,7 @@ class KnowledgeBaseManager:
 
 # === RAG Orchestrator =====================================================
 
-    def stats(self, kb_id: str) -> Dict[str, Any]:
+    def stats(self, kb_id: str) -> dict[str, Any]:
         """Return stats from the vector store plus local index metadata."""
         kb = self.get_kb(kb_id)
         if not kb:
@@ -469,7 +466,7 @@ class RAGOrchestrator:
         self.prompts = PromptRegistry(root)
         self.kbs = KnowledgeBaseManager(root)
 
-    def chat(self, kb_id: Optional[str], prompt_id: Optional[str], variables: Dict[str, Any], query: str, top_k: int = 5) -> Dict[str, Any]:
+    def chat(self, kb_id: str | None, prompt_id: str | None, variables: dict[str, Any], query: str, top_k: int = 5) -> dict[str, Any]:
         """Render a prompt, retrieve context, call LLM."""
         # Retrieve context
         context_chunks = []
@@ -501,8 +498,8 @@ class RAGOrchestrator:
             "context_chunks": context_chunks,
         }
 
-    def list_prompts(self) -> List[Dict[str, Any]]:
+    def list_prompts(self) -> list[dict[str, Any]]:
         return self.prompts.list_prompts()
 
-    def list_kbs(self) -> List[Dict[str, Any]]:
+    def list_kbs(self) -> list[dict[str, Any]]:
         return self.kbs.list_kbs()

@@ -17,6 +17,7 @@ To deploy:
 """
 
 import gradio as gr
+
 from aeon import AeonKernel
 
 kernel = AeonKernel()

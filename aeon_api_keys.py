@@ -14,16 +14,13 @@ Usage:
         print(f"Authenticated as workspace {info.workspace_id}")
 """
 
-import os
-import re
-import json
 import hashlib
+import json
 import secrets
 import time
-from pathlib import Path
-from typing import Optional, Dict, List, Any, Tuple
 from dataclasses import dataclass, field
-
+from pathlib import Path
+from typing import Any
 
 # === constants =============================================================
 
@@ -68,14 +65,14 @@ class ApiKey:
     key_hash: str
     prefix: str               # display-only prefix e.g. "aeo_a1b2c3d4..."
     workspace_id: str
-    user_id: Optional[str] = None
+    user_id: str | None = None
     enabled: bool = True
     rate_limit_per_min: int = KEY_RATE_DEFAULT
     created_at: float = field(default_factory=_now)
-    last_used_at: Optional[float] = None
-    expires_at: Optional[float] = None  # None = never expires
+    last_used_at: float | None = None
+    expires_at: float | None = None  # None = never expires
 
-    def to_dict(self, include_hash: bool = False) -> Dict[str, Any]:
+    def to_dict(self, include_hash: bool = False) -> dict[str, Any]:
         data = {
             "id": self.id,
             "name": self.name,
@@ -93,7 +90,7 @@ class ApiKey:
         return data
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "ApiKey":
+    def from_dict(cls, data: dict[str, Any]) -> "ApiKey":
         return cls(
             id=data["id"],
             name=data.get("name", "Unnamed"),
@@ -130,8 +127,8 @@ class ApiKeyManager:
         self.keys_dir.mkdir(parents=True, exist_ok=True)
         self.keys_file = self.keys_dir / "keys.json"
         self.usage_file = self.keys_dir / "usage.jsonl"
-        self._keys: Dict[str, ApiKey] = {}  # key_hash -> ApiKey
-        self._rate_buckets: Dict[str, List[float]] = {}  # key_hash -> timestamps
+        self._keys: dict[str, ApiKey] = {}  # key_hash -> ApiKey
+        self._rate_buckets: dict[str, list[float]] = {}  # key_hash -> timestamps
         self._load()
 
     # ── Persistence ─────────────────────────────────────────────────────
@@ -172,10 +169,10 @@ class ApiKeyManager:
         self,
         name: str,
         workspace_id: str = "default",
-        user_id: Optional[str] = None,
+        user_id: str | None = None,
         rate_limit_per_min: int = KEY_RATE_DEFAULT,
-        expires_at: Optional[float] = None,
-    ) -> Tuple[ApiKey, str]:
+        expires_at: float | None = None,
+    ) -> tuple[ApiKey, str]:
         """Create a new API key and return (ApiKey, plaintext).
         The plaintext is only returned once — store it securely.
         """
@@ -209,7 +206,7 @@ class ApiKeyManager:
                 return True
         return False
 
-    def list_keys(self, workspace_id: Optional[str] = None) -> List[ApiKey]:
+    def list_keys(self, workspace_id: str | None = None) -> list[ApiKey]:
         keys = list(self._keys.values())
         if workspace_id:
             keys = [k for k in keys if k.workspace_id == workspace_id]
@@ -217,7 +214,7 @@ class ApiKeyManager:
         keys.sort(key=lambda k: k.created_at, reverse=True)
         return keys
 
-    def get_key_by_id(self, key_id: str) -> Optional[ApiKey]:
+    def get_key_by_id(self, key_id: str) -> ApiKey | None:
         for k in self._keys.values():
             if k.id == key_id:
                 return k
@@ -226,10 +223,10 @@ class ApiKeyManager:
     def update_key(
         self,
         key_id: str,
-        name: Optional[str] = None,
-        enabled: Optional[bool] = None,
-        rate_limit_per_min: Optional[int] = None,
-    ) -> Optional[ApiKey]:
+        name: str | None = None,
+        enabled: bool | None = None,
+        rate_limit_per_min: int | None = None,
+    ) -> ApiKey | None:
         key = self.get_key_by_id(key_id)
         if not key:
             return None
@@ -245,7 +242,7 @@ class ApiKeyManager:
 
     # ── Validation ──────────────────────────────────────────────────────
 
-    def validate_key(self, plaintext: str) -> Optional[ApiKey]:
+    def validate_key(self, plaintext: str) -> ApiKey | None:
         """Validate an API key string. Returns the ApiKey if valid, None otherwise."""
         key_hash = _hash_key(plaintext)
         key = self._keys.get(key_hash)
@@ -294,16 +291,16 @@ class ApiKeyManager:
 
     def get_usage_stats(
         self,
-        key_id: Optional[str] = None,
-        workspace_id: Optional[str] = None,
+        key_id: str | None = None,
+        workspace_id: str | None = None,
         days: int = 30,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Return usage statistics for keys, optionally filtered."""
         cutoff = _now() - (days * 24 * 3600)
         total_calls = 0
         errors = 0
-        by_key: Dict[str, Dict[str, Any]] = {}
-        by_endpoint: Dict[str, int] = {}
+        by_key: dict[str, dict[str, Any]] = {}
+        by_endpoint: dict[str, int] = {}
 
         if not self.usage_file.exists():
             return self._empty_stats(key_id, workspace_id, days)
@@ -361,7 +358,7 @@ class ApiKeyManager:
             "by_endpoint": dict(sorted(by_endpoint.items(), key=lambda x: -x[1])[:20]),
         }
 
-    def _empty_stats(self, key_id: Optional[str], workspace_id: Optional[str], days: int) -> Dict[str, Any]:
+    def _empty_stats(self, key_id: str | None, workspace_id: str | None, days: int) -> dict[str, Any]:
         return {
             "period_days": days,
             "workspace_id": workspace_id,

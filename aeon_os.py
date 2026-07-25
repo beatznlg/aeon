@@ -7,30 +7,26 @@
 #  - Designed for B2B SaaS, fully autonomous mode
 # ============================================================
 
-import os
-import json
-import time
+import contextlib
 import hashlib
+import json
+import os
+import time
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Optional, Dict, List, Any
-from dataclasses import dataclass, field, asdict
+from typing import Any
 
-from aeon_db import get_db, Database
+from aeon import (
+    ROOT as AEON_ROOT,
+)
 
 # Import the AEON kernel we already built
 from aeon import (
     ReflectiveAgent,
-    MemoryBundle,
-    GoalState,
-    Ledger,
-    ServiceRegistry,
-    BountyBoard,
     _register,
-    TOOLS,
     _safe_run,
-    ROOT as AEON_ROOT,
 )
-
+from aeon_db import Database, get_db
 
 # === OS root directory ====================================================
 OS_ROOT = Path(os.environ.get("AEON_OS_ROOT", str(AEON_ROOT) + "/os"))
@@ -48,19 +44,17 @@ class WorkspaceManager:
     auditability. File-system storage remains as the runtime state backend
     so existing agents keep working without a migration.
     """
-    def __init__(self, root: Path = OS_ROOT, db: Optional[Database] = None):
+    def __init__(self, root: Path = OS_ROOT, db: Database | None = None):
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
         self._db = db
         self._tenant = "default"
 
     @property
-    def db(self) -> Optional[Database]:
+    def db(self) -> Database | None:
         if self._db is None and os.environ.get("AEON_DATABASE_URL"):
-            try:
+            with contextlib.suppress(Exception):
                 self._db = get_db()
-            except Exception:
-                pass
         return self._db
 
     def _workspace_path(self, workspace_id: str) -> Path:
@@ -104,7 +98,7 @@ class WorkspaceManager:
             self.create(workspace_id)
         return self._workspace_path(workspace_id)
 
-    def list_workspaces(self) -> List[Dict[str, Any]]:
+    def list_workspaces(self) -> list[dict[str, Any]]:
         # Prefer DB when available
         if self.db:
             try:
@@ -147,8 +141,8 @@ class AppDefinition:
     category: str
     description: str
     icon: str
-    allowed_tools: List[str]
-    default_goals: List[Dict[str, Any]]
+    allowed_tools: list[str]
+    default_goals: list[dict[str, Any]]
     color: str = "#8b5cf6"
     status: str = "active"  # active, beta, planned
 
@@ -160,16 +154,16 @@ class AppRegistry:
     Each app defines its tools, goals, and UI color/icon metadata.
     """
     def __init__(self):
-        self.apps: Dict[str, AppDefinition] = {}
+        self.apps: dict[str, AppDefinition] = {}
         self._register_defaults()
 
     def register(self, app: AppDefinition):
         self.apps[app.id] = app
 
-    def get(self, app_id: str) -> Optional[AppDefinition]:
+    def get(self, app_id: str) -> AppDefinition | None:
         return self.apps.get(app_id)
 
-    def list_apps(self) -> List[Dict[str, Any]]:
+    def list_apps(self) -> list[dict[str, Any]]:
         return [asdict(a) for a in self.apps.values()]
 
     def _register_defaults(self):
@@ -457,7 +451,9 @@ def _tool_threat_lookup(args, root):
     if not indicator:
         return False, "missing indicator"
     # Use mock data + optionally Abuse.ch MalwareBazaar if API key present
-    import os, requests
+    import os
+
+    import requests
     api_key = os.environ.get("MALWAREBAZAAR_API_KEY")
     if api_key and len(indicator) in (32, 40, 64):
         try:
@@ -501,7 +497,7 @@ def _tool_vuln_scan(args, root):
                 data = r.json()
                 if data.get("vulnerabilities"):
                     return True, json.dumps(data["vulnerabilities"][0], ensure_ascii=False)[:1200]
-        except Exception as e:
+        except Exception:
             pass
         return True, json.dumps({
             "cve": cve,
@@ -522,7 +518,9 @@ def _tool_ip_reputation(args, root):
     ip = args.get("ip", "").strip()
     if not ip:
         return False, "missing ip"
-    import os, requests
+    import os
+
+    import requests
     key = os.environ.get("GREYNOISE_API_KEY")
     if key:
         try:
@@ -530,7 +528,7 @@ def _tool_ip_reputation(args, root):
                            headers={"key": key}, timeout=10)
             if r.status_code == 200:
                 return True, json.dumps(r.json(), ensure_ascii=False)[:1000]
-        except Exception as e:
+        except Exception:
             pass
     # Mock fallback
     h = hash(ip) % 10
@@ -1125,7 +1123,7 @@ def _tool_credit_scoring(args, root):
     app_id = str(args.get("applicant_id", "APP-200")).strip()
     income = float(args.get("income", 75000))
     debt = float(args.get("debt", 15000))
-    history = max(1, int(args.get("history_years", 5)))
+    max(1, int(args.get("history_years", 5)))
     h = hash(app_id) % 100
     dti = round(debt / max(income, 1), 3)
     score = 300 + (h % 550)  # 300-850 range
@@ -1409,7 +1407,7 @@ class AeonOS:
         self.root = Path(root)
         self.workspace_manager = WorkspaceManager(root)
         self.app_registry = AppRegistry()
-        self._agents: Dict[str, ReflectiveAgent] = {}
+        self._agents: dict[str, ReflectiveAgent] = {}
 
     def _agent_for(self, workspace_id: str) -> ReflectiveAgent:
         if workspace_id not in self._agents:
@@ -1422,7 +1420,7 @@ class AeonOS:
             self._agents[workspace_id] = ReflectiveAgent(path)
         return self._agents[workspace_id]
 
-    def install_app(self, workspace_id: str, app_id: str) -> Dict[str, Any]:
+    def install_app(self, workspace_id: str, app_id: str) -> dict[str, Any]:
         app = self.app_registry.get(app_id)
         if not app:
             return {"ok": False, "error": "unknown app"}
@@ -1437,17 +1435,15 @@ class AeonOS:
             agent.goals.add(g["title"], priority=g.get("priority", 5))
         return {"ok": True, "app_id": app_id, "installed_at": time.time()}
 
-    def list_installed_apps(self, workspace_id: str) -> List[Dict[str, Any]]:
+    def list_installed_apps(self, workspace_id: str) -> list[dict[str, Any]]:
         path = self.workspace_manager.get(workspace_id)
         apps = []
         for f in path.glob("app_*.json"):
-            try:
+            with contextlib.suppress(Exception):
                 apps.append(json.loads(f.read_text()))
-            except Exception:
-                pass
         return apps
 
-    def tick(self, workspace_id: str, app_id: str, query: str) -> Dict[str, Any]:
+    def tick(self, workspace_id: str, app_id: str, query: str) -> dict[str, Any]:
         app = self.app_registry.get(app_id)
         if not app:
             return {"ok": False, "error": "unknown app"}
@@ -1463,7 +1459,7 @@ class AeonOS:
             "result": result,
         }
 
-    def vitals(self, workspace_id: str) -> Dict[str, Any]:
+    def vitals(self, workspace_id: str) -> dict[str, Any]:
         agent = self._agent_for(workspace_id)
         return {
             "ok": True,

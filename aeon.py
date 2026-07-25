@@ -17,7 +17,7 @@ def _pip(spec):
     n = spec.split("==")[0].replace("-", "_")
     if _have(n):
         print("  already " + spec); return True
-    import subprocess, sys
+    import subprocess
     try:
         subprocess.run([sys.executable, "-m", "pip", "install", "-q", spec],
                        check=True, stdout=subprocess.DEVNULL,
@@ -32,11 +32,17 @@ REQ = ["flask>=3.0", "transformers==4.44.2", "sentence-transformers==3.0.1",
 print("checking deps:")
 for s in REQ: _pip(s)
 
-import os, sys, time, json, hashlib, re, signal
+import hashlib
+import json
+import os
+import re
+import signal
+import sys
+import time
 from collections import deque
+from dataclasses import dataclass
 from pathlib import Path
-from dataclasses import dataclass, field
-from typing import Optional, Dict, List, Tuple, Any
+
 import numpy as np
 import requests
 
@@ -997,7 +1003,7 @@ class ReflectiveAgent:
 
     def decide(self, reflection):
         """Simple rule-based decision layer."""
-        vitals = reflection["vitals"]
+        reflection["vitals"]
         top = reflection["top_goal"]
 
         # Cooldown: do not evolve too frequently
@@ -1265,7 +1271,15 @@ def _test():
     print("  PASS")
 
     print("self-test 13: pluggable LLM provider bridge")
-    from aeon_llm import get_llm_provider, StubProvider, OpenAIProvider, AnthropicProvider, OllamaProvider, HFInferenceProvider, QwenLocalProvider
+    from aeon_llm import (
+        AnthropicProvider,
+        HFInferenceProvider,
+        OllamaProvider,
+        OpenAIProvider,
+        QwenLocalProvider,
+        StubProvider,
+        get_llm_provider,
+    )
     assert isinstance(get_llm_provider("stub"), StubProvider)
     assert isinstance(get_llm_provider("openai"), OpenAIProvider)
     assert isinstance(get_llm_provider("anthropic"), AnthropicProvider)

@@ -10,19 +10,19 @@ Usage:
     result = mgr.run(integration_id, endpoint="user/repos", method="GET")
 """
 
-import os
-import json
-import time
-import hmac
+import contextlib
 import hashlib
+import hmac
+import json
+import os
 import secrets as _secrets
-from pathlib import Path
-from typing import Optional, Dict, List, Any
-from dataclasses import dataclass, field, asdict
+import time
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
 
 import requests
-
 
 # === models ==============================================================
 
@@ -33,13 +33,13 @@ class IntegrationConfig:
     type: str
     base_url: str = ""
     enabled: bool = True
-    secrets: Dict[str, Any] = field(default_factory=dict)
-    options: Dict[str, Any] = field(default_factory=dict)
-    webhook_secret: Optional[str] = None
+    secrets: dict[str, Any] = field(default_factory=dict)
+    options: dict[str, Any] = field(default_factory=dict)
+    webhook_secret: str | None = None
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
 
-    def to_dict(self, mask: bool = False) -> Dict[str, Any]:
+    def to_dict(self, mask: bool = False) -> dict[str, Any]:
         data = {
             "id": self.id,
             "name": self.name,
@@ -55,7 +55,7 @@ class IntegrationConfig:
         return data
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "IntegrationConfig":
+    def from_dict(cls, data: dict[str, Any]) -> "IntegrationConfig":
         return cls(
             id=data["id"],
             name=data["name"],
@@ -75,11 +75,11 @@ class WebhookDelivery:
     id: str
     integration_id: str
     timestamp: float
-    payload: Dict[str, Any]
+    payload: dict[str, Any]
     response_status: int = 0
-    error_message: Optional[str] = None
+    error_message: str | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "id": self.id,
             "integration_id": self.integration_id,
@@ -90,7 +90,7 @@ class WebhookDelivery:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "WebhookDelivery":
+    def from_dict(cls, data: dict[str, Any]) -> "WebhookDelivery":
         return cls(
             id=data["id"],
             integration_id=data["integration_id"],
@@ -103,7 +103,7 @@ class WebhookDelivery:
 
 # === helpers =============================================================
 
-def _mask_secrets(secrets: Dict[str, Any]) -> Dict[str, Any]:
+def _mask_secrets(secrets: dict[str, Any]) -> dict[str, Any]:
     masked = {}
     for k, v in secrets.items():
         if isinstance(v, dict):
@@ -126,12 +126,12 @@ class BaseAdapter(ABC):
         self.config = config
 
     @abstractmethod
-    def run(self, endpoint: str = "", method: str = "GET", payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def run(self, endpoint: str = "", method: str = "GET", payload: dict[str, Any] | None = None) -> dict[str, Any]:
         pass
 
 
 class RestAdapter(BaseAdapter):
-    def run(self, endpoint: str = "", method: str = "GET", payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def run(self, endpoint: str = "", method: str = "GET", payload: dict[str, Any] | None = None) -> dict[str, Any]:
         url = (self.config.base_url or "").rstrip("/")
         if endpoint:
             url = f"{url}/{endpoint.lstrip('/')}"
@@ -150,7 +150,7 @@ class RestAdapter(BaseAdapter):
 
 
 class SupabaseAdapter(BaseAdapter):
-    def run(self, endpoint: str = "", method: str = "GET", payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def run(self, endpoint: str = "", method: str = "GET", payload: dict[str, Any] | None = None) -> dict[str, Any]:
         base = self.config.base_url or os.environ.get("SUPABASE_URL", "")
         anon = self.config.secrets.get("anon_key") or os.environ.get("SUPABASE_ANON_KEY", "")
         svc = self.config.secrets.get("service_role_key") or os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
@@ -171,7 +171,7 @@ class SupabaseAdapter(BaseAdapter):
 
 
 class GitHubAdapter(BaseAdapter):
-    def run(self, endpoint: str = "", method: str = "GET", payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def run(self, endpoint: str = "", method: str = "GET", payload: dict[str, Any] | None = None) -> dict[str, Any]:
         token = self.config.secrets.get("token") or os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN", "")
         url = endpoint or "https://api.github.com/user"
         headers = {
@@ -189,13 +189,10 @@ class GitHubAdapter(BaseAdapter):
 
 
 class HuggingFaceAdapter(BaseAdapter):
-    def run(self, endpoint: str = "", method: str = "GET", payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def run(self, endpoint: str = "", method: str = "GET", payload: dict[str, Any] | None = None) -> dict[str, Any]:
         token = self.config.secrets.get("token") or os.environ.get("HUGGINGFACE_TOKEN", "")
         model = self.config.options.get("model", "meta-llama/Llama-3.1-8B-Instruct")
-        if endpoint:
-            url = endpoint
-        else:
-            url = f"https://api-inference.huggingface.co/models/{model}/v1/chat/completions"
+        url = endpoint or f"https://api-inference.huggingface.co/models/{model}/v1/chat/completions"
         headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
         try:
             if method.upper() == "GET":
@@ -208,7 +205,7 @@ class HuggingFaceAdapter(BaseAdapter):
 
 
 class SlackAdapter(BaseAdapter):
-    def run(self, endpoint: str = "", method: str = "GET", payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def run(self, endpoint: str = "", method: str = "GET", payload: dict[str, Any] | None = None) -> dict[str, Any]:
         token = self.config.secrets.get("token") or os.environ.get("SLACK_BOT_TOKEN", "")
         channel = self.config.options.get("channel", "#general")
         if not token and not endpoint:
@@ -307,7 +304,7 @@ INTEGRATION_CATALOG = [
 ]
 
 
-def get_integration_catalog() -> List[Dict[str, Any]]:
+def get_integration_catalog() -> list[dict[str, Any]]:
     """Return the catalog of available integration types with metadata."""
     return list(INTEGRATION_CATALOG)
 
@@ -340,8 +337,8 @@ class IntegrationManager:
         self.config_dir.mkdir(parents=True, exist_ok=True)
         self.configs_path = self.config_dir / "configs.json"
         self.deliveries_path = self.config_dir / "deliveries.json"
-        self._configs: Dict[str, IntegrationConfig] = {}
-        self._deliveries: List[WebhookDelivery] = []
+        self._configs: dict[str, IntegrationConfig] = {}
+        self._deliveries: list[WebhookDelivery] = []
         self._load()
 
     def _load(self) -> None:
@@ -360,10 +357,8 @@ class IntegrationManager:
             try:
                 data = json.loads(self.deliveries_path.read_text())
                 for item in data:
-                    try:
+                    with contextlib.suppress(Exception):
                         self._deliveries.append(WebhookDelivery.from_dict(item))
-                    except Exception:
-                        pass
             except Exception:
                 pass
 
@@ -373,13 +368,13 @@ class IntegrationManager:
     def _save_deliveries(self) -> None:
         self.deliveries_path.write_text(json.dumps([d.to_dict() for d in self._deliveries[-100:]], indent=2))
 
-    def list_integrations(self, mask: bool = True) -> List[Dict[str, Any]]:
+    def list_integrations(self, mask: bool = True) -> list[dict[str, Any]]:
         return [c.to_dict(mask=mask) for c in self._configs.values()]
 
-    def get(self, integration_id: str) -> Optional[IntegrationConfig]:
+    def get(self, integration_id: str) -> IntegrationConfig | None:
         return self._configs.get(integration_id)
 
-    def save(self, data: Dict[str, Any], integration_id: Optional[str] = None) -> IntegrationConfig:
+    def save(self, data: dict[str, Any], integration_id: str | None = None) -> IntegrationConfig:
         if integration_id and integration_id in self._configs:
             cfg = self._configs[integration_id]
             cfg.name = data.get("name", cfg.name)
@@ -417,7 +412,7 @@ class IntegrationManager:
             return True
         return False
 
-    def run(self, integration_id: str, endpoint: str = "", method: str = "GET", payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def run(self, integration_id: str, endpoint: str = "", method: str = "GET", payload: dict[str, Any] | None = None) -> dict[str, Any]:
         cfg = self._configs.get(integration_id)
         if not cfg:
             return {"ok": False, "error": "integration not found"}
@@ -426,10 +421,10 @@ class IntegrationManager:
         adapter = get_adapter(cfg)
         return adapter.run(endpoint=endpoint, method=method, payload=payload)
 
-    def proxy(self, integration_id: str, endpoint: str, method: str, payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def proxy(self, integration_id: str, endpoint: str, method: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
         return self.run(integration_id, endpoint=endpoint, method=method, payload=payload)
 
-    def verify_webhook(self, integration_id: str, signature_header: Optional[str], payload: bytes, algo: str = "sha256") -> bool:
+    def verify_webhook(self, integration_id: str, signature_header: str | None, payload: bytes, algo: str = "sha256") -> bool:
         cfg = self._configs.get(integration_id)
         if not cfg or not cfg.webhook_secret:
             return True  # no secret configured, accept all
@@ -446,5 +441,5 @@ class IntegrationManager:
         self._deliveries.append(delivery)
         self._save_deliveries()
 
-    def list_deliveries(self, limit: int = 100) -> List[Dict[str, Any]]:
+    def list_deliveries(self, limit: int = 100) -> list[dict[str, Any]]:
         return [d.to_dict() for d in self._deliveries[-limit:][::-1]]

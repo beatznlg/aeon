@@ -13,17 +13,16 @@ Env:
   ADMIN_PASSWORD_HASH    Fallback admin password hash (development only).
 """
 
-import os
 import hmac
-import hashlib
-from datetime import datetime, timezone, timedelta
+import os
+from collections.abc import Callable
+from datetime import datetime, timedelta, timezone
 from functools import wraps
-from typing import Optional, Dict, Any, Callable
+from typing import Any
 
 import jwt
-from werkzeug.security import generate_password_hash, check_password_hash
-from flask import request, g, jsonify
-
+from flask import g, jsonify, request
+from werkzeug.security import check_password_hash
 
 # === Configuration ============================================================
 
@@ -50,14 +49,14 @@ ROLE_HIERARCHY = {
 }
 
 
-def has_role(user_role: Optional[str], required: str) -> bool:
+def has_role(user_role: str | None, required: str) -> bool:
     """Return True if user_role is at least required in the hierarchy."""
     if not user_role:
         return False
     return ROLE_HIERARCHY.get(user_role.upper(), 0) >= ROLE_HIERARCHY.get(required.upper(), 0)
 
 
-def can_access_workspace(user_id: Optional[str], workspace_id: Optional[str]) -> bool:
+def can_access_workspace(user_id: str | None, workspace_id: str | None) -> bool:
     """Check workspace membership using the DB if available; otherwise trust headers in dev."""
     if not user_id or not workspace_id:
         return False
@@ -92,7 +91,7 @@ class _FallbackAdmin:
 
 # === Token helpers ============================================================
 
-def create_access_token(user_id: str, email: str, role: str, workspace_id: Optional[str] = None, extra: Optional[Dict[str, Any]] = None) -> str:
+def create_access_token(user_id: str, email: str, role: str, workspace_id: str | None = None, extra: dict[str, Any] | None = None) -> str:
     """Create a short-lived JWT access token."""
     now = datetime.now(timezone.utc)
     payload = {
@@ -109,7 +108,7 @@ def create_access_token(user_id: str, email: str, role: str, workspace_id: Optio
     return jwt.encode(payload, JWT_SECRET, algorithm="HS256")
 
 
-def decode_token(token: str) -> Optional[Dict[str, Any]]:
+def decode_token(token: str) -> dict[str, Any] | None:
     """Decode and validate a JWT. Returns None if invalid/expired."""
     try:
         return jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
@@ -117,7 +116,7 @@ def decode_token(token: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-def get_auth_token_from_request() -> Optional[str]:
+def get_auth_token_from_request() -> str | None:
     """Extract the bearer token from the Authorization header."""
     auth = request.headers.get("Authorization", "")
     if auth.lower().startswith("bearer "):
@@ -125,7 +124,7 @@ def get_auth_token_from_request() -> Optional[str]:
     return None
 
 
-def get_current_user_context() -> Optional[Dict[str, Any]]:
+def get_current_user_context() -> dict[str, Any] | None:
     """
     Resolve the current user from the request.
     Priority:
