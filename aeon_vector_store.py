@@ -17,6 +17,7 @@ import json
 import math
 import os
 import re
+import threading
 from abc import ABC, abstractmethod
 from collections import Counter
 from pathlib import Path
@@ -175,12 +176,21 @@ def reciprocal_rank_fusion(
 # === Disk Vector Store =====================================================
 
 class DiskVectorStore(VectorStore):
-    """JSONL-backed vector store with in-memory search."""
+    """JSONL-backed vector store with in-memory search and caching."""
 
     def __init__(self, root: Path):
         self.root = Path(root)
         self.kb_dir = self.root / "knowledge_bases"
         self.kb_dir.mkdir(parents=True, exist_ok=True)
+        # In-memory cache of chunks + keyword scorer per kb_id.
+        self._chunk_cache: dict[str, list[dict[str, Any]]] = {}
+        self._scorer_cache: dict[str, KeywordScorer] = {}
+        self._lock = threading.RLock()
+
+    def _invalidate_cache(self, kb_id: str) -> None:
+        with self._lock:
+            self._chunk_cache.pop(kb_id, None)
+            self._scorer_cache.pop(kb_id, None)
 
     def _chunks_file(self, kb_id: str) -> Path:
         kb_path = self.kb_dir / kb_id
@@ -201,15 +211,41 @@ class DiskVectorStore(VectorStore):
                 except Exception:
                     continue
 
+    def _load_chunks(self, kb_id: str) -> list[dict[str, Any]]:
+        """Load chunks from memory cache or disk."""
+        with self._lock:
+            chunks = self._chunk_cache.get(kb_id)
+            if chunks is not None:
+                return chunks
+        chunks = list(self._iter_chunks(kb_id))
+        with self._lock:
+            self._chunk_cache[kb_id] = chunks
+        return chunks
+
+    def _get_scorer(self, kb_id: str) -> KeywordScorer:
+        """Return a cached KeywordScorer, building it lazily."""
+        with self._lock:
+            scorer = self._scorer_cache.get(kb_id)
+            if scorer is not None:
+                return scorer
+        chunks = self._load_chunks(kb_id)
+        scorer = KeywordScorer()
+        scorer.index(chunks)
+        with self._lock:
+            self._scorer_cache[kb_id] = scorer
+        return scorer
+
     def add_chunks(self, kb_id: str, doc_id: str, chunks: list[dict[str, Any]]) -> None:
         chunks_file = self._chunks_file(kb_id)
         with chunks_file.open("a", encoding="utf-8") as f:
             for chunk in chunks:
                 f.write(json.dumps(chunk, ensure_ascii=False) + "\n")
+        # Invalidate in-memory indexes so the next search picks up new chunks.
+        self._invalidate_cache(kb_id)
 
     def search_vector(self, kb_id: str, query_vec: list[float], top_k: int = 5) -> list[dict[str, Any]]:
         q = _normalize(query_vec)
-        chunks = list(self._iter_chunks(kb_id))
+        chunks = self._load_chunks(kb_id)
         if not chunks:
             return []
 
@@ -231,10 +267,22 @@ class DiskVectorStore(VectorStore):
         return scored[:top_k]
 
     def search_keyword(self, kb_id: str, query: str, top_k: int = 5) -> list[dict[str, Any]]:
-        chunks = list(self._iter_chunks(kb_id))
-        scorer = KeywordScorer()
-        scorer.index(chunks)
+        chunks = self._load_chunks(kb_id)
+        scorer = self._get_scorer(kb_id)
         scores = scorer.score(query)
+
+        by_id = {rec["id"]: rec for rec in chunks}
+        results = []
+        for chunk_id, score in scores[:top_k]:
+            rec = by_id.get(chunk_id)
+            if rec:
+                results.append({
+                    "id": rec["id"],
+                    "doc_id": rec.get("doc_id"),
+                    "text": rec.get("text", ""),
+                    "score": round(score, 6),
+                })
+        return results
 
         # Build lookup for text
         by_id = {rec["id"]: rec for rec in chunks}
@@ -255,9 +303,10 @@ class DiskVectorStore(VectorStore):
         kb_path = self.kb_dir / kb_id
         if kb_path.exists():
             shutil.rmtree(kb_path, ignore_errors=True)
+        self._invalidate_cache(kb_id)
 
     def stats(self, kb_id: str) -> dict[str, Any]:
-        chunks = list(self._iter_chunks(kb_id))
+        chunks = self._load_chunks(kb_id)
         doc_ids = {rec.get("doc_id") for rec in chunks}
         return {
             "backend": "disk",

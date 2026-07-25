@@ -191,6 +191,9 @@ class FakeGovernanceManager:
     def set_retention_policy(self, workspace_id, retention_days, action):
         return {"ok": True}
 
+    def shutdown(self):
+        pass
+
 
 class FakeApiKeyManager:
     def __init__(self, root=None):

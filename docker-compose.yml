@@ -27,9 +27,28 @@ networks:
 volumes:
   postgres-data:
   aeon-state:
+  redis-data:
 
 # ─── Services ──────────────────────────────────────────────────────────────
 services:
+
+  # ── Redis Cache ────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: aeon-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - aeon-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
 
   # ── Postgres Database ──────────────────────────────────────────────────
   postgres:
@@ -70,6 +89,7 @@ services:
       AEON_LLM_PROVIDER: "${AEON_LLM_PROVIDER:-stub}"
       AEON_LOG_LEVEL: "${AEON_LOG_LEVEL:-INFO}"
       AEON_DATABASE_URL: "postgresql://aeon:${AEON_DB_PASSWORD:-aeon_dev_pass}@postgres:5432/aeon"
+      AEON_REDIS_URL: "redis://redis:6379/0"
       # LLM provider keys (optional — set in .env)
       OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
       ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
@@ -85,6 +105,8 @@ services:
       - aeon-net
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/health"]

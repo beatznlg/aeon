@@ -8,6 +8,23 @@ import os
 import time
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
+# Shared session with connection pooling and retries for all LLM HTTP calls.
+_SESSION = requests.Session()
+_ADAPTER = HTTPAdapter(
+    pool_connections=10,
+    pool_maxsize=20,
+    max_retries=Retry(
+        total=3,
+        backoff_factor=0.5,
+        status_forcelist=(429, 500, 502, 503, 504),
+        allowed_methods=("POST", "GET"),
+    ),
+)
+_SESSION.mount("https://", _ADAPTER)
+_SESSION.mount("http://", _ADAPTER)
 
 
 class LLMProvider:
@@ -49,7 +66,7 @@ class OpenAIProvider(LLMProvider):
                 messages.append({"role": "system", "content": system})
             messages.append({"role": "user", "content": prompt})
             t0 = time.time()
-            r = requests.post(
+            r = _SESSION.post(
                 f"{self.base_url}/chat/completions",
                 headers={
                     "Authorization": f"Bearer {self.api_key}",
@@ -96,7 +113,7 @@ class AnthropicProvider(LLMProvider):
                     "wallclock_s": 0.0, "backend": "anthropic_error"}
         try:
             t0 = time.time()
-            r = requests.post(
+            r = _SESSION.post(
                 f"{self.base_url}/v1/messages",
                 headers={
                     "x-api-key": self.api_key,
@@ -144,7 +161,7 @@ class OllamaProvider(LLMProvider):
     def generate(self, prompt: str, system: str = None, max_new_tokens: int = 512) -> dict:
         try:
             t0 = time.time()
-            r = requests.post(
+            r = _SESSION.post(
                 f"{self.base_url}/api/generate",
                 json={
                     "model": self.model,
@@ -187,7 +204,7 @@ class HFInferenceProvider(LLMProvider):
             t0 = time.time()
             # Use chat template if available; otherwise simple text input
             payload = {"inputs": prompt, "parameters": {"max_new_tokens": max_new_tokens}}
-            r = requests.post(
+            r = _SESSION.post(
                 f"https://api-inference.huggingface.co/models/{self.model}",
                 headers={"Authorization": f"Bearer {self.token}"},
                 json=payload,

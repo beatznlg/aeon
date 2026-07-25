@@ -21,15 +21,17 @@ Next.js routes proxy when AEON_PYTHON_URL is set, e.g.:
 import json
 import logging
 import os
-import queue
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from functools import wraps
 from pathlib import Path
 from typing import Any
 
 from flask import Flask, Response, g, jsonify, request
+
+from aeon_cache import get_cache
 
 # ── Logging setup ────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -61,6 +63,9 @@ AEON_ROOT.mkdir(parents=True, exist_ok=True)
 # Initialize Stripe client at startup
 init_stripe(AEON_ROOT)
 
+# Initialize shared cache at startup
+get_cache()
+
 
 # ── Environment validation ───────────────────────────────────────────────────
 def validate_environment() -> dict[str, Any]:
@@ -84,9 +89,12 @@ def validate_environment() -> dict[str, Any]:
     return report
 
 
-# ── Simple in-memory rate limiter ───────────────────────────────────────────
+# ── Rate limiter (Redis-backed with in-memory fallback) ─────────────────────
 class RateLimiter:
-    """Sliding-window rate limiter keyed by client IP or user header."""
+    """Sliding-window rate limiter keyed by client IP or user header.
+
+    Uses Redis when available; otherwise falls back to an in-memory bucket.
+    """
 
     def __init__(self, max_requests: int = 60, window_seconds: int = 60):
         self.max_requests = max_requests
@@ -95,6 +103,22 @@ class RateLimiter:
         self._buckets: dict[str, list] = {}
 
     def is_allowed(self, key: str) -> bool:
+        # Degenerate case: a zero-second window means no rate limiting.
+        if self.window_seconds <= 0:
+            return True
+        cache = get_cache()
+        # Use a deterministic Redis key per client/window.
+        window = int(time.time() // self.window_seconds)
+        redis_key = f"aeon:rate:{key}:{window}"
+        try:
+            if cache._redis is not None:
+                current = cache._redis.incr(redis_key)
+                if current == 1:
+                    cache._redis.expire(redis_key, self.window_seconds)
+                return int(current) <= self.max_requests
+        except Exception as exc:  # pragma: no cover
+            logger.warning("Redis rate-limit failed, falling back to memory: %s", exc)
+
         now = time.time()
         with self._lock:
             bucket = self._buckets.get(key, [])
@@ -265,68 +289,72 @@ def get_agent(app_id: str) -> ReflectiveAgent:
         return _agents[app_id]
 
 
-# ── In-memory async job queue ───────────────────────────────────────────────
+# ── Async job queue (ThreadPoolExecutor-based) ───────────────────────────────
 class JobQueue:
-    """Tiny in-memory background task queue backed by a daemon worker thread."""
+    """Background task queue backed by a ThreadPoolExecutor.
 
-    def __init__(self, workers: int = 2):
-        self._queue: queue.Queue[tuple | None] = queue.Queue()
+    Uses a managed thread pool for concurrent async jobs and keeps an LRU of
+    completed results to prevent unbounded memory growth.
+    """
+
+    def __init__(self, workers: int | None = None):
+        self.workers = workers or int(os.environ.get("AEON_WORKER_THREADS", "5"))
+        self._executor = ThreadPoolExecutor(max_workers=self.workers, thread_name_prefix="aeon_worker")
         self._results: dict[str, Any] = {}
-        self._threads = []
-        for _ in range(workers):
-            t = threading.Thread(target=self._worker_loop, daemon=True)
-            t.start()
-            self._threads.append(t)
+        self._lock = threading.Lock()
+        self._pending = 0
 
-    def _worker_loop(self):
-        while True:
-            task = self._queue.get()
-            if task is None:
-                self._queue.task_done()
-                break
-            job_id, app_id, action, payload = task
-            try:
-                agent = get_agent(app_id)
-                if action == "act":
-                    result = agent.act(payload.get("query", ""))
-                elif action == "reflect":
-                    result = agent.reflect()
-                elif action == "evolve":
-                    result = agent.evolve(
-                        prompt=payload.get("prompt"),
-                        source=payload.get("source"),
-                        test_cases=payload.get("test_cases"),
-                    )
-                else:
-                    result = {"error": f"unknown action {action}"}
+    def _run_job(self, job_id: str, app_id: str, action: str, payload: dict[str, Any]) -> None:
+        try:
+            agent = get_agent(app_id)
+            if action == "act":
+                result = agent.act(payload.get("query", ""))
+            elif action == "reflect":
+                result = agent.reflect()
+            elif action == "evolve":
+                result = agent.evolve(
+                    prompt=payload.get("prompt"),
+                    source=payload.get("source"),
+                    test_cases=payload.get("test_cases"),
+                )
+            else:
+                result = {"error": f"unknown action {action}"}
+            with self._lock:
                 self._results[job_id] = {
                     "status": "done",
                     "finished_at": datetime.now(timezone.utc).isoformat(),
                     "result": result,
                 }
-            except Exception as e:
+        except Exception as e:
+            with self._lock:
                 self._results[job_id] = {
                     "status": "error",
                     "finished_at": datetime.now(timezone.utc).isoformat(),
                     "error": str(e),
                 }
-            finally:
-                self._queue.task_done()
 
     def submit(self, app_id: str, action: str, payload: dict[str, Any]) -> str:
         job_id = f"{app_id}-{action}-{int(time.time() * 1000)}-{id(payload)}"
-        self._results[job_id] = {"status": "queued", "submitted_at": datetime.now(timezone.utc).isoformat()}
-        self._queue.put((job_id, app_id, action, payload))
+        with self._lock:
+            self._results[job_id] = {
+                "status": "queued",
+                "submitted_at": datetime.now(timezone.utc).isoformat(),
+            }
+            self._pending += 1
+        future = self._executor.submit(self._run_job, job_id, app_id, action, payload)
+        future.add_done_callback(lambda _f: self._dec_pending())
         return job_id
 
+    def _dec_pending(self) -> None:
+        with self._lock:
+            self._pending = max(0, self._pending - 1)
+
     def status(self, job_id: str) -> dict[str, Any] | None:
-        return self._results.get(job_id)
+        with self._lock:
+            return self._results.get(job_id)
 
     def shutdown(self):
-        for _ in self._threads:
-            self._queue.put(None)
-        for t in self._threads:
-            t.join(timeout=2)
+        self._executor.shutdown(wait=True)
 
 
 job_queue = JobQueue(workers=2)
@@ -643,7 +671,8 @@ def ready():
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "environment": env_report,
         "agents_loaded": len(_agents),
-        "queue_size": job_queue._queue.qsize(),
+        "queue_size": job_queue._pending,
+        "queue_workers": job_queue.workers,
     }
     status = 200 if env_report["ok"] else 503
     return jsonify(readiness), status

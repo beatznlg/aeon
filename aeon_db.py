@@ -13,6 +13,7 @@ Env:
 import os
 import uuid
 from datetime import datetime, timezone
+from typing import Any
 
 from sqlalchemy import (
     JSON,
@@ -26,6 +27,7 @@ from sqlalchemy import (
     create_engine,
 )
 from sqlalchemy.orm import Session, declarative_base, relationship, sessionmaker
+from sqlalchemy.pool import NullPool, QueuePool
 
 Base = declarative_base()
 
@@ -132,12 +134,33 @@ def get_database_url() -> str:
 
 
 class Database:
-    """Thin wrapper around SQLAlchemy engine and session factory."""
+    """Thin wrapper around SQLAlchemy engine and session factory.
+
+    Configures connection pooling for Postgres (QueuePool) and keeps a
+    simple NullPool for SQLite to avoid threading issues in dev/test.
+    """
 
     def __init__(self, url: str | None = None):
         self.url = url or get_database_url()
-        self.engine = create_engine(self.url, future=True)
+        self.engine = create_engine(
+            self.url,
+            future=True,
+            **self._engine_kwargs(self.url),
+        )
         self.SessionLocal = sessionmaker(bind=self.engine, expire_on_commit=False)
+
+    @staticmethod
+    def _engine_kwargs(url: str) -> dict[str, Any]:
+        """Return engine kwargs tuned for the database dialect."""
+        if url.startswith("sqlite") or url.startswith("file:"):
+            return {"poolclass": NullPool}
+        return {
+            "poolclass": QueuePool,
+            "pool_size": int(os.environ.get("AEON_DB_POOL_SIZE", "10")),
+            "max_overflow": int(os.environ.get("AEON_DB_MAX_OVERFLOW", "20")),
+            "pool_pre_ping": True,
+            "pool_recycle": int(os.environ.get("AEON_DB_POOL_RECYCLE", "1800")),
+        }
 
     def create_all(self):
         Base.metadata.create_all(self.engine)

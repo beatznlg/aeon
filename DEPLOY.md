@@ -157,6 +157,7 @@ vercel --local-config vercel.backend.json --prod
 | **Background jobs** | `JobQueue` threads are created per-request but killed when the function returns. Async `/jobs/<id>` polling will not work reliably. |
 | **Function size** | `torch`, `transformers`, and `sentence-transformers` can exceed Vercel's serverless function size limits. Consider trimming `requirements.txt` or using external LLM APIs only. |
 | **Timeouts** | `maxDuration` is set to 60 s in `vercel.backend.json`. This requires Vercel Pro; the free tier is much shorter. |
+| **Redis** | Optional. The backend falls back to in-memory caching if `AEON_REDIS_URL` is unset. |
 
 ### 2.5 Connect the Frontend
 
@@ -268,7 +269,26 @@ scrape_configs:
 
 ---
 
-## 8. CI/CD
+## 8. Performance & Scalability (Phase 12)
+
+AEON OS now includes several performance improvements out of the box:
+
+| Area | Improvement |
+|---|---|
+| **Database** | SQLAlchemy `QueuePool` with `pool_pre_ping` and configurable pool size (`AEON_DB_POOL_SIZE`, `AEON_DB_MAX_OVERFLOW`). |
+| **LLM HTTP calls** | Shared `requests.Session()` with connection pooling and retries for OpenAI, Anthropic, Ollama, and Hugging Face. |
+| **Caching** | Optional Redis-backed cache (`AEON_REDIS_URL`) with automatic in-memory fallback. Used by rate limiting and available for app-level caching. |
+| **Vector search** | `DiskVectorStore` caches chunk lists and `KeywordScorer` indexes in memory, avoiding disk re-reads and rebuilds on every search. |
+| **Background jobs** | `ThreadPoolExecutor`-backed job queue with configurable worker count (`AEON_WORKER_THREADS`). |
+| **Metrics** | Prometheus-compatible metrics at `/metrics`, plus `/health` and `/ready` probes. |
+
+### Optional Redis service
+
+For self-hosted deployments, Redis is included in `docker-compose.yml` and auto-wired via `AEON_REDIS_URL`. If you deploy to Railway/Vercel, you can optionally provision a Redis service and set `AEON_REDIS_URL` to enable distributed rate limiting and caching.
+
+---
+
+## 9. CI/CD
 
 Existing GitHub Actions workflows handle deploys:
 
@@ -277,5 +297,6 @@ Existing GitHub Actions workflows handle deploys:
 | `docker-ci.yml` | push/PR to `main` | Lint, typecheck, build Docker images |
 | `docker-release.yml` | tag `v*.*.*` | Push multi-arch images to GHCR |
 | `vercel-deploy.yml` | push/PR to `main` | Deploy frontend to Vercel |
+| `quality-gate.yml` | push/PR to `main` | Run pytest and enforce `ruff` lint on `aeon*.py` |
 
 For Railway, you can also enable **GitHub integration** in Railway project settings for automatic deploys on push.
