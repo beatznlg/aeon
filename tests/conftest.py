@@ -199,13 +199,43 @@ class FakeApiKeyManager:
     def __init__(self, root=None):
         self.root = root
         self._keys = {}
+        self._counter = 0
+
+    def _make_key(self, key_id, **kwargs):
+        return types.SimpleNamespace(
+            id=key_id,
+            name=kwargs.get("name", "Unnamed Key"),
+            workspace_id=kwargs.get("workspace_id", "default"),
+            user_id=kwargs.get("user_id"),
+            to_dict=lambda _id=key_id, _name=kwargs.get("name", "Unnamed Key"), _ws=kwargs.get("workspace_id", "default"): {
+                "id": _id,
+                "name": _name,
+                "workspace_id": _ws,
+            },
+        )
 
     def create_key(self, **kwargs):
-        key = types.SimpleNamespace(
-            id="fake-key-id",
-            to_dict=lambda: {"id": "fake-key-id", "name": kwargs.get("name")},
+        self._counter += 1
+        key_id = f"fake-key-{self._counter}"
+        key = self._make_key(key_id, **kwargs)
+        self._keys[key_id] = key
+        return key, f"fake-plaintext-{key_id}"
+
+    def rotate_key(self, key_id, user_id=None, expires_at=None):
+        old = self.get_key_by_id(key_id)
+        if not old:
+            return None, None
+        self._counter += 1
+        new_id = f"fake-key-{self._counter}"
+        new_key = self._make_key(
+            new_id,
+            name=old.name,
+            workspace_id=old.workspace_id,
+            user_id=user_id or old.user_id,
         )
-        return key, "fake-plaintext-key"
+        self.revoke_key(key_id)
+        self._keys[new_id] = new_key
+        return new_key, f"fake-plaintext-{new_id}"
 
     def validate_key(self, plaintext):
         return None
@@ -214,13 +244,16 @@ class FakeApiKeyManager:
         return True
 
     def list_keys(self, workspace_id=None):
-        return []
+        keys = list(self._keys.values())
+        if workspace_id:
+            keys = [k for k in keys if k.workspace_id == workspace_id]
+        return keys
 
     def get_key_by_id(self, key_id):
-        return None
+        return self._keys.get(key_id)
 
     def revoke_key(self, key_id):
-        return True
+        return self._keys.pop(key_id, None) is not None
 
     def update_key(self, key_id, **kwargs):
         return None

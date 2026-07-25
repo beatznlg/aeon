@@ -288,7 +288,19 @@ For self-hosted deployments, Redis is included in `docker-compose.yml` and auto-
 
 ---
 
-## 9. CI/CD
+## 9. Security Hardening (Phase 13)
+
+When deploying, verify the following security settings:
+
+- Set `AEON_CORS_ALLOWED_ORIGINS` to the production frontend domain (e.g. `https://app.aeon.ai`).
+- Enable HSTS by setting `AEON_HSTS=true` when running behind a TLS-terminating proxy.
+- Keep `AEON_JWT_SECRET` and `NEXTAUTH_SECRET` strong and rotate them via `POST /auth/jwt/rotate`.
+- Rotate API keys regularly with `POST /api-keys/<id>/rotate`.
+- Review `Bandit` and `pip-audit` reports in the `quality-gate.yml` CI output before merging.
+
+---
+
+## 10. CI/CD
 
 Existing GitHub Actions workflows handle deploys:
 
@@ -297,6 +309,6 @@ Existing GitHub Actions workflows handle deploys:
 | `docker-ci.yml` | push/PR to `main` | Lint, typecheck, build Docker images |
 | `docker-release.yml` | tag `v*.*.*` | Push multi-arch images to GHCR |
 | `vercel-deploy.yml` | push/PR to `main` | Deploy frontend to Vercel |
-| `quality-gate.yml` | push/PR to `main` | Run pytest and enforce `ruff` lint on `aeon*.py` |
+| `quality-gate.yml` | push/PR to `main` | Run pytest, ruff, Bandit, and pip-audit |
 
 For Railway, you can also enable **GitHub integration** in Railway project settings for automatic deploys on push.

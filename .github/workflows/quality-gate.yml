@@ -44,3 +44,9 @@ jobs:
 
       - name: Run pytest
         run: pytest -v
+
+      - name: Run Bandit security scan
+        run: bandit -r aeon*.py -f json -o bandit-report.json || true
+
+      - name: Run pip-audit dependency scan
+        run: pip-audit --desc || true

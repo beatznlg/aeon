@@ -43,7 +43,13 @@ logger = logging.getLogger("aeon_server")
 import aeon_workflows  # patches AeonOS with workflow/swarm helpers
 from aeon import ReflectiveAgent
 from aeon_api_keys import ApiKeyManager
-from aeon_auth import get_current_user_context, require_auth, require_workspace_access
+from aeon_auth import (
+    get_current_user_context,
+    require_auth,
+    require_role,
+    require_workspace_access,
+    require_workspace_role,
+)
 from aeon_governance import GovernanceManager, get_governance
 from aeon_integrations import IntegrationManager, WebhookDelivery, get_integration_catalog
 from aeon_llm import get_llm_provider, list_providers, set_active_provider
@@ -53,6 +59,72 @@ from aeon_stripe import get_stripe_client, init_stripe
 from aeon_usage import BillingCalculator, HealthCollector, UsageMeter
 
 app = Flask(__name__)
+
+# ── Security headers & CORS ─────────────────────────────────────────────────
+# Default CSP allows inline scripts/styles only for the Swagger UI served from
+# /openapi.json and /docs. Tighten these for production behind a reverse proxy.
+_DEFAULT_CSP = "; ".join([
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline' https://unpkg.com",
+    "style-src 'self' 'unsafe-inline' https://unpkg.com",
+    "img-src 'self' data: https:",
+    "font-src 'self'",
+    "connect-src 'self'",
+    "frame-ancestors 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+])
+
+
+def _origin_allowed(origin: str) -> bool:
+    """Return True if the origin is allowed to make CORS requests."""
+    allowed = os.environ.get("AEON_CORS_ALLOWED_ORIGINS", "*")
+    if allowed == "*":
+        return True
+    return origin.lower() in {o.strip().lower() for o in allowed.split(",")}
+
+
+@app.after_request
+def _security_headers(response):
+    """Apply baseline security headers to every response."""
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-Permitted-Cross-Domain-Policies"] = "none"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=(), payment=()"
+    response.headers["Content-Security-Policy"] = _DEFAULT_CSP
+    # HSTS only when explicitly enabled; ingress/load-balancer usually terminates TLS
+    if os.environ.get("AEON_HSTS", "").lower() in ("1", "true", "yes"):
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
+
+
+@app.before_request
+def _cors_preflight():
+    """Handle CORS preflight and attach CORS headers to all responses."""
+    if request.method == "OPTIONS":
+        origin = request.headers.get("Origin", "*")
+        if _origin_allowed(origin):
+            headers = {
+                "Access-Control-Allow-Origin": origin,
+                "Access-Control-Allow-Methods": "GET, POST, PATCH, PUT, DELETE, OPTIONS",
+                "Access-Control-Allow-Headers": "Authorization, Content-Type, X-User-Id, X-Workspace-Id, X-User-Email, X-API-Key, X-API-Token",
+                "Access-Control-Max-Age": "86400",
+            }
+            if os.environ.get("AEON_CORS_ALLOW_CREDENTIALS", "").lower() in ("1", "true", "yes"):
+                headers["Access-Control-Allow-Credentials"] = "true"
+            return ("", 204, headers)
+        return ("", 403, {})
+
+
+@app.after_request
+def _cors_headers(response):
+    origin = request.headers.get("Origin")
+    if origin and _origin_allowed(origin):
+        response.headers["Access-Control-Allow-Origin"] = origin
+        if os.environ.get("AEON_CORS_ALLOW_CREDENTIALS", "").lower() in ("1", "true", "yes"):
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+    return response
 
 # ── Configuration ────────────────────────────────────────────────────────────
 HOST = os.environ.get("AEON_PYTHON_HOST", "0.0.0.0")
@@ -534,6 +606,27 @@ def auth_register():
         return jsonify({"ok": False, "error": f"registration failed: {e}"}), 500
 
 
+@app.route("/auth/jwt/status", methods=["GET"])
+@require_auth
+@require_role("ADMIN")
+def auth_jwt_status():
+    """Return non-sensitive JWT signing configuration status."""
+    from aeon_auth import jwt_status
+    return jsonify({"ok": True, **jwt_status()})
+
+
+@app.route("/auth/jwt/rotate", methods=["POST"])
+@require_auth
+@require_role("ADMIN")
+def auth_jwt_rotate():
+    """Rotate the primary JWT signing secret. Accepts an optional explicit secret."""
+    from aeon_auth import rotate_jwt_secret
+    data = request.json or {}
+    new_secret = data.get("secret")
+    result = rotate_jwt_secret(new_secret)
+    return jsonify({"ok": True, "rotation": result})
+
+
 @app.route("/workspaces", methods=["GET"])
 @require_auth
 def workspaces_list():
@@ -694,6 +787,22 @@ def _governance_context() -> dict[str, Any]:
         "workspace_id": data.get("workspace_id") or request.headers.get("X-Workspace-Id"),
         "email": data.get("email") or request.headers.get("X-User-Email"),
     }
+
+
+def _has_workspace_role(ctx: dict[str, Any], workspace_id: str, required_role: str) -> bool:
+    """Return True if the user has at least `required_role` in `workspace_id`."""
+    from aeon_auth import has_role
+    if has_role(ctx.get("role"), "SUPER_ADMIN"):
+        return True
+    try:
+        from aeon_db import get_db
+        db = get_db()
+        membership = db.get_membership(workspace_id, ctx.get("user_id"))
+        if membership and has_role(membership.role, required_role):
+            return True
+    except Exception:
+        pass
+    return False
 
 
 @app.route("/chat", methods=["POST"])
@@ -883,11 +992,17 @@ def get_os() -> AeonOS:
 # ── Workflow endpoints ─────────────────────────────────────────────────────
 @app.route("/workflows", methods=["GET", "POST"])
 @require_auth
+@require_workspace_role("VIEWER")
 def workflows_index():
     """List all workflows or create a new one."""
+    ctx = _governance_context()
+    workspace_id = g.workspace_id
     os_inst = get_os()
     if request.method == "GET":
         return jsonify({"ok": True, "workflows": os_inst.list_workflows()})
+
+    if not _has_workspace_role(ctx, workspace_id, "OPERATOR"):
+        return jsonify({"ok": False, "error": "workspace operator required"}), 403
 
     data = request.json or {}
     workflow = aeon_workflows.WorkflowDefinition(
@@ -903,7 +1018,10 @@ def workflows_index():
 
 @app.route("/workflows/<workflow_id>", methods=["GET", "DELETE"])
 @require_auth
+@require_workspace_role("VIEWER")
 def workflow_detail(workflow_id: str):
+    ctx = _governance_context()
+    workspace_id = g.workspace_id
     os_inst = get_os()
     if request.method == "GET":
         wf = os_inst.get_workflow(workflow_id)
@@ -911,6 +1029,8 @@ def workflow_detail(workflow_id: str):
             return jsonify({"ok": False, "error": "workflow not found"}), 404
         return jsonify({"ok": True, "workflow": wf.to_dict()})
 
+    if not _has_workspace_role(ctx, workspace_id, "OPERATOR"):
+        return jsonify({"ok": False, "error": "workspace operator required"}), 403
     # DELETE
     if os_inst.delete_workflow(workflow_id):
         return jsonify({"ok": True})
@@ -919,6 +1039,7 @@ def workflow_detail(workflow_id: str):
 
 @app.route("/workflows/<workflow_id>/run", methods=["POST"])
 @require_auth
+@require_workspace_role("OPERATOR")
 def workflow_run(workflow_id: str):
     data = request.json or {}
     initial_input = (data.get("initial_input") or "").strip()
@@ -952,6 +1073,7 @@ def workflow_run(workflow_id: str):
 # ── Swarm endpoints ────────────────────────────────────────────────────────
 @app.route("/swarm/run", methods=["POST"])
 @require_auth
+@require_workspace_role("OPERATOR")
 def swarm_run():
     data = request.json or {}
     app_ids = data.get("app_ids") or []
@@ -1026,17 +1148,21 @@ def require_api_key(f):
 
 @app.route("/api-keys", methods=["GET", "POST"])
 @require_auth
+@require_workspace_role("VIEWER")
 def api_keys_index():
-    """List API keys for a workspace or create a new one."""
+    """List API keys for a workspace or create a new one (ADMIN only)."""
     ctx = _governance_context()
-    workspace_id = ctx.get("workspace_id") or request.args.get("workspace_id", "default")
+    workspace_id = g.workspace_id
     mgr = get_api_key_manager()
 
     if request.method == "GET":
         keys = mgr.list_keys(workspace_id=workspace_id)
         return jsonify({"ok": True, "keys": [k.to_dict() for k in keys], "workspace_id": workspace_id})
 
-    # POST — create a new key
+    # POST - create a new key (ADMIN only)
+    if not _has_workspace_role(ctx, workspace_id, "ADMIN"):
+        return jsonify({"ok": False, "error": "workspace admin required"}), 403
+
     data = request.json or {}
     name = data.get("name", "Unnamed Key")
     rate_limit = min(10000, max(1, int(data.get("rate_limit_per_min", 100))))
@@ -1054,17 +1180,18 @@ def api_keys_index():
         email=ctx.get("email"),
         metadata={"key_id": key.id, "name": name},
     )
-    # Return the plaintext key exactly once — it cannot be retrieved again!
+    # Return the plaintext key exactly once - it cannot be retrieved again!
     return jsonify({"ok": True, "key": key.to_dict(), "plaintext_key": plaintext})
 
 
 @app.route("/api-keys/<key_id>", methods=["GET", "DELETE", "PATCH"])
 @require_auth
+@require_workspace_role("VIEWER")
 def api_key_detail(key_id: str):
     """Get, revoke, or update an API key."""
     mgr = get_api_key_manager()
     ctx = _governance_context()
-    workspace_id = ctx.get("workspace_id", "default")
+    workspace_id = g.workspace_id
 
     if request.method == "GET":
         key = mgr.get_key_by_id(key_id)
@@ -1073,6 +1200,8 @@ def api_key_detail(key_id: str):
         return jsonify({"ok": True, "key": key.to_dict()})
 
     if request.method == "DELETE":
+        if not _has_workspace_role(ctx, workspace_id, "ADMIN"):
+            return jsonify({"ok": False, "error": "workspace admin required"}), 403
         key = mgr.get_key_by_id(key_id)
         if not key or key.workspace_id != workspace_id:
             return jsonify({"ok": False, "error": "key not found"}), 404
@@ -1088,7 +1217,9 @@ def api_key_detail(key_id: str):
             return jsonify({"ok": True})
         return jsonify({"ok": False, "error": "key not found"}), 404
 
-    # PATCH — update key metadata
+    # PATCH - update key metadata (ADMIN only)
+    if not _has_workspace_role(ctx, workspace_id, "ADMIN"):
+        return jsonify({"ok": False, "error": "workspace admin required"}), 403
     data = request.json or {}
     key = mgr.get_key_by_id(key_id)
     if not key or key.workspace_id != workspace_id:
@@ -1110,6 +1241,34 @@ def api_key_detail(key_id: str):
         )
         return jsonify({"ok": True, "key": updated.to_dict()})
     return jsonify({"ok": False, "error": "update failed"}), 500
+
+
+@app.route("/api-keys/<key_id>/rotate", methods=["POST"])
+@require_auth
+@require_workspace_role("ADMIN")
+def api_key_rotate(key_id: str):
+    """Rotate an API key, returning a new plaintext key and revoking the old one."""
+    mgr = get_api_key_manager()
+    ctx = _governance_context()
+    workspace_id = g.workspace_id
+
+    old_key = mgr.get_key_by_id(key_id)
+    if not old_key or old_key.workspace_id != workspace_id:
+        return jsonify({"ok": False, "error": "key not found"}), 404
+
+    new_key, plaintext = mgr.rotate_key(key_id, user_id=ctx.get("user_id"))
+    if not new_key:
+        return jsonify({"ok": False, "error": "rotation failed"}), 500
+
+    get_governance_manager().log_audit(
+        action="API_KEY_ROTATED",
+        module="api_keys",
+        user_id=ctx.get("user_id"),
+        workspace_id=workspace_id,
+        email=ctx.get("email"),
+        metadata={"old_key_id": key_id, "new_key_id": new_key.id},
+    )
+    return jsonify({"ok": True, "key": new_key.to_dict(), "plaintext_key": plaintext})
 
 
 @app.route("/api-keys/<key_id>/usage", methods=["GET"])
@@ -1179,7 +1338,10 @@ def get_governance_manager() -> GovernanceManager:
 @app.route("/governance/audit", methods=["GET"])
 @require_auth
 def governance_audit():
+    # Audit logs are workspace-admin or super-admin only
     workspace_id = request.args.get("workspace_id")
+    if workspace_id and not _has_workspace_role(_governance_context(), workspace_id, "ADMIN"):
+        return jsonify({"ok": False, "error": "workspace admin required"}), 403
     action = request.args.get("action")
     module = request.args.get("module")
     limit = min(1000, max(1, request.args.get("limit", 100, type=int)))
@@ -1197,6 +1359,9 @@ def governance_audit():
 @app.route("/governance/compliance", methods=["GET", "POST"])
 @require_auth
 def governance_compliance():
+    workspace_id = (request.json or {}).get("workspace_id") or request.args.get("workspace_id")
+    if workspace_id and not _has_workspace_role(_governance_context(), workspace_id, "ADMIN"):
+        return jsonify({"ok": False, "error": "workspace admin required"}), 403
     if request.method == "GET":
         check_type = request.args.get("check_type", "pii_scan")
         workspace_id = request.args.get("workspace_id")
@@ -1213,8 +1378,12 @@ def governance_compliance():
 @app.route("/governance/retention", methods=["GET", "POST"])
 @require_auth
 def governance_retention():
+    workspace_id = (request.json or {}).get("workspace_id") or request.args.get("workspace_id")
+    if workspace_id and not _has_workspace_role(_governance_context(), workspace_id, "ADMIN"):
+        return jsonify({"ok": False, "error": "workspace admin required"}), 403
     if request.method == "GET":
         workspace_id = request.args.get("workspace_id")
+        # RBAC already checked above if workspace_id was present
         return jsonify({"ok": True, "policy": get_governance_manager().get_retention_policy(workspace_id)})
 
     data = request.json or {}
@@ -1240,10 +1409,16 @@ def get_integration_manager() -> IntegrationManager:
 
 @app.route("/integrations", methods=["GET", "POST"])
 @require_auth
+@require_workspace_role("VIEWER")
 def integrations_index():
+    ctx = _governance_context()
+    workspace_id = g.workspace_id
     mgr = get_integration_manager()
     if request.method == "GET":
         return jsonify({"ok": True, "integrations": mgr.list_integrations(mask=True)})
+
+    if not _has_workspace_role(ctx, workspace_id, "OPERATOR"):
+        return jsonify({"ok": False, "error": "workspace operator required"}), 403
 
     data = request.json or {}
     integration_id = data.get("id")
@@ -1253,14 +1428,20 @@ def integrations_index():
 
 @app.route("/integrations/<integration_id>", methods=["GET", "DELETE"])
 @require_auth
+@require_workspace_role("VIEWER")
 def integration_detail(integration_id: str):
     mgr = get_integration_manager()
+    ctx = _governance_context()
+    workspace_id = g.workspace_id
     if request.method == "GET":
         cfg = mgr.get(integration_id)
         if cfg is None:
             return jsonify({"ok": False, "error": "integration not found"}), 404
         return jsonify({"ok": True, "integration": cfg.to_dict(mask=True)})
 
+    # DELETE - requires OPERATOR or above in the workspace
+    if not _has_workspace_role(ctx, workspace_id, "OPERATOR"):
+        return jsonify({"ok": False, "error": "workspace operator required"}), 403
     if mgr.delete(integration_id):
         return jsonify({"ok": True})
     return jsonify({"ok": False, "error": "integration not found"}), 404
@@ -1268,6 +1449,7 @@ def integration_detail(integration_id: str):
 
 @app.route("/integrations/<integration_id>/run", methods=["POST"])
 @require_auth
+@require_workspace_role("OPERATOR")
 def integration_run(integration_id: str):
     data = request.json or {}
     endpoint = data.get("endpoint", "")
@@ -1379,6 +1561,8 @@ def webhook_deliveries():
 @require_workspace_access
 def billing_set_plan(workspace_id: str):
     """Upgrade/downgrade a workspace plan."""
+    if not _has_workspace_role(_governance_context(), workspace_id, "ADMIN"):
+        return jsonify({"ok": False, "error": "workspace admin required"}), 403
     data = request.json or {}
     plan_id = data.get("plan_id", "free")
     credits = float(data.get("credits", 0))
@@ -1405,6 +1589,8 @@ def billing_set_plan(workspace_id: str):
 @require_workspace_access
 def billing_add_credits(workspace_id: str):
     """Add credits to a workspace (simulated payment)."""
+    if not _has_workspace_role(_governance_context(), workspace_id, "ADMIN"):
+        return jsonify({"ok": False, "error": "workspace admin required"}), 403
     data = request.json or {}
     amount = float(data.get("amount", 0))
     if amount <= 0:
@@ -1546,7 +1732,7 @@ def stripe_portal():
 
 @app.route("/stripe/webhook", methods=["POST"])
 def stripe_webhook_receive():
-    """Receive Stripe webhook events. Does NOT require auth — Stripe signs the payload."""
+    """Receive Stripe webhook events. Does NOT require auth - Stripe signs the payload."""
     raw_body = request.get_data()
     signature = request.headers.get("Stripe-Signature", "")
     client = get_stripe_client()

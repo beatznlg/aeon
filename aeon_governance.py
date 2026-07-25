@@ -245,6 +245,11 @@ class GovernanceManager:
         except Exception as e:
             return {"ok": False, "error": str(e), "rows": [], "count": 0, "limit": limit, "offset": offset}
 
+    def export_audit(self, rows: list[dict[str, Any]], format: str = "json") -> dict[str, Any]:
+        """Export audit rows with PII redaction applied to every metadata field."""
+        sanitized = [sanitize_metadata(row) for row in rows]
+        return {"ok": True, "format": format, "count": len(sanitized), "rows": sanitized}
+
     def run_pii_scan(self, workspace_id: str | None = None) -> dict[str, Any]:
         """Scan recent audit metadata for PII and return findings."""
         result = self.query_audit(workspace_id=workspace_id, limit=500)

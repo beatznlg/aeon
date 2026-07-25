@@ -240,6 +240,27 @@ class ApiKeyManager:
         self._save()
         return key
 
+    def rotate_key(self, key_id: str, user_id: str | None = None, expires_at: float | None = None) -> tuple[ApiKey | None, str | None]:
+        """Rotate an API key: create a replacement key, revoke the old one, and return the new plaintext.
+
+        The old key is revoked immediately. The new key inherits the old key's
+        workspace, name, and rate limit. `user_id` is used for audit attribution.
+        """
+        old = self.get_key_by_id(key_id)
+        if not old:
+            return None, None
+        new, plaintext = self.create_key(
+            name=old.name,
+            workspace_id=old.workspace_id,
+            user_id=user_id or old.user_id,
+            rate_limit_per_min=old.rate_limit_per_min,
+            expires_at=expires_at,
+        )
+        # Preserve creation context for audit trail
+        new.created_at = old.created_at
+        self.revoke_key(key_id)
+        return new, plaintext
+
     # ── Validation ──────────────────────────────────────────────────────
 
     def validate_key(self, plaintext: str) -> ApiKey | None:

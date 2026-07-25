@@ -15,6 +15,7 @@ Env:
 
 import hmac
 import os
+import secrets
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from functools import wraps
@@ -34,7 +35,30 @@ def _dev_mode() -> bool:
     return os.environ.get("AEON_ENV", "development").lower() in ("dev", "development", "local")
 
 
+# === JWT secret rotation support =============================================
+
+def _resolve_jwt_secrets() -> list[str]:
+    """Return a list of valid JWT secrets for token verification.
+
+    The primary secret is used for signing new tokens. Older secrets are kept
+    for rotation windows so existing tokens remain valid until they expire.
+    """
+    secrets = []
+    primary = os.environ.get("AEON_JWT_SECRET") or os.environ.get("NEXTAUTH_SECRET") or "dev-only-change-me"
+    if primary:
+        secrets.append(primary)
+    # Optional previous/rotated secrets for key rotation (comma-separated)
+    for old in os.environ.get("AEON_JWT_SECRET_PREVIOUS", "").split(","):
+        old = old.strip()
+        if old and old not in secrets:
+            secrets.append(old)
+    return secrets
+
+
+# Primary secret used for signing new tokens
 JWT_SECRET = _resolve_jwt_secret()
+# All valid secrets (primary + previous) used for verification
+JWT_SECRETS = _resolve_jwt_secrets()
 ACCESS_TOKEN_TTL = int(os.environ.get("AEON_ACCESS_TOKEN_TTL", "3600"))  # seconds
 REFRESH_TOKEN_TTL_DAYS = int(os.environ.get("AEON_REFRESH_TOKEN_TTL_DAYS", "30"))
 
@@ -91,6 +115,47 @@ class _FallbackAdmin:
 
 # === Token helpers ============================================================
 
+def _hash_secret(secret: str) -> str:
+    """Return a short, safe fingerprint of a secret for status endpoints."""
+    import hashlib
+    return hashlib.sha256(secret.encode("utf-8")).hexdigest()[:16]
+
+
+def rotate_jwt_secret(new_secret: str | None = None) -> dict[str, Any]:
+    """Rotate the primary JWT signing secret.
+
+    The current primary secret is moved to the previous-secrets list so existing
+    tokens remain valid during the rotation window. Returns a safe summary.
+    """
+    global JWT_SECRET, JWT_SECRETS
+    old_secret = JWT_SECRET
+    JWT_SECRET = new_secret or secrets.token_urlsafe(32)
+
+    updated = [JWT_SECRET]
+    if old_secret and old_secret not in updated:
+        updated.append(old_secret)
+    for s in JWT_SECRETS:
+        if s and s not in updated:
+            updated.append(s)
+
+    JWT_SECRETS = updated
+    return {
+        "rotated_at": datetime.now(timezone.utc).isoformat(),
+        "active_secret_hash": _hash_secret(JWT_SECRET),
+        "previous_secrets_count": len(updated) - 1,
+    }
+
+
+def jwt_status() -> dict[str, Any]:
+    """Return non-sensitive status information about the current JWT configuration."""
+    return {
+        "active_secret_hash": _hash_secret(JWT_SECRET),
+        "previous_secrets_count": len([s for s in JWT_SECRETS if s != JWT_SECRET]),
+        "access_token_ttl": ACCESS_TOKEN_TTL,
+        "algorithm": "HS256",
+    }
+
+
 def create_access_token(user_id: str, email: str, role: str, workspace_id: str | None = None, extra: dict[str, Any] | None = None) -> str:
     """Create a short-lived JWT access token."""
     now = datetime.now(timezone.utc)
@@ -109,11 +174,19 @@ def create_access_token(user_id: str, email: str, role: str, workspace_id: str |
 
 
 def decode_token(token: str) -> dict[str, Any] | None:
-    """Decode and validate a JWT. Returns None if invalid/expired."""
-    try:
-        return jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
-    except Exception:
-        return None
+    """Decode and validate a JWT. Returns None if invalid/expired.
+
+    Tries the primary secret first, then any configured previous secrets so
+    rolling key rotation does not immediately invalidate active sessions.
+    """
+    errors = []
+    for secret in JWT_SECRETS:
+        try:
+            return jwt.decode(token, secret, algorithms=["HS256"])
+        except Exception as exc:  # noqa: BLE001
+            errors.append(str(exc))
+            continue
+    return None
 
 
 def get_auth_token_from_request() -> str | None:
@@ -218,3 +291,48 @@ def require_workspace_access(func: Callable) -> Callable:
         g.workspace_id = workspace_id
         return func(*args, **kwargs)
     return wrapper
+
+
+def require_workspace_role(role: str):
+    """Decorator factory that requires the user to have at least `role` in the current workspace.
+
+    The decorated function must receive a `workspace_id` as a route argument or query param.
+    """
+    def decorator(func: Callable) -> Callable:
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            ctx = get_current_user_context()
+            if not ctx:
+                return jsonify({"ok": False, "error": "unauthorized"}), 401
+
+            workspace_id = (
+                kwargs.get("workspace_id")
+                or (request.view_args.get("workspace_id") if request.view_args else None)
+                or request.args.get("workspace_id")
+                or ctx.get("workspace_id")
+            )
+            if not workspace_id:
+                return jsonify({"ok": False, "error": "workspace_id required"}), 400
+
+            # SUPER_ADMIN bypasses workspace role checks
+            if has_role(ctx.get("role"), "SUPER_ADMIN"):
+                g.user = ctx
+                g.workspace_id = workspace_id
+                return func(*args, **kwargs)
+
+            try:
+                from aeon_db import get_db
+                db = get_db()
+                membership = db.get_membership(workspace_id, ctx.get("user_id"))
+                if not membership:
+                    return jsonify({"ok": False, "error": "workspace access denied"}), 403
+                if not has_role(membership.role, role):
+                    return jsonify({"ok": False, "error": f"workspace role {role} required"}), 403
+                g.user = ctx
+                g.workspace_id = workspace_id
+                g.membership = membership
+                return func(*args, **kwargs)
+            except Exception:
+                return jsonify({"ok": False, "error": "workspace access denied"}), 403
+        return wrapper
+    return decorator

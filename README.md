@@ -158,6 +158,20 @@ See [monitoring/README.md](monitoring/README.md) for the full observability stac
 
 ---
 
-## 📄 License
+## 🔒 Security (Phase 13)
+
+AEON includes a hardened security layer:
+
+- **Baseline security headers**: `Content-Security-Policy`, `X-Frame-Options`, `X-Content-Type-Options`, `Permissions-Policy`, etc.
+- **CORS**: configurable via `AEON_CORS_ALLOWED_ORIGINS` and `AEON_CORS_ALLOW_CREDENTIALS`.
+- **RBAC**: workspace-scoped roles (`VIEWER`, `OPERATOR`, `ADMIN`, `SUPER_ADMIN`) enforced on sensitive routes.
+- **API key rotation**: `POST /api-keys/<id>/rotate`.
+- **JWT rotation**: `POST /auth/jwt/rotate` and `GET /auth/jwt/status`.
+- **Audit PII redaction**: automatic redaction of emails, keys, and tokens in audit metadata.
+- **CI security scans**: Bandit and pip-audit run on every PR.
+
+---
+
+##  License
 
 MIT — see [LICENSE](LICENSE)

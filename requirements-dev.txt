@@ -8,5 +8,9 @@ pytest-flask>=1.2.0
 # Linting / formatting
 ruff>=0.4.0
 
+# Security scanning
+bandit>=1.7.0
+pip-audit>=2.7.0
+
 # Type checking (optional)
 mypy>=1.0
