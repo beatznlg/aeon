@@ -8,10 +8,10 @@ Usage:
     python scripts/healthcheck.py https://backend-url/health
     python scripts/healthcheck.py https://backend-url/health https://frontend-url/api/health
 """
-import sys
-import urllib.request
-import urllib.error
 import json
+import sys
+import urllib.error
+import urllib.request
 from urllib.parse import urlparse
 
 

@@ -1609,7 +1609,7 @@ def health_detailed():
     return jsonify(
         get_health_collector().snapshot(
             agent_vitals=vitals,
-            queue_size=job_queue._queue.qsize(),
+            queue_size=job_queue._pending,
             integrations=integrations,
         )
     )
@@ -1625,7 +1625,7 @@ def metrics_index():
 
     # Update dynamic gauges before rendering
     metrics_collector.set_gauge("aeon_agents_loaded", len(_agents))
-    metrics_collector.set_gauge("aeon_job_queue_size", job_queue._queue.qsize())
+    metrics_collector.set_gauge("aeon_job_queue_size", job_queue._pending)
 
     body = metrics_collector.render()
     return Response(body, mimetype="text/plain; version=0.0.4; charset=utf-8")
