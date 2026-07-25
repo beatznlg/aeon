@@ -1,0 +1,667 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "AEON OS API",
+    "description": "OpenAPI specification for the AEON OS Flask backend. Generated as part of Phase 10 — Developer Experience & API Standardization.",
+    "version": "3.0.0",
+    "contact": {
+      "name": "AEON OS",
+      "url": "https://github.com/beatznlg/aeon"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:5000",
+      "description": "Local development server"
+    }
+  ],
+  "tags": [
+    { "name": "Health", "description": "Health, readiness and observability probes" },
+    { "name": "Auth", "description": "Authentication endpoints" },
+    { "name": "Workspaces", "description": "Workspace management and chat" },
+    { "name": "Apps", "description": "Domain-specific AEON apps" },
+    { "name": "Workflows", "description": "Workflow builder and execution" },
+    { "name": "Swarm", "description": "Agent swarm orchestration" },
+    { "name": "API Keys", "description": "API key lifecycle and usage" },
+    { "name": "Usage", "description": "Usage metering and billing" },
+    { "name": "Governance", "description": "Audit, compliance and retention" },
+    { "name": "Integrations", "description": "Third-party integrations and webhooks" },
+    { "name": "LLM", "description": "LLM provider switching and testing" },
+    { "name": "RAG", "description": "Knowledge bases and retrieval" }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": ["Health"],
+        "summary": "Basic health check",
+        "operationId": "getHealth",
+        "responses": {
+          "200": {
+            "description": "Service is healthy",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HealthResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/live": {
+      "get": {
+        "tags": ["Health"],
+        "summary": "Liveness probe",
+        "operationId": "getLiveness",
+        "responses": {
+          "200": { "description": "Service is alive" }
+        }
+      }
+    },
+    "/ready": {
+      "get": {
+        "tags": ["Health"],
+        "summary": "Readiness probe",
+        "operationId": "getReadiness",
+        "responses": {
+          "200": { "description": "Service is ready" },
+          "503": { "description": "Service not ready" }
+        }
+      }
+    },
+    "/health/detailed": {
+      "get": {
+        "tags": ["Health"],
+        "summary": "Detailed health snapshot",
+        "operationId": "getDetailedHealth",
+        "responses": {
+          "200": {
+            "description": "Detailed health information",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DetailedHealthResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Log in and receive an auth token",
+        "operationId": "login",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/LoginRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Login successful" },
+          "401": { "description": "Invalid credentials" }
+        }
+      }
+    },
+    "/auth/register": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Register a new user",
+        "operationId": "register",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RegisterRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "User created" },
+          "400": { "description": "Validation error" }
+        }
+      }
+    },
+    "/auth/me": {
+      "get": {
+        "tags": ["Auth"],
+        "summary": "Get current authenticated user",
+        "operationId": "getCurrentUser",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Current user profile" }
+        }
+      }
+    },
+    "/workspaces": {
+      "get": {
+        "tags": ["Workspaces"],
+        "summary": "List workspaces for the current user",
+        "operationId": "listWorkspaces",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "List of workspaces" }
+        }
+      }
+    },
+    "/workspaces/{workspace_id}/history": {
+      "get": {
+        "tags": ["Workspaces"],
+        "summary": "Get chat history for a workspace",
+        "operationId": "getWorkspaceHistory",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "workspace_id", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 50 } }
+        ],
+        "responses": {
+          "200": { "description": "Chat history" }
+        }
+      }
+    },
+    "/workspaces/{workspace_id}/chat": {
+      "post": {
+        "tags": ["Workspaces"],
+        "summary": "Send a chat message in a workspace",
+        "operationId": "chatInWorkspace",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "workspace_id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ChatRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Chat response" }
+        }
+      }
+    },
+    "/apps/{app_id}/tick": {
+      "post": {
+        "tags": ["Apps"],
+        "summary": "Run a domain app tick",
+        "operationId": "appTick",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "app_id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/AppTickRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Tick result" }
+        }
+      }
+    },
+    "/workflows": {
+      "get": {
+        "tags": ["Workflows"],
+        "summary": "List workflows",
+        "operationId": "listWorkflows",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Workflow list" }
+        }
+      },
+      "post": {
+        "tags": ["Workflows"],
+        "summary": "Create a workflow",
+        "operationId": "createWorkflow",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/Workflow" }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Workflow created" }
+        }
+      }
+    },
+    "/workflows/{workflow_id}": {
+      "get": {
+        "tags": ["Workflows"],
+        "summary": "Get a workflow",
+        "operationId": "getWorkflow",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "workflow_id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Workflow details" }
+        }
+      },
+      "delete": {
+        "tags": ["Workflows"],
+        "summary": "Delete a workflow",
+        "operationId": "deleteWorkflow",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "workflow_id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "204": { "description": "Workflow deleted" }
+        }
+      }
+    },
+    "/workflows/{workflow_id}/run": {
+      "post": {
+        "tags": ["Workflows"],
+        "summary": "Run a workflow",
+        "operationId": "runWorkflow",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "workflow_id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/WorkflowRunRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Workflow execution result" }
+        }
+      }
+    },
+    "/swarm/run": {
+      "post": {
+        "tags": ["Swarm"],
+        "summary": "Run an agent swarm",
+        "operationId": "runSwarm",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SwarmRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Swarm result" }
+        }
+      }
+    },
+    "/api-keys": {
+      "get": {
+        "tags": ["API Keys"],
+        "summary": "List API keys",
+        "operationId": "listApiKeys",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "API keys list" }
+        }
+      },
+      "post": {
+        "tags": ["API Keys"],
+        "summary": "Create an API key",
+        "operationId": "createApiKey",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ApiKeyCreateRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "API key created" }
+        }
+      }
+    },
+    "/api-keys/{key_id}": {
+      "get": {
+        "tags": ["API Keys"],
+        "summary": "Get API key details",
+        "operationId": "getApiKey",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "key_id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "API key details" }
+        }
+      },
+      "patch": {
+        "tags": ["API Keys"],
+        "summary": "Update an API key",
+        "operationId": "updateApiKey",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "key_id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ApiKeyUpdateRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "API key updated" }
+        }
+      },
+      "delete": {
+        "tags": ["API Keys"],
+        "summary": "Revoke an API key",
+        "operationId": "deleteApiKey",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "key_id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "204": { "description": "API key revoked" }
+        }
+      }
+    },
+    "/billing/{workspace_id}": {
+      "get": {
+        "tags": ["Usage"],
+        "summary": "Get billing status for a workspace",
+        "operationId": "getBillingStatus",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "workspace_id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Billing status" }
+        }
+      }
+    },
+    "/integrations": {
+      "get": {
+        "tags": ["Integrations"],
+        "summary": "List integrations",
+        "operationId": "listIntegrations",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Integrations list" }
+        }
+      },
+      "post": {
+        "tags": ["Integrations"],
+        "summary": "Create an integration",
+        "operationId": "createIntegration",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/IntegrationCreateRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Integration created" }
+        }
+      }
+    },
+    "/integrations/catalog": {
+      "get": {
+        "tags": ["Integrations"],
+        "summary": "Get integration catalog",
+        "operationId": "getIntegrationCatalog",
+        "responses": {
+          "200": { "description": "Catalog of available integrations" }
+        }
+      }
+    },
+    "/webhooks/receive/{integration_id}": {
+      "post": {
+        "tags": ["Integrations"],
+        "summary": "Receive a webhook for an integration",
+        "operationId": "receiveWebhook",
+        "parameters": [
+          { "name": "integration_id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "type": "object" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Webhook processed" }
+        }
+      }
+    },
+    "/llm/providers": {
+      "get": {
+        "tags": ["LLM"],
+        "summary": "List configured LLM providers",
+        "operationId": "listLlmProviders",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "LLM providers" }
+        }
+      }
+    },
+    "/llm/switch": {
+      "post": {
+        "tags": ["LLM"],
+        "summary": "Switch active LLM provider",
+        "operationId": "switchLlmProvider",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/LlmSwitchRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Provider switched" }
+        }
+      }
+    },
+    "/knowledge-bases": {
+      "get": {
+        "tags": ["RAG"],
+        "summary": "List knowledge bases",
+        "operationId": "listKnowledgeBases",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Knowledge bases list" }
+        }
+      },
+      "post": {
+        "tags": ["RAG"],
+        "summary": "Create a knowledge base",
+        "operationId": "createKnowledgeBase",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/KnowledgeBaseCreateRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Knowledge base created" }
+        }
+      }
+    },
+    "/knowledge-bases/{kb_id}/query": {
+      "post": {
+        "tags": ["RAG"],
+        "summary": "Query a knowledge base",
+        "operationId": "queryKnowledgeBase",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "kb_id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/KnowledgeBaseQueryRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Query results" }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "HealthResponse": {
+        "type": "object",
+        "properties": {
+          "ok": { "type": "boolean" },
+          "timestamp": { "type": "number" }
+        }
+      },
+      "DetailedHealthResponse": {
+        "type": "object",
+        "properties": {
+          "ok": { "type": "boolean" },
+          "timestamp": { "type": "number" },
+          "kernel": { "type": "object" },
+          "agents": { "type": "array", "items": { "type": "object" } },
+          "queue": { "type": "object" },
+          "integrations": { "type": "array", "items": { "type": "object" } },
+          "storage": { "type": "object" }
+        }
+      },
+      "LoginRequest": {
+        "type": "object",
+        "required": ["email", "password"],
+        "properties": {
+          "email": { "type": "string", "format": "email" },
+          "password": { "type": "string", "format": "password" }
+        }
+      },
+      "RegisterRequest": {
+        "type": "object",
+        "required": ["email", "password", "name"],
+        "properties": {
+          "email": { "type": "string", "format": "email" },
+          "password": { "type": "string", "format": "password" },
+          "name": { "type": "string" }
+        }
+      },
+      "ChatRequest": {
+        "type": "object",
+        "required": ["query"],
+        "properties": {
+          "query": { "type": "string" },
+          "provider": { "type": "string" },
+          "context": { "type": "object" }
+        }
+      },
+      "AppTickRequest": {
+        "type": "object",
+        "required": ["query"],
+        "properties": {
+          "query": { "type": "string" },
+          "context": { "type": "object" }
+        }
+      },
+      "Workflow": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "nodes": { "type": "array", "items": { "type": "object" } },
+          "edges": { "type": "array", "items": { "type": "object" } }
+        }
+      },
+      "WorkflowRunRequest": {
+        "type": "object",
+        "properties": {
+          "inputs": { "type": "object" }
+        }
+      },
+      "SwarmRequest": {
+        "type": "object",
+        "required": ["task"],
+        "properties": {
+          "task": { "type": "string" },
+          "agents": { "type": "array", "items": { "type": "string" } }
+        }
+      },
+      "ApiKeyCreateRequest": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string" },
+          "workspace_id": { "type": "string" },
+          "role": { "type": "string", "enum": ["admin", "operator", "viewer"] }
+        }
+      },
+      "ApiKeyUpdateRequest": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "role": { "type": "string", "enum": ["admin", "operator", "viewer"] },
+          "active": { "type": "boolean" }
+        }
+      },
+      "IntegrationCreateRequest": {
+        "type": "object",
+        "required": ["type", "name"],
+        "properties": {
+          "type": { "type": "string" },
+          "name": { "type": "string" },
+          "config": { "type": "object" }
+        }
+      },
+      "LlmSwitchRequest": {
+        "type": "object",
+        "required": ["provider"],
+        "properties": {
+          "provider": { "type": "string", "enum": ["stub", "openai", "anthropic", "huggingface"] }
+        }
+      },
+      "KnowledgeBaseCreateRequest": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string" },
+          "description": { "type": "string" }
+        }
+      },
+      "KnowledgeBaseQueryRequest": {
+        "type": "object",
+        "required": ["query"],
+        "properties": {
+          "query": { "type": "string" },
+          "top_k": { "type": "integer", "default": 5 }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "AEON API key or JWT token"
+      }
+    }
+  }
+}

@@ -1600,6 +1600,54 @@ def metrics_index():
     return Response(body, mimetype="text/plain; version=0.0.4; charset=utf-8")
 
 
+# ── OpenAPI / Swagger documentation (Phase 10) ───────────────────────────────
+_OPENAPI_SPEC_PATH = Path(__file__).parent / "docs" / "openapi.json"
+_SWAGGER_UI_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>AEON OS API Docs</title>
+  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css" />
+  <style>html{box-sizing:border-box}body{margin:0}</style>
+</head>
+<body>
+  <div id="swagger-ui"></div>
+  <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+  <script>
+    window.onload = function () {
+      window.ui = SwaggerUIBundle({
+        url: "/openapi.json",
+        dom_id: "#swagger-ui",
+        presets: [SwaggerUIBundle.presets.apis, SwaggerUIBundle.presets.standaloneLayout],
+        layout: "BaseLayout",
+      });
+    };
+  </script>
+</body>
+</html>
+"""
+
+
+@app.route("/openapi.json", methods=["GET"])
+def openapi_json():
+    """Return the AEON OpenAPI specification as JSON."""
+    if _OPENAPI_SPEC_PATH.exists():
+        spec = json.loads(_OPENAPI_SPEC_PATH.read_text(encoding="utf-8"))
+        # Inject the current server URL based on the request
+        spec["servers"] = [
+            {"url": request.url_root.rstrip("/"), "description": "Current server"},
+            {"url": "http://localhost:5000", "description": "Local development server"},
+        ]
+        return jsonify(spec)
+    return jsonify({"ok": False, "error": "OpenAPI spec not found"}), 404
+
+
+@app.route("/docs", methods=["GET"])
+def swagger_docs():
+    """Serve interactive Swagger UI documentation."""
+    return Response(_SWAGGER_UI_HTML, mimetype="text/html")
+
+
 # ── LLM Provider Management endpoints (Phase 1) ─────────────────────────
 @app.route("/llm/providers", methods=["GET"])
 @require_auth

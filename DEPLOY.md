@@ -170,9 +170,9 @@ Use the same `NEXTAUTH_SECRET` on both projects.
 
 ---
 
-## 4. Frontend — Deploy to Vercel
+## 3. Frontend — Deploy to Vercel
 
-### 4.1 Import Project
+### 3.1 Import Project
 
 1. Go to [vercel.com/new](https://vercel.com/new).
 2. Import `beatznlg/aeon`.
@@ -182,7 +182,7 @@ Use the same `NEXTAUTH_SECRET` on both projects.
    - **Build Command**: `next build`
    - **Output Directory**: `.next`
 
-### 4.2 Required Vercel Environment Variables
+### 3.2 Required Vercel Environment Variables
 
 | Variable | Value | Required |
 |---|---|---|
@@ -190,7 +190,7 @@ Use the same `NEXTAUTH_SECRET` on both projects.
 | `NEXTAUTH_URL` | `https://your-project.vercel.app` | ✅ Yes |
 | `AEON_PYTHON_URL` | Backend public URL (e.g. `https://aeon-backend.up.railway.app`) | ✅ Yes |
 
-### 4.3 Optional Variables
+### 3.3 Optional Variables
 
 | Variable | Purpose |
 |---|---|
@@ -200,7 +200,7 @@ Use the same `NEXTAUTH_SECRET` on both projects.
 
 ---
 
-## 5. Health Checks
+## 4. Health Checks
 
 After both services are deployed, run:
 
@@ -216,7 +216,7 @@ You should see `OK` for both.
 
 ---
 
-## 6. Troubleshooting
+## 5. Troubleshooting
 
 ### Backend healthcheck fails
 
@@ -235,6 +235,25 @@ You should see `OK` for both.
 - `NEXTAUTH_URL` must match the frontend public URL.
 
 ---
+
+## 6. API Documentation
+
+Once the backend is deployed, interactive API documentation is available at:
+
+```
+https://<your-backend>/docs
+```
+
+The OpenAPI spec is also served at:
+
+```
+https://<your-backend>/openapi.json
+```
+
+You can use these endpoints to:
+- Explore all API routes with the Swagger UI
+- Download the OpenAPI spec for SDK generation
+- Validate the SDK methods against the live backend
 
 ## 7. Monitoring in Production
 

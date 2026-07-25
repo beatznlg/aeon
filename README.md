@@ -98,6 +98,20 @@ AEON_ADMIN_NAME=AEON Admin
 | **5** | Stripe — Checkout, Portal, Webhooks | ✅ |
 | **6** | Vector Store & RAG — KB, Documents, Hybrid Search | ✅ |
 | **7** | Monitoring & Alerting — Prometheus, Grafana | ✅ |
+| **10** | Developer Experience — OpenAPI, SDKs, Quickstarts | ✅ |
+
+---
+
+## 🛠️ Developer Experience
+
+AEON ships with first-class developer tooling:
+
+- **OpenAPI Spec & Swagger UI**: Start the backend and visit [`http://localhost:5000/docs`](http://localhost:5000/docs) for interactive documentation.
+- **OpenAPI JSON**: `GET /openapi.json` serves the latest spec.
+- **Official SDKs**:
+  - Python SDK in [`sdk/python`](sdk/python)
+  - TypeScript SDK in [`sdk/typescript`](sdk/typescript)
+- **Quickstarts**: See [`examples`](examples) for runnable Python and TypeScript examples.
 
 ---
 
