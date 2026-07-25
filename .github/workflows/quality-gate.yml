@@ -24,7 +24,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
+          python -m pip install --upgrade pip wheel
           pip install -r requirements.txt --quiet
           pip install -r requirements-dev.txt --quiet
 
@@ -48,8 +48,5 @@ jobs:
       - name: Run Bandit security scan
         run: bandit -c bandit.yaml -r aeon*.py -f json -o bandit-report.json
 
-      # Dependency audit is informational while we evaluate the transformers 5.x
-      # major-version upgrade; the AEON code paths do not exercise the reported
-      # X-CLIP, Trainer, or LightGlue vulnerable surfaces.
       - name: Run pip-audit dependency scan
-        run: pip-audit --desc || true
+        run: pip-audit --desc

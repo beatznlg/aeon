@@ -26,7 +26,7 @@ def _pip(spec):
     except Exception:
         print("  skipped " + spec); return False
 
-REQ = ["flask>=3.0", "transformers==4.44.2", "sentence-transformers==3.0.1",
+REQ = ["flask>=3.0", "transformers>=5.5.0", "sentence-transformers>=5.6.1",
       "bitsandbytes", "accelerate", "requests", "beautifulsoup4",
       "sympy", "networkx", "tiktoken", "web3"]
 print("checking deps:")

@@ -178,11 +178,11 @@ Run the same checks locally before opening a PR:
 # Static security analysis of Python source (zero open issues)
 bandit -c bandit.yaml -r aeon*.py
 
-# Dependency vulnerability audit (informational while we evaluate transformers 5.x)
+# Dependency vulnerability audit
 pip-audit -r requirements.txt -r requirements-dev.txt --desc
 ```
 
-Known dependency findings are tracked in the dependency audit output. AEON only loads `Qwen/Qwen2.5-3B-Instruct` via `AutoTokenizer`/`AutoModelForCausalLM` and does not exercise the X-CLIP, `Trainer._load_rng_state`, or LightGlue code paths reported by `pip-audit`. Upgrading to `transformers>=5.5.0` would clear the RCE findings but is a major-version change that requires full Colab/GPU validation.
+AEON now pins `transformers>=5.5.0` and `sentence-transformers>=5.6.1`, which clears the previous `transformers` 4.x RCE findings. The remaining project dependencies pass `pip-audit` cleanly.
 
 ---
 
