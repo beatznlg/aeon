@@ -39,10 +39,8 @@ jobs:
       - name: Check formatting with ruff
         run: ruff format --check tests/ sdk/python/
 
+      - name: Lint backend modules
+        run: ruff check aeon*.py
+
       - name: Run pytest
         run: pytest -v
-
-      # Optional backend lint: surfaces legacy debt without blocking the gate.
-      - name: Lint backend modules (informational)
-        run: ruff check aeon*.py
-        continue-on-error: true
