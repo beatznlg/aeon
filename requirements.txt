@@ -10,7 +10,7 @@
 # --- core LLM + embeddings ---
 transformers>=4.45.2
 torch
-sentence-transformers==3.0.1
+sentence-transformers==3.4.1
 bitsandbytes
 accelerate
 
