@@ -1,0 +1,33 @@
+# Frontend
+web/node_modules
+web/.next
+web/out
+web/dist
+
+# Runtime state (ephemeral; not bundled)
+aeon_state
+tmp
+
+# Source-control / CI / local tooling
+.git
+.github
+.gitignore
+.dockerignore
+
+# Docker / self-host artifacts
+Dockerfile
+docker-compose.yml
+scripts/docker-entrypoint.sh
+k8s
+monitoring
+supabase
+
+# Docs (not needed at runtime)
+README.md
+DEPLOY.md
+
+# Python cache (Vercel builds a fresh env anyway)
+__pycache__
+*.pyc
+*.pyo
+*.pyd

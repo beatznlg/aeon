@@ -109,9 +109,70 @@ Copy the backend public URL, e.g. `https://aeon-backend.up.railway.app`.
 
 ---
 
-## 2. Frontend — Deploy to Vercel
+## 2. Backend — Deploy to Vercel (Experimental)
 
-### 2.1 Import Project
+> ⚠️ Vercel is primarily a frontend/serverless platform. The AEON backend is a long-running Flask application with in-memory state, background threads, and heavy ML dependencies. This adapter works for simple requests, but expect slow cold starts, no persistent background jobs, and possible function-size failures if all ML packages are installed.
+>
+> For production, deploy the backend to **Railway** (Section 1 above) instead.
+
+### 2.1 Create the Project
+
+1. Go to [vercel.com/new](https://vercel.com/new).
+2. Import `beatznlg/aeon`.
+3. In **Project Settings**, use these values:
+   - **Framework Preset**: `Other`
+   - **Root Directory**: `/` (repo root)
+   - **Build Command**: leave empty (Vercel auto-builds Python functions)
+   - **Install Command**: leave empty
+4. Open **Project Settings → General**, and change the local config file to `vercel.backend.json` if the dashboard lets you; otherwise deploy locally with the CLI in Step 2.3.
+
+### 2.2 Required Vercel Environment Variables
+
+Set these in **Project Settings → Environment Variables**:
+
+| Variable | Value | Required |
+|---|---|---|
+| `AEON_DATABASE_URL` | `postgresql://...` | ✅ Yes |
+| `NEXTAUTH_SECRET` | Same secret used by the frontend | ✅ Yes |
+| `AEON_ROOT` | `/tmp/aeon_state` | ✅ Yes (ephemeral writable path) |
+| `AEON_LLM_PROVIDER` | `stub`, `openai`, or `anthropic` | No (default `stub`) |
+| `OPENAI_API_KEY` | OpenAI key | Only if provider is `openai` |
+| `ANTHROPIC_API_KEY` | Anthropic key | Only if provider is `anthropic` |
+
+### 2.3 Deploy from the CLI
+
+If the Vercel dashboard does not let you select a custom config file, deploy manually:
+
+```bash
+npm install -g vercel
+vercel --local-config vercel.backend.json --prod
+```
+
+### 2.4 Limitations on Vercel
+
+| Feature | Behaviour |
+|---|---|
+| **Cold starts** | Every cold start re-imports all `aeon*.py` modules and heavy ML packages. First request may take 10–30 s. |
+| **State** | In-memory agent cache, rate limiter, and job queue reset after each invocation. Use Postgres/Supabase as the source of truth. |
+| **Background jobs** | `JobQueue` threads are created per-request but killed when the function returns. Async `/jobs/<id>` polling will not work reliably. |
+| **Function size** | `torch`, `transformers`, and `sentence-transformers` can exceed Vercel's serverless function size limits. Consider trimming `requirements.txt` or using external LLM APIs only. |
+| **Timeouts** | `maxDuration` is set to 60 s in `vercel.backend.json`. This requires Vercel Pro; the free tier is much shorter. |
+
+### 2.5 Connect the Frontend
+
+Copy the backend's Vercel URL (e.g. `https://aeon-backend.vercel.app`) and set it in the frontend project:
+
+| Variable | Value |
+|---|---|
+| `AEON_PYTHON_URL` | `https://aeon-backend.vercel.app` |
+
+Use the same `NEXTAUTH_SECRET` on both projects.
+
+---
+
+## 4. Frontend — Deploy to Vercel
+
+### 4.1 Import Project
 
 1. Go to [vercel.com/new](https://vercel.com/new).
 2. Import `beatznlg/aeon`.
@@ -121,7 +182,7 @@ Copy the backend public URL, e.g. `https://aeon-backend.up.railway.app`.
    - **Build Command**: `next build`
    - **Output Directory**: `.next`
 
-### 2.2 Required Vercel Environment Variables
+### 4.2 Required Vercel Environment Variables
 
 | Variable | Value | Required |
 |---|---|---|
@@ -129,7 +190,7 @@ Copy the backend public URL, e.g. `https://aeon-backend.up.railway.app`.
 | `NEXTAUTH_URL` | `https://your-project.vercel.app` | ✅ Yes |
 | `AEON_PYTHON_URL` | Backend public URL (e.g. `https://aeon-backend.up.railway.app`) | ✅ Yes |
 
-### 2.3 Optional Variables
+### 4.3 Optional Variables
 
 | Variable | Purpose |
 |---|---|
@@ -139,7 +200,7 @@ Copy the backend public URL, e.g. `https://aeon-backend.up.railway.app`.
 
 ---
 
-## 3. Health Checks
+## 5. Health Checks
 
 After both services are deployed, run:
 
@@ -155,7 +216,7 @@ You should see `OK` for both.
 
 ---
 
-## 4. Troubleshooting
+## 6. Troubleshooting
 
 ### Backend healthcheck fails
 
@@ -175,7 +236,7 @@ You should see `OK` for both.
 
 ---
 
-## 5. Monitoring in Production
+## 7. Monitoring in Production
 
 The backend exposes Prometheus metrics at `/metrics`. Point your monitoring stack (or the included `monitoring/docker-compose.yml`) to the backend URL:
 
@@ -188,7 +249,7 @@ scrape_configs:
 
 ---
 
-## 6. CI/CD
+## 8. CI/CD
 
 Existing GitHub Actions workflows handle deploys:
 
