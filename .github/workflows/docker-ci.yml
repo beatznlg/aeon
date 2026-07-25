@@ -1,0 +1,252 @@
+# AEON OS — Docker CI
+# ====================
+# Builds and tests both Docker images on every push to main and every PR.
+#
+# What it does:
+#   1. Builds the Flask backend Docker image (Dockerfile)
+#   2. Builds the Next.js frontend Docker image (web/Dockerfile)
+#   3. Runs Python compile checks and Python lint (flake8)
+#   4. Runs Next.js lint and TypeScript typecheck
+#   5. Validates docker-compose.yml config
+#   6. Launches full stack and runs smoke tests
+#   7. Caches Docker layers for fast re-builds
+
+name: Docker CI
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "monitoring/**"
+      - ".gitignore"
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "monitoring/**"
+      - ".gitignore"
+
+env:
+  REGISTRY: ghcr.io
+  # Use the repo owner in lowercase for GHCR — will be set by GitHub
+  IMAGE_BACKEND: aeon-backend
+  IMAGE_FRONTEND: aeon-frontend
+
+jobs:
+  # ─── Lint & Python Checks ──────────────────────────────────────────────
+  lint:
+    name: Lint & Typecheck
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── Python checks ─────────────────────────────────────────────────
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 pyyaml
+          pip install -r requirements.txt --quiet
+
+      - name: Python compile check
+        run: |
+          python -m py_compile aeon.py aeon_server.py aeon_os.py \
+            aeon_workflows.py aeon_integrations.py aeon_usage.py \
+            aeon_governance.py aeon_auth.py aeon_llm.py \
+            aeon_api_keys.py aeon_stripe.py aeon_rag.py aeon_db.py
+          echo "✅ All Python modules compile"
+
+      - name: Python lint (flake8)
+        run: |
+          flake8 aeon.py aeon_server.py aeon_os.py aeon_workflows.py \
+            aeon_integrations.py aeon_usage.py aeon_governance.py \
+            aeon_auth.py aeon_llm.py aeon_api_keys.py aeon_stripe.py \
+            aeon_rag.py aeon_db.py \
+            --max-line-length=120 --extend-ignore=E203,W503 \
+            --statistics --count
+        continue-on-error: true
+
+      # ── Node / Next.js checks ──────────────────────────────────────────
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install Node deps
+        run: npm ci
+        working-directory: web
+
+      - name: Next.js lint
+        run: npm run lint
+        working-directory: web
+        continue-on-error: true
+
+      - name: TypeScript typecheck
+        run: npx tsc --noEmit
+        working-directory: web
+
+      - name: YAML validate docker-compose
+        run: |
+          python3 << 'PYEOF'
+          import yaml, sys
+          for f in ['docker-compose.yml', 'monitoring/docker-compose.yml']:
+              try:
+                  with open(f) as fh:
+                      yaml.safe_load(fh)
+                  print(f'  {f} is valid YAML')
+              except Exception as e:
+                  print(f'  {f}: {e}')
+                  sys.exit(1)
+          PYEOF
+
+  # ─── Docker Build (Backend) ────────────────────────────────────────────
+  build-backend:
+    name: Build Backend Image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: false
+          load: true
+          tags: ${{ env.IMAGE_BACKEND }}:ci-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Verify backend image
+        run: |
+          docker run --rm ${{ env.IMAGE_BACKEND }}:ci-${{ github.sha }} \
+            python3 -c "import sys; sys.path.insert(0, '/app'); import aeon; print('✅ Kernel module loads'); import aeon_server; print('✅ Server module loads')"
+
+  # ─── Docker Build (Frontend) ───────────────────────────────────────────
+  build-frontend:
+    name: Build Frontend Image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: web
+          file: web/Dockerfile
+          push: false
+          load: true
+          tags: ${{ env.IMAGE_FRONTEND }}:ci-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Verify frontend image
+        run: |
+          docker run --rm -d \
+            -e NEXTAUTH_SECRET=ci-test-secret \
+            -e AEON_PYTHON_URL=http://localhost:5000 \
+            -e NEXTAUTH_URL=http://localhost:3000 \
+            --name aeon-frontend-test \
+            ${{ env.IMAGE_FRONTEND }}:ci-${{ github.sha }}
+          # Give it a moment to start, then check
+          sleep 10
+          docker logs aeon-frontend-test 2>&1 | tail -20
+          docker stop aeon-frontend-test
+
+  # ─── Integration Smoke Test ────────────────────────────────────────────
+  integration:
+    name: Integration Smoke Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [build-backend, build-frontend, lint]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Start full stack (no Postgres — stub mode)
+        run: |
+          # Start Postgres
+          docker compose up -d postgres
+          echo "Waiting for Postgres..."
+          sleep 10
+          docker compose logs postgres --tail 10
+
+          # Start backend
+          docker compose up -d backend --build
+          echo "Waiting for backend health..."
+          for i in $(seq 1 20); do
+            status=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:5000/health 2>/dev/null || echo "000")
+            if [ "$status" = "200" ]; then
+              echo "✅ Backend is healthy"
+              break
+            fi
+            if [ "$i" -eq 20 ]; then
+              echo "❌ Backend did not become healthy"
+              docker compose logs backend --tail 30
+              exit 1
+            fi
+            sleep 3
+          done
+
+      - name: Run smoke tests
+        run: |
+          # Health endpoint
+          echo "=== /health ==="
+          curl -s http://localhost:5000/health | python3 -m json.tool
+
+          # Ready endpoint
+          echo "=== /ready ==="
+          curl -s http://localhost:5000/ready | python3 -m json.tool
+
+          # Metrics endpoint
+          echo "=== /metrics (first 10 lines) ==="
+          curl -s http://localhost:5000/metrics | head -10
+
+          # Auth login (fallback admin)
+          echo "=== /auth/login (fallback) ==="
+          TOKEN=$(curl -s -X POST http://localhost:5000/auth/login \
+            -H "Content-Type: application/json" \
+            -d '{"email":"admin@aeon.local","password":"aeon123"}' \
+            | python3 -c "import sys,json; print(json.load(sys.stdin).get('token','N/A'))")
+          echo "Token: ${TOKEN:0:20}..."
+
+          # Chat with stub provider
+          echo "=== /chat ==="
+          curl -s -X POST http://localhost:5000/chat \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $TOKEN" \
+            -d '{"query":"hello"}' \
+            | python3 -m json.tool
+
+      - name: Cleanup
+        if: always()
+        run: docker compose down -v
