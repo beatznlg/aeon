@@ -8,6 +8,9 @@
 #   - railway CLI installed and authenticated (npm install -g @railway/cli)
 #   - git repo pushed to GitHub
 #
+# Authentication:
+#   Either run `railway login` first, or set the RAILWAY_TOKEN environment variable.
+#
 # Usage:
 #   ./scripts/setup-railway.sh [PROJECT_NAME]
 #
@@ -16,6 +19,23 @@ set -euo pipefail
 PROJECT_NAME="${1:-aeon-backend}"
 
 echo "🚄 Setting up AEON backend on Railway..."
+
+# Validate Railway CLI is available
+if ! command -v railway &>/dev/null; then
+  echo "❌ Railway CLI not found. Install it with: npm install -g @railway/cli"
+  exit 1
+fi
+
+# Validate authentication (token or interactive login)
+if [ -z "${RAILWAY_TOKEN:-}" ]; then
+  if ! railway status &>/dev/null; then
+    echo "❌ Not authenticated to Railway. Run 'railway login' or set RAILWAY_TOKEN."
+    exit 1
+  fi
+  echo "🔗 Using interactive Railway login"
+else
+  echo "🔑 Using RAILWAY_TOKEN for authentication"
+fi
 
 # Create or link project
 if ! railway status &>/dev/null; then
