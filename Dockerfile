@@ -1,61 +1,70 @@
-# AEON Python Kernel — Production Dockerfile
+# AEON OS — Flask Backend
+# ========================
+# Multi-stage Docker image for the AEON Python kernel server.
 #
-# Build (full image, includes torch/transformers for GPU inference):
-#   docker build -t aeon-server:latest .
-#
-# Build (stub mode, lightweight, no GPU deps):
-#   docker build --build-arg STUB_MODE=true -t aeon-server:stub .
-#
+# Build:
+#   docker build -t aeon-backend -f Dockerfile .
 # Run:
-#   docker run -p 5000:5000 aeon-server:latest
+#   docker run -p 5000:5000 aeon-backend
+#
+# Environment variables (see .env.example):
+#   AEON_PYTHON_HOST       (default 0.0.0.0)
+#   AEON_PYTHON_PORT       (default 5000)
+#   AEON_ROOT              (default /app/state)
+#   AEON_DATABASE_URL      (required — postgresql://...)
+#   AEON_LLM_PROVIDER      (default stub)
+#   OPENAI_API_KEY         (optional)
+#   ANTHROPIC_API_KEY      (optional)
+#   STRIPE_API_KEY         (optional)
+#   STRIPE_WEBHOOK_SECRET  (optional)
+#   HUGGINGFACE_TOKEN      (optional)
 
-FROM python:3.10-slim
+# ─── Stage 1: Build ────────────────────────────────────────────────────────
+FROM python:3.11-slim AS builder
 
-# Install system dependencies required by Python packages and health checks.
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-        curl \
-        build-essential \
-        libgomp1 && \
-    rm -rf /var/lib/apt/lists/*
+WORKDIR /build
 
-# Create a non-root user for running the AEON kernel.
-RUN useradd -m -s /bin/bash aeon
-WORKDIR /home/aeon/app
+# Install system deps needed for psycopg2 / bitsandbytes / numpy
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
 
-# Ensure pip user bin is available.
-ENV PATH="/home/aeon/.local/bin:${PATH}"
+COPY requirements.txt .
+RUN pip install --no-cache-dir --user -r requirements.txt
 
-# Copy and install Python requirements.  We install as root first so compile-time
-# deps work, then switch to the aeon user for runtime.
-COPY --chown=aeon:aeon requirements.txt .
+# ─── Stage 2: Runtime ──────────────────────────────────────────────────────
+FROM python:3.11-slim AS runtime
 
-# Optional stub mode: strip heavy ML/GPU packages for a smaller, faster image.
-ARG STUB_MODE=false
-RUN if [ "$STUB_MODE" = "true" ]; then \
-      sed -i '/^[[:space:]]*torch/d; /^[[:space:]]*transformers/d; /^[[:space:]]*bitsandbytes/d; /^[[:space:]]*accelerate/d; /^[[:space:]]*sentence-transformers/d' requirements.txt; \
-    fi
+WORKDIR /app
 
-# Install dependencies + gunicorn production server.
-RUN pip install --no-cache-dir -r requirements.txt gunicorn
+# Runtime deps only
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq-dev \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy application source and set permissions.
-COPY --chown=aeon:aeon . .
-RUN chmod +x docker-entrypoint.sh
+# Copy installed packages from builder
+COPY --from=builder /root/.local /root/.local
+ENV PATH=/root/.local/bin:$PATH
 
-# Switch to non-root user for runtime.
-USER aeon
+# Copy application code
+COPY aeon.py aeon_os.py aeon_server.py aeon_workflows.py aeon_integrations.py \
+     aeon_usage.py aeon_governance.py aeon_auth.py aeon_db.py aeon_llm.py \
+     aeon_api_keys.py aeon_stripe.py aeon_rag.py \
+     requirements.txt ./
 
-# Default environment.
-ENV AEON_PYTHON_HOST=0.0.0.0
-ENV AEON_PYTHON_PORT=5000
-ENV AEON_ROOT=/home/aeon/app/aeon_state
+# Copy scripts
+COPY scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+# Create state directory
+RUN mkdir -p /app/state
+
+# Healthcheck
+HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
+    CMD curl -f http://localhost:5000/health || exit 1
 
 EXPOSE 5000
 
-# Health check against the dedicated liveness endpoint.
-HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-  CMD curl -fsS http://127.0.0.1:5000/live || exit 1
-
-ENTRYPOINT ["./docker-entrypoint.sh"]
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--threads", "4", "aeon_server:app"]
+ENTRYPOINT ["docker-entrypoint.sh"]
