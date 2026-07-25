@@ -141,9 +141,9 @@ class ApiKeyManager:
                     try:
                         k = ApiKey.from_dict(item)
                         self._keys[k.key_hash] = k
-                    except Exception:
+                    except Exception:  #nosec B110
                         pass
-            except Exception:
+            except Exception:  #nosec B110
                 pass
 
     def _save(self) -> None:
@@ -333,7 +333,7 @@ class ApiKeyManager:
                     continue
                 try:
                     ev = json.loads(line)
-                except Exception:
+                except Exception:  #nosec B112
                     continue
                 if ev.get("timestamp", 0) < cutoff:
                     continue

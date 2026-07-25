@@ -1,0 +1,6 @@
+# AEON OS Bandit configuration
+# Inline self-test snippets in aeon.py/aeon_os.py use `assert` intentionally;
+# they are not production runtime checks. Skip that noisy rule project-wide.
+
+skips:
+  - B101

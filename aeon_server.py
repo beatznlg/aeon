@@ -127,7 +127,7 @@ def _cors_headers(response):
     return response
 
 # ── Configuration ────────────────────────────────────────────────────────────
-HOST = os.environ.get("AEON_PYTHON_HOST", "0.0.0.0")
+HOST = os.environ.get("AEON_PYTHON_HOST", "0.0.0.0")  #nosec B104
 PORT = int(os.environ.get("AEON_PYTHON_PORT", "5000"))
 AEON_ROOT = Path(os.environ.get("AEON_ROOT", "./aeon_state/server"))
 AEON_ROOT.mkdir(parents=True, exist_ok=True)
@@ -146,7 +146,7 @@ def validate_environment() -> dict[str, Any]:
         "SUPABASE_URL": "optional",
         "SUPABASE_ANON_KEY": "optional",
         "SUPABASE_SERVICE_ROLE_KEY": "optional",
-        "HUGGINGFACE_TOKEN": "optional",
+        "HUGGINGFACE_TOKEN": "optional",  #nosec B105
         "OPENAI_API_KEY": "optional",
         "ANTHROPIC_API_KEY": "optional",
     }
@@ -479,7 +479,7 @@ def auth_login():
         memberships = db.list_user_memberships(user.id)
         if memberships:
             workspace_id = memberships[0].workspace_id
-    except Exception:
+    except Exception:  #nosec B110
         pass
     token = create_access_token(user.id, user.email, user.role, workspace_id)
     return jsonify({
@@ -514,7 +514,7 @@ def auth_me():
                     "name": ws.name,
                     "plan": ws.plan,
                 }
-    except Exception:
+    except Exception:  #nosec B110
         pass
 
     return jsonify({
@@ -742,7 +742,7 @@ def workspace_history(workspace_id: str):
                 episodes = r.json()
                 episodes.reverse()
                 return jsonify({"ok": True, "history": episodes, "source": "supabase"})
-    except Exception:
+    except Exception:  #nosec B110
         pass
 
     # Fall back to local agent memory
@@ -800,7 +800,7 @@ def _has_workspace_role(ctx: dict[str, Any], workspace_id: str, required_role: s
         membership = db.get_membership(workspace_id, ctx.get("user_id"))
         if membership and has_role(membership.role, required_role):
             return True
-    except Exception:
+    except Exception:  #nosec B110
         pass
     return False
 

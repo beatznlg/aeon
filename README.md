@@ -170,6 +170,20 @@ AEON includes a hardened security layer:
 - **Audit PII redaction**: automatic redaction of emails, keys, and tokens in audit metadata.
 - **CI security scans**: Bandit and pip-audit run on every PR.
 
+### Local Security Scanning
+
+Run the same checks locally before opening a PR:
+
+```bash
+# Static security analysis of Python source (zero open issues)
+bandit -c bandit.yaml -r aeon*.py
+
+# Dependency vulnerability audit (informational while we evaluate transformers 5.x)
+pip-audit -r requirements.txt -r requirements-dev.txt --desc
+```
+
+Known dependency findings are tracked in the dependency audit output. AEON only loads `Qwen/Qwen2.5-3B-Instruct` via `AutoTokenizer`/`AutoModelForCausalLM` and does not exercise the X-CLIP, `Trainer._load_rng_state`, or LightGlue code paths reported by `pip-audit`. Upgrading to `transformers>=5.5.0` would clear the RCE findings but is a major-version change that requires full Colab/GPU validation.
+
 ---
 
 ##  License

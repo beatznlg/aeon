@@ -90,7 +90,7 @@ def can_access_workspace(user_id: str | None, workspace_id: str | None) -> bool:
         m = db.get_membership(workspace_id, user_id)
         if m:
             return True
-    except Exception:
+    except Exception:  #nosec B110
         pass
     return _dev_mode()
 

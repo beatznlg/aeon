@@ -8,7 +8,7 @@
 # Expect a multi-minute install on a fresh Colab runtime.
 
 # --- core LLM + embeddings ---
-transformers==4.44.2
+transformers>=4.45.2
 torch
 sentence-transformers==3.0.1
 bitsandbytes

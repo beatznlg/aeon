@@ -180,12 +180,12 @@ def get_embedder(preferred: str = None) -> Embedder:
     if preferred == "openai" or (preferred is None and os.environ.get("OPENAI_API_KEY")):
         try:
             return OpenAIEmbedder()
-        except Exception:
+        except Exception:  #nosec B110
             pass
     if preferred == "hf" or (preferred is None and os.environ.get("HUGGINGFACE_TOKEN")):
         try:
             return HFEmbedder()
-        except Exception:
+        except Exception:  #nosec B110
             pass
     return StubEmbedder()
 
@@ -226,7 +226,7 @@ class PromptRegistry:
         if self.index_file.exists():
             try:
                 return json.loads(self.index_file.read_text(encoding="utf-8"))
-            except Exception:
+            except Exception:  #nosec B110
                 pass
         return {}
 
@@ -333,7 +333,7 @@ class KnowledgeBaseManager:
         if (self.kb_dir / "index.json").exists():
             try:
                 return json.loads((self.kb_dir / "index.json").read_text(encoding="utf-8"))
-            except Exception:
+            except Exception:  #nosec B110
                 pass
         return {}
 

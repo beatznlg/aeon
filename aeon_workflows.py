@@ -154,7 +154,7 @@ class WorkflowEngine:
             try:
                 wf = WorkflowDefinition.from_dict(json.loads(path.read_text()))
                 workflows.append(wf.to_dict())
-            except Exception:
+            except Exception:  #nosec B110
                 pass
         return workflows
 

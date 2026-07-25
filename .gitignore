@@ -49,3 +49,6 @@ web/.env.local
 # Local runtime state/logs
 aeon_state/
 server.log
+
+# Security scan artifacts
+bandit-report.json

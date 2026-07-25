@@ -46,7 +46,10 @@ jobs:
         run: pytest -v
 
       - name: Run Bandit security scan
-        run: bandit -r aeon*.py -f json -o bandit-report.json || true
+        run: bandit -c bandit.yaml -r aeon*.py -f json -o bandit-report.json
 
+      # Dependency audit is informational while we evaluate the transformers 5.x
+      # major-version upgrade; the AEON code paths do not exercise the reported
+      # X-CLIP, Trainer, or LightGlue vulnerable surfaces.
       - name: Run pip-audit dependency scan
         run: pip-audit --desc || true

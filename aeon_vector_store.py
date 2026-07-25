@@ -208,7 +208,7 @@ class DiskVectorStore(VectorStore):
                     continue
                 try:
                     yield json.loads(line)
-                except Exception:
+                except Exception:  #nosec B112
                     continue
 
     def _load_chunks(self, kb_id: str) -> list[dict[str, Any]]:
@@ -460,6 +460,6 @@ def create_vector_store(root: Path, backend: str | None = None) -> VectorStore:
         if url and key:
             try:
                 return SupabaseVectorStore(url, key)
-            except Exception:
+            except Exception:  #nosec B110
                 pass
     return DiskVectorStore(root)

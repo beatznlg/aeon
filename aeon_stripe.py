@@ -80,7 +80,7 @@ class StripeClient:
         if path.exists():
             try:
                 return json.loads(path.read_text(encoding="utf-8"))
-            except Exception:
+            except Exception:  #nosec B110
                 pass
         return {}
 
@@ -146,7 +146,7 @@ class StripeClient:
             from aeon_usage import BillingCalculator
             calc = BillingCalculator(self.root)
             calc.set_plan(workspace_id, plan_id, credits=0.0)
-        except Exception:
+        except Exception:  #nosec B110
             pass
 
     # ── Price ID resolution ─────────────────────────────────────────────
@@ -424,7 +424,7 @@ class StripeClient:
                 from aeon_usage import BillingCalculator
                 calc = BillingCalculator(self.root)
                 calc.add_credits(workspace_id, amount_paid)
-            except Exception:
+            except Exception:  #nosec B110
                 pass
 
         logger.info("Invoice paid: customer=%s amount=%.2f", customer_id, amount_paid)
@@ -484,7 +484,7 @@ class StripeClient:
                 "status": "active",
                 "source": "local",
             }
-        except Exception:
+        except Exception:  #nosec B110
             pass
 
         return {

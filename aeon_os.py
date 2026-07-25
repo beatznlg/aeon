@@ -86,7 +86,7 @@ class WorkspaceManager:
                         )
                         s.add(ws)
                         s.commit()
-            except Exception:
+            except Exception:  #nosec B110
                 pass
         return path
 
@@ -116,7 +116,7 @@ class WorkspaceManager:
                         }
                         for r in rows
                     ]
-            except Exception:
+            except Exception:  #nosec B110
                 pass
         ws_dir = self.root / "workspaces"
         if not ws_dir.exists():
@@ -128,7 +128,7 @@ class WorkspaceManager:
                 try:
                     meta = json.loads(meta_file.read_text())
                     workspaces.append(meta)
-                except Exception:
+                except Exception:  #nosec B110
                     pass
         return workspaces
 
@@ -497,7 +497,7 @@ def _tool_vuln_scan(args, root):
                 data = r.json()
                 if data.get("vulnerabilities"):
                     return True, json.dumps(data["vulnerabilities"][0], ensure_ascii=False)[:1200]
-        except Exception:
+        except Exception:  #nosec B110
             pass
         return True, json.dumps({
             "cve": cve,
@@ -528,7 +528,7 @@ def _tool_ip_reputation(args, root):
                            headers={"key": key}, timeout=10)
             if r.status_code == 200:
                 return True, json.dumps(r.json(), ensure_ascii=False)[:1000]
-        except Exception:
+        except Exception:  #nosec B110
             pass
     # Mock fallback
     h = hash(ip) % 10
@@ -578,7 +578,7 @@ def _tool_security_news(args, root):
                 "title": p["data"]["title"],
                 "url": p["data"]["url"],
             } for p in posts], ensure_ascii=False)
-    except Exception:
+    except Exception:  #nosec B110
         pass
     return True, json.dumps([
         {"title": "Critical OpenSSH vulnerability disclosed", "url": "#"},

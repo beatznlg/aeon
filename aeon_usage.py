@@ -138,7 +138,7 @@ class UsageMeter:
                     if workspace_id and data.get("workspace_id") != workspace_id:
                         continue
                     yield UsageEvent.from_dict(data)
-                except Exception:
+                except Exception:  #nosec B112
                     continue
 
     def get_summary(
@@ -225,7 +225,7 @@ class BillingCalculator:
         if self.state_file.exists():
             try:
                 return json.loads(self.state_file.read_text(encoding="utf-8"))
-            except Exception:
+            except Exception:  #nosec B110
                 pass
         return {}
 

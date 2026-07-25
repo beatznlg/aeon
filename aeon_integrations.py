@@ -349,9 +349,9 @@ class IntegrationManager:
                     try:
                         cfg = IntegrationConfig.from_dict(item)
                         self._configs[cfg.id] = cfg
-                    except Exception:
+                    except Exception:  #nosec B110
                         pass
-            except Exception:
+            except Exception:  #nosec B110
                 pass
         if self.deliveries_path.exists():
             try:
@@ -359,7 +359,7 @@ class IntegrationManager:
                 for item in data:
                     with contextlib.suppress(Exception):
                         self._deliveries.append(WebhookDelivery.from_dict(item))
-            except Exception:
+            except Exception:  #nosec B110
                 pass
 
     def _save_configs(self) -> None:

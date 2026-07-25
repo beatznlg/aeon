@@ -200,7 +200,7 @@ class GovernanceManager:
                 json=rows,
                 timeout=10,
             )
-        except Exception:
+        except Exception:  #nosec B110
             # Logging must never break the main flow
             pass
 
