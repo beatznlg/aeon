@@ -1,27 +1,27 @@
-# AEON v3.0 Prometheus alert rules
-# These rules assume aeon_server.py is exporting metrics at /metrics and
-# Prometheus is scraping them (see monitoring/prometheus/prometheus.yml).
+# AEON OS Alert Rules
+# Fires alerts when key metrics exceed defined thresholds.
 
 groups:
   - name: aeon_alerts
+    interval: 15s
     rules:
-      # ── High HTTP 5xx error rate ─────────────────────────────────────────
+      # ── High Error Rate ──────────────────────────────────────────────
       - alert: AeonHighErrorRate
         expr: |
-          sum(rate(aeon_http_requests_total{status=~"5.."}[5m]))
-          /
-          sum(rate(aeon_http_requests_total[5m]))
+          (sum(rate(aeon_http_requests_total{status=~"5.."}[5m]))
+           /
+           sum(rate(aeon_http_requests_total[5m])))
           > 0.05
         for: 2m
         labels:
-          severity: warning
-          service: aeon-server
+          severity: critical
+          service: aeon-kernel
         annotations:
-          summary: "AEON high HTTP error rate"
-          description: "More than 5% of AEON HTTP requests returned 5xx in the last 5 minutes."
-          runbook_url: "https://github.com/beatznlg/aeon/blob/main/monitoring/README.md#AeonHighErrorRate"
+          summary: "AEON kernel error rate above 5%"
+          description: "HTTP 5xx rate is {{ $value | humanizePercentage }} for 2 minutes."
+          runbook: "https://github.com/beatznlg/aeon/blob/main/monitoring/README.md#aeonhigherrorrate"
 
-      # ── High P99 latency ────────────────────────────────────────────────
+      # ── High Latency ─────────────────────────────────────────────────
       - alert: AeonHighLatency
         expr: |
           histogram_quantile(0.99,
@@ -30,25 +30,25 @@ groups:
         for: 3m
         labels:
           severity: warning
-          service: aeon-server
+          service: aeon-kernel
         annotations:
-          summary: "AEON high P99 latency"
-          description: "AEON P99 latency exceeded 1 second on {{ $labels.method }} {{ $labels.path }} for more than 3 minutes."
-          runbook_url: "https://github.com/beatznlg/aeon/blob/main/monitoring/README.md#AeonHighLatency"
+          summary: "AEON kernel P99 latency above 1s"
+          description: "P99 request latency on {{ $labels.method }} {{ $labels.path }} is {{ $value | humanizeDuration }}."
+          runbook: "https://github.com/beatznlg/aeon/blob/main/monitoring/README.md#aeonhighlatency"
 
-      # ── Deep job queue ───────────────────────────────────────────────────
+      # ── Job Queue Depth ──────────────────────────────────────────────
       - alert: AeonJobQueueDeep
         expr: aeon_job_queue_size > 50
         for: 5m
         labels:
           severity: warning
-          service: aeon-server
+          service: aeon-kernel
         annotations:
-          summary: "AEON job queue backing up"
-          description: "AEON job queue size is {{ $value }}, exceeding the threshold of 50 for more than 5 minutes."
-          runbook_url: "https://github.com/beatznlg/aeon/blob/main/monitoring/README.md#AeonJobQueueDeep"
+          summary: "AEON async job queue is deep"
+          description: "Job queue has {{ $value }} pending jobs for 5 minutes."
+          runbook: "https://github.com/beatznlg/aeon/blob/main/monitoring/README.md#aeonjobqueuedeep"
 
-      # ── Agent tick errors ────────────────────────────────────────────────
+      # ── Agent Tick Errors ────────────────────────────────────────────
       - alert: AeonAgentTickErrors
         expr: |
           sum(rate(aeon_http_requests_total{status=~"5..", path=~"/apps/.*/tick"}[5m]))
@@ -56,8 +56,45 @@ groups:
         for: 2m
         labels:
           severity: critical
-          service: aeon-server
+          service: aeon-kernel
         annotations:
-          summary: "AEON agent tick errors are elevated"
-          description: "More than 0.1 tick errors per second on {{ $labels.path }} in the last 5 minutes."
-          runbook_url: "https://github.com/beatznlg/aeon/blob/main/monitoring/README.md#AeonAgentTickErrors"
+          summary: "AEON agent tick errors exceeding threshold"
+          description: "Agent tick error rate is {{ $value }} per second."
+          runbook: "https://github.com/beatznlg/aeon/blob/main/monitoring/README.md#aeonagenttickerrors"
+
+      # ── Kernel Down ──────────────────────────────────────────────────
+      - alert: AeonKernelDown
+        expr: up{job="aeon-kernel"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: aeon-kernel
+        annotations:
+          summary: "AEON kernel is unreachable"
+          description: "Prometheus cannot scrape the AEON kernel at {{ $labels.instance }}."
+
+      # ── Workflow Run Failures ────────────────────────────────────────
+      - alert: AeonWorkflowFailures
+        expr: |
+          sum(rate(aeon_workflow_runs_total{ok="false"}[10m]))
+          > 0.5
+        for: 3m
+        labels:
+          severity: warning
+          service: aeon-kernel
+        annotations:
+          summary: "Workflow run failures elevated"
+          description: "Workflow failure rate is {{ $value }} per second over 10 minutes."
+
+      # ── Webhook Delivery Failures ─────────────────────────────────────
+      - alert: AeonWebhookFailures
+        expr: |
+          sum(rate(aeon_webhook_deliveries_total{verified="false"}[10m]))
+          > 1
+        for: 5m
+        labels:
+          severity: warning
+          service: aeon-kernel
+        annotations:
+          summary: "Webhook delivery failures elevated"
+          description: "Unverified webhook delivery rate is {{ $value }} per second."

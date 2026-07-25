@@ -1,765 +1,219 @@
 {
-  "annotations": {
-    "list": [
-      {
-        "builtIn": 1,
-        "datasource": {
-          "type": "grafana",
-          "uid": "-- Grafana --"
-        },
-        "enable": true,
-        "hide": true,
-        "iconColor": "rgba(0, 211, 255, 1)",
-        "name": "Annotations & Alerts",
-        "type": "dashboard"
-      }
-    ]
-  },
-  "description": "AEON v3.0 Python kernel metrics from the Prometheus /metrics endpoint",
+  "__inputs": [],
+  "__requires": [],
+  "title": "AEON OS - System Metrics",
+  "version": 1,
+  "uid": "aeon-os-metrics",
+  "description": "Pre-built dashboard for AEON OS kernel metrics. Import into Grafana and set the Prometheus data source.",
+  "schemaVersion": 36,
+  "timezone": "browser",
   "editable": true,
-  "fiscalYearStartMonth": 0,
-  "graphTooltip": 1,
-  "id": null,
-  "links": [],
-  "liveNow": false,
-  "panels": [
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${prometheus_datasource}"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 10,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "insertNulls": false,
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "never",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          },
-          "unit": "reqps"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 0
-      },
-      "id": 1,
-      "options": {
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${prometheus_datasource}"
-          },
-          "expr": "sum(rate(aeon_http_requests_total[1m])) by (method, status)",
-          "refId": "A"
-        }
-      ],
-      "title": "HTTP Request Rate",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${prometheus_datasource}"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 10,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "insertNulls": false,
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "never",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          },
-          "unit": "s"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 0
-      },
-      "id": 2,
-      "options": {
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${prometheus_datasource}"
-          },
-          "expr": "histogram_quantile(0.99, sum(rate(aeon_http_request_duration_seconds_bucket[1m])) by (le, method, path))",
-          "refId": "A"
-        }
-      ],
-      "title": "P99 Request Latency",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${prometheus_datasource}"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 4,
-        "x": 0,
-        "y": 8
-      },
-      "id": 3,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${prometheus_datasource}"
-          },
-          "expr": "sum(aeon_chat_requests_total)",
-          "refId": "A"
-        }
-      ],
-      "title": "Chat Requests",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${prometheus_datasource}"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "blue",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 4,
-        "x": 4,
-        "y": 8
-      },
-      "id": 4,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${prometheus_datasource}"
-          },
-          "expr": "sum(aeon_agents_loaded)",
-          "refId": "A"
-        }
-      ],
-      "title": "Agents Loaded",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${prometheus_datasource}"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "orange",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 4,
-        "x": 8,
-        "y": 8
-      },
-      "id": 5,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${prometheus_datasource}"
-          },
-          "expr": "sum(aeon_job_queue_size)",
-          "refId": "A"
-        }
-      ],
-      "title": "Job Queue Size",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${prometheus_datasource}"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 10,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "insertNulls": false,
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "never",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "stack"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          },
-          "unit": "tiks"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 12
-      },
-      "id": 6,
-      "options": {
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${prometheus_datasource}"
-          },
-          "expr": "sum(rate(aeon_agent_ticks_total[1m])) by (app_id)",
-          "refId": "A"
-        }
-      ],
-      "title": "Agent Tick Rate by App",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${prometheus_datasource}"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 10,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "insertNulls": false,
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "never",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          },
-          "unit": "ops"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 12
-      },
-      "id": 7,
-      "options": {
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${prometheus_datasource}"
-          },
-          "expr": "sum(rate(aeon_workflow_runs_total[1m])) by (ok)",
-          "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${prometheus_datasource}"
-          },
-          "expr": "sum(rate(aeon_swarm_runs_total[1m])) by (ok)",
-          "refId": "B"
-        }
-      ],
-      "title": "Workflow & Swarm Run Rate",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${prometheus_datasource}"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 10,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "insertNulls": false,
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "never",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "stack"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          },
-          "unit": "ops"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 20
-      },
-      "id": 8,
-      "options": {
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${prometheus_datasource}"
-          },
-          "expr": "sum(rate(aeon_integration_runs_total[1m])) by (integration_id, ok)",
-          "refId": "A"
-        }
-      ],
-      "title": "Integration Run Rate",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${prometheus_datasource}"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 10,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "insertNulls": false,
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "never",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "stack"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          },
-          "unit": "ops"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 20
-      },
-      "id": 9,
-      "options": {
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${prometheus_datasource}"
-          },
-          "expr": "sum(rate(aeon_webhook_deliveries_total[1m])) by (verified)",
-          "refId": "A"
-        }
-      ],
-      "title": "Webhook Delivery Rate",
-      "type": "timeseries"
-    }
-  ],
-  "refresh": "30s",
-  "schemaVersion": 38,
-  "style": "dark",
-  "tags": ["aeon", "prometheus", "monitoring"],
+  "tags": ["aeon", "monitoring", "metrics"],
+  "time": { "from": "now-1h", "to": "now" },
   "templating": {
     "list": [
       {
-        "current": {
-          "selected": false,
-          "text": "Prometheus",
-          "value": "Prometheus"
-        },
-        "hide": 0,
-        "includeAll": false,
-        "label": "Datasource",
-        "multi": false,
         "name": "prometheus_datasource",
-        "options": [],
+        "type": "datasource",
         "query": "prometheus",
-        "queryValue": "",
-        "refresh": 1,
-        "regex": "",
-        "skipUrlSync": false,
-        "type": "datasource"
+        "current": { "value": "default" },
+        "hide": 0,
+        "label": "Data Source"
       }
     ]
   },
-  "time": {
-    "from": "now-1h",
-    "to": "now"
-  },
-  "timepicker": {},
-  "timezone": "browser",
-  "title": "AEON v3.0 Kernel Metrics",
-  "uid": "aeon-kernel-metrics",
-  "version": 1,
-  "weekStart": ""
+  "panels": [
+    {
+      "id": 1,
+      "title": "HTTP Request Rate",
+      "type": "graph",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": "${prometheus_datasource}",
+      "targets": [
+        {
+          "expr": "sum(rate(aeon_http_requests_total[5m]))",
+          "legendFormat": "Total",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "color": { "mode": "palette-classic" }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "P99 / P95 / P50 Latency",
+      "type": "graph",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": "${prometheus_datasource}",
+      "targets": [
+        {
+          "expr": "aeon:http_request_latency_p99_5m",
+          "legendFormat": "P99",
+          "refId": "A"
+        },
+        {
+          "expr": "aeon:http_request_latency_p95_5m",
+          "legendFormat": "P95",
+          "refId": "B"
+        },
+        {
+          "expr": "aeon:http_request_latency_p50_5m",
+          "legendFormat": "P50",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": { "mode": "palette-classic" }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Agent Tick Rate",
+      "type": "graph",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": "${prometheus_datasource}",
+      "targets": [
+        {
+          "expr": "sum(rate(aeon_agent_ticks_total[5m]))",
+          "legendFormat": "Total ticks",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "color": { "mode": "palette-classic" }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Top Agent Apps by Tick Rate",
+      "type": "table",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": "${prometheus_datasource}",
+      "targets": [
+        {
+          "expr": "topk(10, sum(rate(aeon_agent_ticks_total[5m])) by (app_id))",
+          "legendFormat": "{{ app_id }}",
+          "refId": "A"
+        }
+      ],
+      "transformations": [
+        { "id": "organize", "options": { "excludeByName": {}, "indexByName": {}, "renameByName": { "Value": "Ticks/sec", "app_id": "App ID" } } }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Error Rate (5xx)",
+      "type": "graph",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "datasource": "${prometheus_datasource}",
+      "targets": [
+        {
+          "expr": "aeon:error_ratio_5m",
+          "legendFormat": "Error %",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "color": { "mode": "palette-classic" },
+          "thresholds": {
+            "mode": "percentage",
+            "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "yellow", "value": 0.02 },
+              { "color": "red", "value": 0.05 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 6,
+      "title": "Job Queue Size",
+      "type": "graph",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "datasource": "${prometheus_datasource}",
+      "targets": [
+        {
+          "expr": "aeon_job_queue_size",
+          "legendFormat": "Queue depth",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": { "mode": "palette-classic" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "yellow", "value": 20 },
+              { "color": "red", "value": 50 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 7,
+      "title": "HTTP Status Breakdown",
+      "type": "piechart",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "datasource": "${prometheus_datasource}",
+      "targets": [
+        {
+          "expr": "sum(rate(aeon_http_requests_total[5m])) by (status)",
+          "legendFormat": "{{ status }}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" }
+        }
+      }
+    },
+    {
+      "id": 8,
+      "title": "Workflow & Integration Run Rate",
+      "type": "graph",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "datasource": "${prometheus_datasource}",
+      "targets": [
+        {
+          "expr": "sum(rate(aeon_workflow_runs_total[5m]))",
+          "legendFormat": "Workflows",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(aeon_integration_runs_total[5m]))",
+          "legendFormat": "Integrations",
+          "refId": "B"
+        },
+        {
+          "expr": "sum(rate(aeon_swarm_runs_total[5m]))",
+          "legendFormat": "Swarm",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "color": { "mode": "palette-classic" }
+        }
+      }
+    }
+  ]
 }

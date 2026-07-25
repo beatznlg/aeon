@@ -1,109 +1,108 @@
-# AEON v3.0 local monitoring stack
+# AEON OS Monitoring Stack
+# One-command launch: docker compose up --build
 #
 # Services:
-#   - aeon-server: AEON Python kernel (:5000)
-#   - prometheus:  Prometheus (:9090)
-#   - grafana:       Grafana (:3000)
+#   aeon-server   Flask AI kernel (built from project root)
+#   prometheus    Metrics scraper (./prometheus/prometheus.yml)
+#   alertmanager  Alert routing to email/Slack (./alertmanager/alertmanager.yml)
+#   grafana       Visualization dashboard (pre-built: ./grafana/aeon-metrics.json)
 #
-# Start:
-#   cd monitoring
-#   docker compose up --build
-#
-# URLs:
-#   AEON kernel: http://localhost:5000
-#   Prometheus:  http://localhost:9090
-#   Grafana:     http://localhost:3000 (admin / admin)
+# To stop:  docker compose down
+# To reset: docker compose down -v
 
 version: "3.8"
 
-services:
-  alertmanager:
-    image: prom/alertmanager:v0.27.0
-    container_name: aeon-alertmanager
-    ports:
-      - "9093:9093"
-    command:
-      - "--config.file=/etc/alertmanager/alertmanager.yml"
-      - "--storage.path=/alertmanager"
-      - "--web.external-url=http://localhost:9093"
-    volumes:
-      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
-      - ./alertmanager/templates:/etc/alertmanager/templates:ro
-      - alertmanager_data:/alertmanager
-    env_file:
-      - .env
-    networks:
-      - aeon
+networks:
+  aeon-mon:
+    driver: bridge
 
+volumes:
+  prometheus-data:
+  grafana-data:
+
+services:
+  # ── AEON Kernel ──────────────────────────────────────────────────────
   aeon-server:
     build:
       context: ..
-      dockerfile: Dockerfile
-      args:
-        STUB_MODE: "true"
-    container_name: aeon-server
-    ports:
-      - "5000:5000"
+      dockerfile: Dockerfile  # optional, assumes root has a Dockerfile or use:
+    # For a quick dev build without a Dockerfile, use the python:3.11 image:
+    image: python:3.11-slim
+    command: >
+      sh -c "
+      pip install -r /app/requirements.txt --quiet --no-cache-dir &&
+      python /app/aeon_server.py
+      "
+    volumes:
+      - ..:/app
     environment:
       AEON_PYTHON_HOST: "0.0.0.0"
       AEON_PYTHON_PORT: "5000"
-      AEON_LOG_LEVEL: "INFO"
-    volumes:
-      - aeon_state:/app/aeon_state
+      AEON_ROOT: "/app/aeon_state"
+      AEON_LLM_PROVIDER: "stub"
+    ports:
+      - "5000:5000"
     networks:
-      - aeon
+      - aeon-mon
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:5000/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
 
+  # ── Prometheus ────────────────────────────────────────────────────────
   prometheus:
-    image: prom/prometheus:v2.53.0
-    container_name: aeon-prometheus
+    image: prom/prometheus:latest
+    volumes:
+      - ./prometheus:/etc/prometheus:ro
+      - prometheus-data:/prometheus
     command:
-      - "--config.file=/etc/prometheus/prometheus.docker.yml"
+      - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.path=/prometheus"
       - "--web.console.libraries=/usr/share/prometheus/console_libraries"
       - "--web.console.templates=/usr/share/prometheus/consoles"
       - "--web.enable-lifecycle"
     ports:
       - "9090:9090"
-    volumes:
-      - ./prometheus/prometheus.docker.yml:/etc/prometheus/prometheus.docker.yml:ro
-      - ./prometheus/rules:/etc/prometheus/rules:ro
-      - prometheus_data:/prometheus
     networks:
-      - aeon
+      - aeon-mon
     depends_on:
       aeon-server:
         condition: service_healthy
 
-  grafana:
-    image: grafana/grafana:11.0.0
-    container_name: aeon-grafana
-    ports:
-      - "3000:3000"
-    environment:
-      GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: admin
-      GF_USERS_ALLOW_SIGN_UP: "false"
+  # ── Alertmanager ──────────────────────────────────────────────────────
+  alertmanager:
+    image: prom/alertmanager:latest
     volumes:
-      - ./grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./grafana/aeon-metrics.json:/var/lib/grafana/dashboards/aeon-metrics.json:ro
-      - grafana_data:/var/lib/grafana
+      - ./alertmanager:/etc/alertmanager:ro
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+      - "--web.external-url=http://localhost:9093"
+    ports:
+      - "9093:9093"
     networks:
-      - aeon
+      - aeon-mon
+    env_file:
+      - .env  # optional: SMTP/Slack credentials
     depends_on:
       - prometheus
 
-volumes:
-  aeon_state:
-  prometheus_data:
-  grafana_data:
-  alertmanager_data:
-
-networks:
-  aeon:
-    driver: bridge
+  # ── Grafana ───────────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:latest
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/aeon-metrics.json:/var/lib/grafana/dashboards/aeon-metrics.json:ro
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_INSTALL_PLUGINS=
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/var/lib/grafana/dashboards/aeon-metrics.json
+    ports:
+      - "3000:3000"
+    networks:
+      - aeon-mon
+    depends_on:
+      - prometheus

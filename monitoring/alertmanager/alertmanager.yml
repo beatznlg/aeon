@@ -1,81 +1,79 @@
-# Alertmanager configuration for the AEON monitoring stack.
-# Secrets are read from environment variables. Never commit real values here.
-# Copy monitoring/alertmanager/alertmanager.yml as-is; set env vars in .env or
-# your container orchestration secret store.
+# AEON OS Alertmanager Configuration
+# Routes alerts from Prometheus to email and Slack.
+# Uses env var placeholders resolved by Docker Compose.
 
 global:
-  smtp_smarthost: ${ALERTMANAGER_SMTP_HOST:-localhost:25}
-  smtp_from: ${ALERTMANAGER_SMTP_FROM:-alerts@example.com}
-  smtp_auth_username: ${ALERTMANAGER_SMTP_USERNAME:-}
-  smtp_auth_password: ${ALERTMANAGER_SMTP_PASSWORD:-}
-  smtp_auth_identity: ${ALERTMANAGER_SMTP_IDENTITY:-}
-  slack_api_url: ${ALERTMANAGER_SLACK_WEBHOOK_URL:-}
+  resolve_timeout: 5m
+  smtp_smarthost: "${ALERTMANAGER_SMTP_HOST:-localhost:25}"
+  smtp_from: "${ALERTMANAGER_SMTP_FROM:-aeon-alerts@aeon.ai}"
+  smtp_auth_username: "${ALERTMANAGER_SMTP_USERNAME:-}"
+  smtp_auth_password: "${ALERTMANAGER_SMTP_PASSWORD:-}"
+  smtp_require_tls: false
 
-templates:
-  - '/etc/alertmanager/templates/*.tmpl'
-
+# Root route: sends everything to default receiver, but routes critical
+# alerts to a dedicated receiver as well.
 route:
-  receiver: 'default'
-  group_by: ['alertname', 'severity', 'service']
-  group_wait: 10s
+  receiver: "default"
+  group_by: ["alertname", "severity", "service"]
+  group_wait: 30s
   group_interval: 5m
   repeat_interval: 4h
+
   routes:
-    - matchers:
-        - severity="critical"
-      receiver: 'critical'
-      continue: true
-    - matchers:
-        - severity="warning"
-      receiver: 'warning'
-      continue: true
+    # Critical alerts: faster repeat and sent to critical receiver
+    - receiver: "critical"
+      match:
+        severity: "critical"
+      repeat_interval: 1h
 
-receivers:
-  - name: 'default'
-    email_configs:
-      - to: ${ALERTMANAGER_EMAIL_TO:-oncall@example.com}
-        send_resolved: true
-        headers:
-          Subject: 'AEON Alert: {{ .GroupLabels.alertname }}'
-        html: '{{ template "aeon.email" . }}'
-        text: '{{ template "aeon.email.text" . }}'
-    slack_configs:
-      - channel: ${ALERTMANAGER_SLACK_CHANNEL:-#alerts}
-        send_resolved: true
-        title: '{{ template "aeon.slack.title" . }}'
-        text: '{{ template "aeon.slack.text" . }}'
+    # Warning alerts: also routed to default
+    - receiver: "default"
+      match:
+        severity: "warning"
+      repeat_interval: 4h
 
-  - name: 'critical'
-    email_configs:
-      - to: ${ALERTMANAGER_EMAIL_TO:-oncall@example.com}
-        send_resolved: true
-        headers:
-          Subject: 'CRITICAL AEON Alert: {{ .GroupLabels.alertname }}'
-        html: '{{ template "aeon.email" . }}'
-        text: '{{ template "aeon.email.text" . }}'
-    slack_configs:
-      - channel: ${ALERTMANAGER_SLACK_CHANNEL:-#alerts}
-        send_resolved: true
-        title: '{{ template "aeon.slack.title" . }}'
-        text: '{{ template "aeon.slack.text" . }}'
-
-  - name: 'warning'
-    email_configs:
-      - to: ${ALERTMANAGER_EMAIL_TO:-oncall@example.com}
-        send_resolved: true
-        headers:
-          Subject: 'AEON Warning: {{ .GroupLabels.alertname }}'
-        html: '{{ template "aeon.email" . }}'
-        text: '{{ template "aeon.email.text" . }}'
-    slack_configs:
-      - channel: ${ALERTMANAGER_SLACK_CHANNEL:-#alerts}
-        send_resolved: true
-        title: '{{ template "aeon.slack.title" . }}'
-        text: '{{ template "aeon.slack.text" . }}'
-
+# Inhibit rules: silence warning alerts when a related critical alert is firing
 inhibit_rules:
-  - source_matchers:
-      - severity="critical"
-    target_matchers:
-      - severity="warning"
-    equal: ['alertname', 'service']
+  - source_match:
+      severity: "critical"
+    target_match:
+      severity: "warning"
+    equal: ["alertname", "service"]
+
+# Receivers
+receivers:
+  - name: "default"
+    email_configs:
+      - to: "${ALERTMANAGER_EMAIL_TO:-admin@aeon.ai}"
+        send_resolved: true
+        headers:
+          subject: '[AEON OS] {{ .GroupLabels.alertname }} - {{ .GroupLabels.severity }}'
+
+  - name: "critical"
+    email_configs:
+      - to: "${ALERTMANAGER_EMAIL_TO:-admin@aeon.ai}"
+        send_resolved: true
+        headers:
+          subject: '[AEON OS CRITICAL] {{ .GroupLabels.alertname }} - {{ .CommonAnnotations.summary }}'
+    slack_configs:
+      - api_url: "${ALERTMANAGER_SLACK_WEBHOOK_URL:-}"
+        channel: "${ALERTMANAGER_SLACK_CHANNEL:-#aeon-alerts}"
+        send_resolved: true
+        title: '[AEON OS CRITICAL] {{ .GroupLabels.alertname }}'
+        text: |-
+          *Summary:* {{ .CommonAnnotations.summary }}
+          *Description:* {{ .CommonAnnotations.description }}
+          *Severity:* {{ .GroupLabels.severity }}
+          *Service:* {{ .GroupLabels.service }}
+          *Runbook:* {{ .CommonAnnotations.runbook }}
+          *Active since:* {{ .StartsAt }}
+        fields:
+          - title: "Alert Name"
+            value: "{{ .GroupLabels.alertname }}"
+            short: true
+          - title: "Severity"
+            value: "{{ .GroupLabels.severity }}"
+            short: true
+          - title: "Service"
+            value: "{{ .GroupLabels.service }}"
+            short: true

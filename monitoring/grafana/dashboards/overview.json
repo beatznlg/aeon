@@ -1,0 +1,15 @@
+{
+  "note": "AEON OS Grafana Dashboard",
+  "dashboard_path": "monitoring/grafana/aeon-metrics.json",
+  "instructions": "Import aeon-metrics.json into Grafana (Configuration > Data Sources > Add Prometheus, then Create > Import).",
+  "panels_summary": [
+    "HTTP Request Rate (req/s)",
+    "P99/P95/P50 Latency (seconds)",
+    "Agent Tick Rate (ticks/s)",
+    "Top Agent Apps by Tick Rate",
+    "Error Rate (% 5xx)",
+    "Job Queue Size",
+    "HTTP Status Breakdown (pie chart)",
+    "Workflow & Integration Run Rate"
+  ]
+}
