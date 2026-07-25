@@ -1,10 +1,9 @@
 [phases.setup]
-nixPkgs = ["python3", "python3Packages.pip", "python3Packages.setuptools", "nodejs", "nodePackages.pnpm"]
+nixPkgs = ["nodejs", "nodePackages.pnpm"]
 nixOverlays = []
 
 [phases.install]
 cmds = [
-  "pip3 install --quiet -r requirements.txt 2>/dev/null || true",
   "cd web && npm install 2>&1"
 ]
 

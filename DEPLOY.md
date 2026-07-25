@@ -1,125 +1,177 @@
-# AEON v3.0 — Deployment Guide
+# AEON Production Deployment Guide
 
-This document describes how to build, run, and deploy the AEON Python kernel in production.
+This guide deploys the **AEON Python backend** to [Railway](https://railway.app) and the **Next.js frontend** to [Vercel](https://vercel.com).
 
-## Quick reference
+---
 
-| Artifact | Purpose |
-|---|---|
-| `Dockerfile` | Production container image for `aeon_server.py` |
-| `docker-compose.yml` | Local production-like stack (AEON + Postgres + monitoring) |
-| `monitoring/docker-compose.yml` | AEON + monitoring only |
-| `k8s/` | Kubernetes manifests for staging/production |
-| `.github/workflows/aeon-ci.yml` | CI pipeline including Docker build + smoke test |
+## Architecture
 
-## Environment variables
+```
+┌─────────────┐      ┌─────────────────┐      ┌──────────────┐
+│  Vercel     │──────▶│  Railway Flask  │──────▶│   Railway    │
+│  Next.js    │      │  Backend        │      │   Postgres   │
+└─────────────┘      └─────────────────┘      └──────────────┘
+```
 
-| Variable | Required | Description |
+---
+
+## 1. Backend — Deploy to Railway
+
+### 1.1 Create a Railway Project
+
+1. Go to [Railway Dashboard](https://railway.app/dashboard).
+2. Click **New Project** → **Deploy from GitHub repo** → select `beatznlg/aeon`.
+3. In the project, click **New** → **Service** → **+ Add Service** → **Empty Service**.
+4. Click the service → **Settings** → **Build**:
+   - **Builder**: `Docker`
+   - **Dockerfile path**: `Dockerfile`
+   - **Root directory**: `/` (repo root)
+   - **Healthcheck Path**: `/health`
+   - **Healthcheck Timeout**: `120`
+5. Under **Deploy**, set:
+   - **Restart Policy**: `ON_FAILURE`
+
+Or, if Railway supports config files, point the service to `railway.backend.json`.
+
+### 1.2 Add a Postgres Database
+
+1. In the Railway project, click **New** → **Database** → **Add PostgreSQL**.
+2. Once provisioned, open the Postgres service → **Connect** tab.
+3. Copy the **Database URL** (it looks like `postgresql://...`).
+4. Go to your backend service → **Variables** → **New Variable**:
+   - Name: `AEON_DATABASE_URL`
+   - Value: the copied Postgres URL
+
+Railway injects `PORT` automatically. The backend reads it via `AEON_PYTHON_PORT` and defaults to `5000`.
+
+### 1.3 Required Backend Environment Variables
+
+| Variable | Value | Required |
 |---|---|---|
-| `AEON_PYTHON_HOST` | No | Bind host (default `0.0.0.0`) |
-| `AEON_PYTHON_PORT` | No | Bind port (default `5000`) |
-| `AEON_ROOT` | No | Runtime state directory (default `/home/aeon/app/aeon_state`) |
-| `AEON_LOG_LEVEL` | No | Python log level (default `INFO`) |
-| `AEON_DATABASE_URL` | Yes** | Postgres connection URL, e.g. `postgresql+psycopg2://user:pass@host/db` |
-| `AEON_JWT_SECRET` | Yes | HMAC secret for signing JWT access tokens (≥32 bytes in prod) |
-| `SUPABASE_URL` | Yes* | Supabase project URL |
-| `SUPABASE_ANON_KEY` | Yes* | Supabase anon key |
-| `SUPABASE_SERVICE_ROLE_KEY` | Yes* | Supabase service role key |
-| `HUGGINGFACE_TOKEN` | No | Required to download Qwen from Hugging Face |
-| `OPENAI_API_KEY` | No | For OpenAI provider |
-| `ANTHROPIC_API_KEY` | No | For Anthropic provider |
-| `GH_TOKEN` | No | For GitHub integrations |
+| `AEON_DATABASE_URL` | `postgresql://user:pass@host:5432/db` | ✅ Yes |
+| `NEXTAUTH_SECRET` | Same secret used by the frontend | ✅ Yes |
+| `AEON_PYTHON_HOST` | `0.0.0.0` | No (default) |
+| `AEON_PYTHON_PORT` | Railway injects `PORT` | No (default 5000) |
+| `AEON_ROOT` | `/app/state` | No (Docker default) |
+| `AEON_LLM_PROVIDER` | `stub`, `openai`, `anthropic` | No (default `stub`) |
+| `AEON_ADMIN_EMAIL` | `admin@aeon.local` | No (first-run seed) |
+| `AEON_ADMIN_PASSWORD` | strong password | No (first-run seed) |
 
-*Required for cloud persistence; the kernel can run in stub mode without them.
-**Required when using the SQLAlchemy/Postgres identity and workspace persistence layer (Phase 0 Foundation). Falls back to SQLite for local/offline development if unset.
+### 1.4 Optional Provider Keys
 
-## Local development with Docker
-
-### Build and run the full image (includes GPU/ML deps)
-
-```bash
-docker build -t aeon-server:latest .
-docker run -p 5000:5000 aeon-server:latest
-```
-
-### Build and run the lightweight stub image
-
-```bash
-docker build --build-arg STUB_MODE=true -t aeon-server:stub .
-docker run -p 5000:5000 aeon-server:stub
-```
-
-### Full local stack (AEON + web + Postgres + Prometheus + Alertmanager + Grafana)
-
-```bash
-docker compose up --build
-```
-
-Then open:
-- AEON web:     http://localhost:3001
-- AEON kernel: http://localhost:5000
-- Prometheus:  http://localhost:9090
-- Alertmanager: http://localhost:9093
-- Grafana:     http://localhost:3000 (admin / admin)
-
-### Web frontend only
-
-```bash
-cd web
-npm install
-npm run dev
-```
-
-The dev server runs at http://localhost:3000 and proxies chat requests to the AEON server via `AEON_PYTHON_URL` (default `http://127.0.0.1:5000`).
-
-## Monitoring-only stack
-
-```bash
-cd monitoring
-docker compose up --build
-```
-
-## Kubernetes
-
-1. Create the namespace and secrets:
-
-```bash
-kubectl apply -f k8s/namespace.yaml
-kubectl apply -f k8s/configmap.yaml
-# Copy and edit k8s/secret.example.yaml, then apply:
-kubectl apply -f k8s/secret.yaml
-```
-
-2. Deploy the application:
-
-```bash
-kubectl apply -f k8s/deployment.yaml
-kubectl apply -f k8s/service.yaml
-kubectl apply -f k8s/ingress.yaml
-```
-
-3. Verify:
-
-```bash
-kubectl -n aeon get pods
-kubectl -n aeon logs -l app=aeon-server
-```
-
-## Health endpoints
-
-| Endpoint | Use |
+| Variable | Purpose |
 |---|---|
-| `GET /live` | Liveness probe |
-| `GET /ready` | Readiness probe + environment validation |
-| `GET /health` | Basic health |
-| `GET /metrics` | Prometheus metrics |
+| `OPENAI_API_KEY` | OpenAI LLM provider |
+| `ANTHROPIC_API_KEY` | Anthropic Claude provider |
+| `HUGGINGFACE_TOKEN` | Hugging Face model downloads |
+| `SUPABASE_URL` | Supabase project URL |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase admin key |
+| `SUPABASE_ANON_KEY` | Supabase anon key |
 
-## Notes
+### 1.5 Optional Stripe Keys
 
-- The full image downloads `torch` + `transformers` and can exceed 6 GB. Use `STUB_MODE=true` for CI or lightweight deployments.
-- The container runs as a non-root `aeon` user.
-- `/metrics` is intentionally not rate-limited; protect it at the ingress/reverse-proxy level.
+| Variable | Purpose |
+|---|---|
+| `STRIPE_API_KEY` | `sk_test_...` or `sk_live_...` |
+| `STRIPE_WEBHOOK_SECRET` | Stripe webhook endpoint secret |
+| `STRIPE_PRICE_TEAM` | Price ID for Team plan |
+| `STRIPE_PRICE_ENTERPRISE` | Price ID for Enterprise plan |
 
-## CI note
+### 1.6 Deploy Backend
 
-Pushing to `main` automatically triggers the `AEON CI` workflow. If GitHub Actions is ever paused due to billing, the workflow will resume once the account payment issue is resolved.
+Click **Deploy** in Railway. Wait for the healthcheck to pass.
+
+Copy the backend public URL, e.g. `https://aeon-backend.up.railway.app`.
+
+---
+
+## 2. Frontend — Deploy to Vercel
+
+### 2.1 Import Project
+
+1. Go to [vercel.com/new](https://vercel.com/new).
+2. Import `beatznlg/aeon`.
+3. Configure:
+   - **Framework Preset**: Next.js
+   - **Root Directory**: `web`
+   - **Build Command**: `next build`
+   - **Output Directory**: `.next`
+
+### 2.2 Required Vercel Environment Variables
+
+| Variable | Value | Required |
+|---|---|---|
+| `NEXTAUTH_SECRET` | Strong random string (match backend) | ✅ Yes |
+| `NEXTAUTH_URL` | `https://your-project.vercel.app` | ✅ Yes |
+| `AEON_PYTHON_URL` | Backend public URL (e.g. `https://aeon-backend.up.railway.app`) | ✅ Yes |
+
+### 2.3 Optional Variables
+
+| Variable | Purpose |
+|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon key |
+| `AEON_HF_SPACE_URL` | Hugging Face Gradio fallback |
+
+---
+
+## 3. Health Checks
+
+After both services are deployed, run:
+
+```bash
+# Backend only
+python scripts/healthcheck.py https://your-backend.up.railway.app/health
+
+# Backend + frontend
+python scripts/healthcheck.py https://your-backend.up.railway.app/health https://your-frontend.vercel.app/api/health
+```
+
+You should see `OK` for both.
+
+---
+
+## 4. Troubleshooting
+
+### Backend healthcheck fails
+
+- Check Railway deploy logs for import errors.
+- Verify `AEON_DATABASE_URL` is set and the database is reachable.
+- Ensure `PORT` env var is being used (Railway injects it automatically).
+
+### Frontend returns "AEON_PYTHON_URL not set"
+
+- Add `AEON_PYTHON_URL` in Vercel → Project Settings → Environment Variables.
+- Redeploy after adding variables.
+
+### Login fails / JWT errors
+
+- `NEXTAUTH_SECRET` must be identical on backend and frontend.
+- `NEXTAUTH_URL` must match the frontend public URL.
+
+---
+
+## 5. Monitoring in Production
+
+The backend exposes Prometheus metrics at `/metrics`. Point your monitoring stack (or the included `monitoring/docker-compose.yml`) to the backend URL:
+
+```yaml
+scrape_configs:
+  - job_name: 'aeon-backend'
+    static_configs:
+      - targets: ['https://your-backend.up.railway.app']
+```
+
+---
+
+## 6. CI/CD
+
+Existing GitHub Actions workflows handle deploys:
+
+| Workflow | Trigger | Action |
+|---|---|---|
+| `docker-ci.yml` | push/PR to `main` | Lint, typecheck, build Docker images |
+| `docker-release.yml` | tag `v*.*.*` | Push multi-arch images to GHCR |
+| `vercel-deploy.yml` | push/PR to `main` | Deploy frontend to Vercel |
+
+For Railway, you can also enable **GitHub integration** in Railway project settings for automatic deploys on push.

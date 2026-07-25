@@ -49,10 +49,7 @@ COPY --from=builder /root/.local /root/.local
 ENV PATH=/root/.local/bin:$PATH
 
 # Copy application code
-COPY aeon.py aeon_os.py aeon_server.py aeon_workflows.py aeon_integrations.py \
-     aeon_usage.py aeon_governance.py aeon_auth.py aeon_db.py aeon_llm.py \
-     aeon_api_keys.py aeon_stripe.py aeon_rag.py \
-     requirements.txt ./
+COPY aeon*.py requirements.txt ./
 
 # Copy scripts
 COPY scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
