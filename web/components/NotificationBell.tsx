@@ -32,6 +32,7 @@ export default function NotificationBell() {
   const [recent, setRecent] = useState<Notification[]>([]);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const eventSourceRef = useRef<EventSource | null>(null);
 
   const fetchUnread = useCallback(async () => {
     try {
@@ -46,7 +47,7 @@ export default function NotificationBell() {
     }
   }, [open]);
 
-  // Fetch on mount and poll every 30s
+  // Polling fallback / initial load
   useEffect(() => {
     fetchUnread();
     intervalRef.current = setInterval(fetchUnread, 30000);
@@ -59,6 +60,67 @@ export default function NotificationBell() {
   useEffect(() => {
     if (open) fetchUnread();
   }, [open, fetchUnread]);
+
+  // SSE real-time updates
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const connect = () => {
+      try {
+        const es = new EventSource("/api/stream");
+        eventSourceRef.current = es;
+
+        es.addEventListener("notification", (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            const payload = data.payload as Notification | undefined;
+            if (payload) {
+              setRecent((prev) => [payload, ...prev].slice(0, 10));
+              setUnreadCount((c) => c + 1);
+            }
+          } catch {
+            // ignore malformed event
+          }
+        });
+
+        es.addEventListener("notification_read", (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.payload?.read_all) {
+              setRecent([]);
+              setUnreadCount(0);
+            } else if (data.payload?.id) {
+              setRecent((prev) => prev.filter((n) => n.id !== data.payload.id));
+              setUnreadCount((c) => Math.max(0, c - 1));
+            }
+          } catch {
+            // ignore malformed event
+          }
+        });
+
+        es.addEventListener("error", () => {
+          // Close and let reconnect logic try again
+          es.close();
+        });
+      } catch {
+        // SSE not supported; polling fallback remains active
+      }
+    };
+
+    connect();
+
+    // Reconnect every 60s to recover from transient failures
+    const reconnect = setInterval(() => {
+      if (eventSourceRef.current?.readyState === EventSource.CLOSED) {
+        connect();
+      }
+    }, 60000);
+
+    return () => {
+      clearInterval(reconnect);
+      eventSourceRef.current?.close();
+    };
+  }, []);
 
   // Close on click outside
   useEffect(() => {

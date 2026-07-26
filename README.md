@@ -101,6 +101,8 @@ AEON_ADMIN_NAME=AEON Admin
 | **10** | Developer Experience — OpenAPI, SDKs, Quickstarts | ✅ |
 | **14** | Advanced Agent Orchestration — Multi-Agent Swarms | ✅ |
 | **15** | Multi-Language SDKs — Python, TypeScript, Go + Generator | ✅ |
+| **16** | Admin Panel, Notifications & Event System | ✅ |
+| **17** | Real-time Activity Feed & Presence | ✅ |
 
 ---
 

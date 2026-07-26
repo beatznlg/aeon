@@ -48,6 +48,7 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [editingRole, setEditingRole] = useState<string | null>(null);
+  const [notifSending, setNotifSending] = useState(false);
 
   // New workspace form
   const [showCreate, setShowCreate] = useState(false);
@@ -223,6 +224,43 @@ export default function AdminPage() {
                   <div className="admin-stat-icon">📋</div>
                   <div className="admin-stat-value">{stats.total_audit_entries}</div>
                   <div className="admin-stat-label">Audit Entries</div>
+                </div>
+                <div
+                  className="admin-stat-card"
+                  style={{ cursor: "pointer", position: "relative", opacity: notifSending ? 0.6 : 1 }}
+                  onClick={async () => {
+                    if (notifSending) return;
+                    setNotifSending(true);
+                    setMessage(null);
+                    try {
+                      const res = await fetch("/api/notifications", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          type: "system_alert",
+                          title: "Test Notification from Admin",
+                          body: "This is a test notification to verify the notification pipeline. If you see this, everything is wired up!",
+                          icon: "\uD83E\uDDEA",
+                          link: "/admin",
+                          metadata: { source: "admin_test", timestamp: new Date().toISOString() },
+                        }),
+                      });
+                      const data = await res.json();
+                      if (data.ok) {
+                        setMessage({ ok: true, text: "Test notification sent! Check your notification bell. \uD83E\uDDEA" });
+                      } else {
+                        setMessage({ ok: false, text: data.error || "Failed to send test notification" });
+                      }
+                    } catch (e: any) {
+                      setMessage({ ok: false, text: e?.message || "Network error sending test notification" });
+                    } finally {
+                      setNotifSending(false);
+                    }
+                  }}
+                >
+                  <div className="admin-stat-icon">{notifSending ? "\u23F3" : "\uD83E\uDDEA"}</div>
+                  <div className="admin-stat-value" style={{ fontSize: "0.85rem" }}>{notifSending ? "Sending..." : "Send Test"}</div>
+                  <div className="admin-stat-label">Test Notification</div>
                 </div>
               </section>
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { getSupabaseServerClient } from "@/lib/supabase";
+import { broadcastEvent } from "@/lib/events";
 
 export const dynamic = "force-dynamic";
 
@@ -91,6 +92,16 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (error) throw error;
+
+    // Push to any connected SSE clients for this user
+    broadcastEvent({
+      type: "notification",
+      payload: data,
+      user_id: data.user_id,
+      workspace_id: data.workspace_id,
+      timestamp: new Date().toISOString(),
+    });
+
     return NextResponse.json({ ok: true, notification: data });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e?.message || String(e) }, { status: 500 });
@@ -120,6 +131,14 @@ export async function PATCH(req: NextRequest) {
         .eq("user_id", userId)
         .eq("read", false);
       if (error) throw error;
+
+      broadcastEvent({
+        type: "notification_read",
+        payload: { read_all: true },
+        user_id: userId,
+        timestamp: new Date().toISOString(),
+      });
+
       return NextResponse.json({ ok: true, message: "All notifications marked read" });
     }
 
@@ -127,13 +146,26 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "id or read_all required" }, { status: 400 });
     }
 
-    const { error } = await sb
+    const { data: updated, error } = await sb
       .from("notifications")
       .update({ read: true })
       .eq("id", id)
-      .eq("user_id", userId);
+      .eq("user_id", userId)
+      .select()
+      .single();
 
     if (error) throw error;
+
+    if (updated) {
+      broadcastEvent({
+        type: "notification_read",
+        payload: updated,
+        user_id: userId,
+        workspace_id: updated.workspace_id,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
     return NextResponse.json({ ok: true });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e?.message || String(e) }, { status: 500 });

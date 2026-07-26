@@ -27,6 +27,7 @@ const NAV_ITEMS = [
       { href: "/os/rag-chat", label: "RAG Chat", icon: "🧠" },
       { href: "/os/ai-studio", label: "AI Studio", icon: "🤖" },
       { href: "/os/notifications", label: "Notifications", icon: "🔔" },
+      { href: "/os/activity", label: "Activity", icon: "⚡" },
     ],
   },
   {

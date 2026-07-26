@@ -54,6 +54,8 @@ from aeon_governance import GovernanceManager, get_governance
 from aeon_integrations import IntegrationManager, WebhookDelivery, get_integration_catalog
 from aeon_llm import get_llm_provider, list_providers, set_active_provider
 from aeon_llm import test_provider as _test_llm_provider
+from aeon_notify import broadcast_event
+from aeon_notify import log_activity
 from aeon_notify import notify as _notify
 from aeon_os import AeonOS
 from aeon_stripe import get_stripe_client, init_stripe
@@ -1093,6 +1095,18 @@ def workflow_run(workflow_id: str):
                 workspace_id=workspace_id,
                 metadata={"workflow_id": workflow_id},
             )
+        # Persist to activity feed and broadcast real-time status update
+        log_activity(
+            "workflow_status",
+            {
+                "workflow_id": workflow_id,
+                "status": "completed" if wf_ok else "failed",
+                "ok": wf_ok,
+                "error": result.get("error") if not wf_ok else None,
+            },
+            user_id=ctx.get("user_id"),
+            workspace_id=workspace_id,
+        )
         return jsonify(result)
     except Exception as e:
         get_governance_manager().log_audit(
@@ -1153,6 +1167,20 @@ def swarm_run():
                 workspace_id=ctx.get("workspace_id"),
                 metadata={"swarm_id": swarm_id, "app_ids": app_ids},
             )
+        # Persist to activity feed and broadcast real-time status update
+        log_activity(
+            "swarm_status",
+            {
+                "swarm_id": swarm_id,
+                "status": "completed" if swarm_ok else "failed",
+                "ok": swarm_ok,
+                "prompt": prompt,
+                "app_ids": app_ids,
+                "error": result.get("error") if not swarm_ok else None,
+            },
+            user_id=ctx.get("user_id"),
+            workspace_id=ctx.get("workspace_id"),
+        )
         return jsonify(result)
     except Exception as e:
         get_governance_manager().log_audit(
