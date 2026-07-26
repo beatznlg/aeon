@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { SessionProvider } from "next-auth/react";
 import UserMenu from "@/components/UserMenu";
+import NotificationBell from "@/components/NotificationBell";
 import "./globals.css";
 
 // ─── Navigation items ───────────────────────────────────────────
@@ -24,6 +25,7 @@ const NAV_ITEMS = [
       { href: "/os/knowledge", label: "Knowledge", icon: "📚" },
       { href: "/os/rag-chat", label: "RAG Chat", icon: "🧠" },
       { href: "/os/ai-studio", label: "AI Studio", icon: "🤖" },
+      { href: "/os/notifications", label: "Notifications", icon: "🔔" },
     ],
   },
   {
@@ -161,6 +163,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <h1>AEON OS</h1>
             </div>
             <div className="main-header-right">
+              <NotificationBell />
               <UserMenu />
               <Link href="/settings" className="btn btn-sm">
                 ⚙ Settings
