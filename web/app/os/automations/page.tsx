@@ -1,0 +1,416 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import Link from "next/link";
+
+interface AutomationRule {
+  id: string;
+  name: string;
+  event_type: string;
+  condition: Record<string, any>;
+  action_type: string;
+  action_config: Record<string, any>;
+  enabled: boolean;
+  created_at: string;
+}
+
+interface Execution {
+  id: string;
+  event_type: string;
+  status: string;
+  created_at: string;
+  result?: Record<string, any>;
+}
+
+const EVENT_TYPES = [
+  "swarm_status",
+  "workflow_status",
+  "notification",
+  "api_key_created",
+  "api_key_revoked",
+  "workspace_activity",
+  "system",
+];
+
+const ACTION_TYPES = ["webhook", "swarm", "workflow"];
+
+export default function AutomationsPage() {
+  const [rules, setRules] = useState<AutomationRule[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<AutomationRule | null>(null);
+  const [executions, setExecutions] = useState<Execution[]>([]);
+  const [showForm, setShowForm] = useState(false);
+
+  const [form, setForm] = useState<Partial<AutomationRule>>({
+    name: "",
+    event_type: "workflow_status",
+    condition: {},
+    action_type: "webhook",
+    action_config: {},
+    enabled: true,
+  });
+
+  useEffect(() => {
+    loadRules();
+  }, []);
+
+  async function loadRules() {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/automations");
+      const data = await res.json();
+      if (data.ok && Array.isArray(data.rules)) {
+        setRules(data.rules);
+      } else {
+        setError(data.error || "Failed to load rules");
+      }
+    } catch (e: any) {
+      setError(e.message || "Failed to load rules");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadExecutions(rule: AutomationRule) {
+    setSelected(rule);
+    setExecutions([]);
+    try {
+      const res = await fetch(`/api/automations/${rule.id}/executions`);
+      const data = await res.json();
+      if (data.ok && Array.isArray(data.executions)) {
+        setExecutions(data.executions);
+      }
+    } catch {}
+  }
+
+  async function createRule(e: React.FormEvent) {
+    e.preventDefault();
+    try {
+      const res = await fetch("/api/automations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setShowForm(false);
+        setForm({
+          name: "",
+          event_type: "workflow_status",
+          condition: {},
+          action_type: "webhook",
+          action_config: {},
+          enabled: true,
+        });
+        await loadRules();
+      } else {
+        setError(data.error || "Failed to create rule");
+      }
+    } catch (e: any) {
+      setError(e.message || "Failed to create rule");
+    }
+  }
+
+  async function toggleRule(rule: AutomationRule) {
+    try {
+      const res = await fetch(`/api/automations/${rule.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: !rule.enabled }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        await loadRules();
+      }
+    } catch {}
+  }
+
+  async function deleteRule(id: string) {
+    if (!confirm("Delete this automation rule?")) return;
+    try {
+      await fetch(`/api/automations/${id}`, { method: "DELETE" });
+      await loadRules();
+      if (selected?.id === id) setSelected(null);
+    } catch {}
+  }
+
+  function updateActionConfig(key: string, value: string) {
+    setForm((prev) => ({
+      ...prev,
+      action_config: { ...(prev.action_config || {}), [key]: value },
+    }));
+  }
+
+  return (
+    <div className="os-page" style={{ padding: 24 }}>
+      <header className="os-header" style={{ marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div>
+          <h1 style={{ background: "var(--grad)", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>
+            🤖 Automations
+          </h1>
+          <p className="dashboard-subtitle">Event-driven rules that trigger webhooks, swarms, or workflows.</p>
+        </div>
+        <div style={{ display: "flex", gap: 12 }}>
+          <button className="btn btn-primary" onClick={() => setShowForm(true)}>
+            + New Rule
+          </button>
+          <Link href="/os" className="btn btn-sm">
+            ← Back to OS
+          </Link>
+        </div>
+      </header>
+
+      {error && (
+        <div className="module-alert danger" style={{ marginBottom: 16 }}>
+          {error}
+        </div>
+      )}
+
+      {showForm && (
+        <section
+          style={{
+            border: "1px solid var(--border)",
+            borderRadius: 12,
+            padding: 20,
+            background: "var(--bg)",
+            marginBottom: 24,
+          }}
+        >
+          <h3 style={{ marginTop: 0 }}>Create Automation Rule</h3>
+          <form onSubmit={createRule}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16, marginBottom: 16 }}>
+              <div>
+                <label style={{ display: "block", marginBottom: 6, fontSize: "0.8rem", fontWeight: 600 }}>Name</label>
+                <input
+                  className="input"
+                  value={form.name || ""}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  placeholder="e.g. Failed workflow alert"
+                  required
+                />
+              </div>
+              <div>
+                <label style={{ display: "block", marginBottom: 6, fontSize: "0.8rem", fontWeight: 600 }}>Event Type</label>
+                <select
+                  className="input"
+                  value={form.event_type}
+                  onChange={(e) => setForm({ ...form, event_type: e.target.value })}
+                >
+                  {EVENT_TYPES.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label style={{ display: "block", marginBottom: 6, fontSize: "0.8rem", fontWeight: 600 }}>Action Type</label>
+                <select
+                  className="input"
+                  value={form.action_type}
+                  onChange={(e) => setForm({ ...form, action_type: e.target.value, action_config: {} })}
+                >
+                  {ACTION_TYPES.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: "block", marginBottom: 6, fontSize: "0.8rem", fontWeight: 600 }}>Condition (JSON)</label>
+              <textarea
+                className="input"
+                rows={3}
+                value={JSON.stringify(form.condition || {})}
+                onChange={(e) => {
+                  try {
+                    setForm({ ...form, condition: JSON.parse(e.target.value) });
+                  } catch {}
+                }}
+                placeholder='{"status": "failed"}'
+              />
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: "block", marginBottom: 6, fontSize: "0.8rem", fontWeight: 600 }}>Action Config</label>
+              {form.action_type === "webhook" && (
+                <input
+                  className="input"
+                  placeholder="Webhook URL"
+                  onChange={(e) => updateActionConfig("url", e.target.value)}
+                />
+              )}
+              {form.action_type === "swarm" && (
+                <>
+                  <input
+                    className="input"
+                    placeholder="Prompt"
+                    onChange={(e) => updateActionConfig("prompt", e.target.value)}
+                    style={{ marginBottom: 8 }}
+                  />
+                  <input
+                    className="input"
+                    placeholder="App IDs (comma separated)"
+                    onChange={(e) => updateActionConfig("app_ids", e.target.value)}
+                  />
+                </>
+              )}
+              {form.action_type === "workflow" && (
+                <>
+                  <input
+                    className="input"
+                    placeholder="Workflow ID"
+                    onChange={(e) => updateActionConfig("workflow_id", e.target.value)}
+                    style={{ marginBottom: 8 }}
+                  />
+                  <input
+                    className="input"
+                    placeholder="Initial input"
+                    onChange={(e) => updateActionConfig("initial_input", e.target.value)}
+                  />
+                </>
+              )}
+            </div>
+
+            <div style={{ display: "flex", gap: 12 }}>
+              <button type="submit" className="btn btn-primary">
+                Save Rule
+              </button>
+              <button type="button" className="btn" onClick={() => setShowForm(false)}>
+                Cancel
+              </button>
+            </div>
+          </form>
+        </section>
+      )}
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 360px", gap: 24 }}>
+        <section
+          style={{
+            border: "1px solid var(--border)",
+            borderRadius: 12,
+            background: "var(--bg)",
+            minHeight: 400,
+          }}
+        >
+          {loading ? (
+            <div style={{ padding: 40, textAlign: "center", color: "var(--fg-mute)" }}>Loading…</div>
+          ) : rules.length === 0 ? (
+            <div style={{ padding: 60, textAlign: "center", color: "var(--fg-mute)" }}>
+              <div style={{ fontSize: "2rem", marginBottom: 12, opacity: 0.5 }}>🤖</div>
+              <p>No automation rules yet.</p>
+              <p style={{ fontSize: "0.78rem" }}>Create a rule to react to events in real time.</p>
+            </div>
+          ) : (
+            <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+              {rules.map((rule) => (
+                <li
+                  key={rule.id}
+                  style={{
+                    padding: "14px 18px",
+                    borderBottom: "1px solid var(--border)",
+                    cursor: "pointer",
+                    background: selected?.id === rule.id ? "var(--bg-1)" : "transparent",
+                  }}
+                  onClick={() => loadExecutions(rule)}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div>
+                      <div style={{ fontWeight: 600 }}>{rule.name}</div>
+                      <div style={{ fontSize: "0.78rem", color: "var(--fg-mute)" }}>
+                        {rule.event_type} → {rule.action_type}
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <span
+                        style={{
+                          fontSize: "0.72rem",
+                          padding: "2px 8px",
+                          borderRadius: 999,
+                          background: rule.enabled ? "#22c55e20" : "#94a3b820",
+                          color: rule.enabled ? "#22c55e" : "var(--fg-mute)",
+                        }}
+                      >
+                        {rule.enabled ? "enabled" : "disabled"}
+                      </span>
+                      <button
+                        className="btn btn-sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleRule(rule);
+                        }}
+                      >
+                        {rule.enabled ? "Disable" : "Enable"}
+                      </button>
+                      <button
+                        className="btn btn-sm btn-danger"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteRule(rule.id);
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section
+          style={{
+            border: "1px solid var(--border)",
+            borderRadius: 12,
+            background: "var(--bg)",
+            padding: 20,
+            minHeight: 400,
+          }}
+        >
+          <h3 style={{ marginTop: 0 }}>Recent Executions</h3>
+          {selected ? (
+            executions.length === 0 ? (
+              <p style={{ color: "var(--fg-mute)" }}>No executions for this rule yet.</p>
+            ) : (
+              <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+                {executions.map((ex) => (
+                  <li
+                    key={ex.id}
+                    style={{
+                      padding: "10px 0",
+                      borderBottom: "1px solid var(--border)",
+                      fontSize: "0.85rem",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span>{ex.event_type}</span>
+                      <span
+                        style={{
+                          color: ex.status === "triggered" ? "#22c55e" : "#ef4444",
+                          fontWeight: 600,
+                        }}
+                      >
+                        {ex.status}
+                      </span>
+                    </div>
+                    <div style={{ color: "var(--fg-mute)", fontSize: "0.72rem" }}>
+                      {new Date(ex.created_at).toLocaleString()}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )
+          ) : (
+            <p style={{ color: "var(--fg-mute)" }}>Select a rule to view executions.</p>
+          )}
+        </section>
+      </div>
+    </div>
+  );
+}

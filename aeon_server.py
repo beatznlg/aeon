@@ -2315,6 +2315,184 @@ def rag_chat():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+# ── Automation rule endpoints ───────────────────────────────────────────────
+@app.route("/automations", methods=["GET", "POST"])
+@require_auth
+@require_workspace_role("OPERATOR")
+def automations_index():
+    """List or create automation rules for the current workspace."""
+    ctx = _governance_context()
+    workspace_id = ctx.get("workspace_id")
+
+    supabase_url = os.environ.get("SUPABASE_URL")
+    service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+    if not supabase_url or not service_key:
+        return jsonify({"ok": False, "error": "Supabase not configured"}), 503
+
+    if request.method == "GET":
+        try:
+            r = requests.get(
+                f"{supabase_url}/rest/v1/automation_rules",
+                headers={
+                    "apikey": service_key,
+                    "Authorization": f"Bearer {service_key}",
+                },
+                params={
+                    "workspace_id": f"eq.{workspace_id}",
+                    "order": "created_at.desc",
+                },
+                timeout=10,
+            )
+            r.raise_for_status()
+            return jsonify({"ok": True, "rules": r.json()})
+        except Exception as e:
+            logger.warning("Failed to list automation rules: %s", e)
+            return jsonify({"ok": False, "error": str(e)}), 500
+
+    # POST
+    data = request.json or {}
+    name = (data.get("name") or "").strip()
+    event_type = (data.get("event_type") or "").strip()
+    action_type = (data.get("action_type") or "").strip()
+    if not name or not event_type or not action_type:
+        return jsonify({"ok": False, "error": "name, event_type, and action_type are required"}), 400
+    if action_type not in {"webhook", "swarm", "workflow"}:
+        return jsonify({"ok": False, "error": "action_type must be webhook, swarm, or workflow"}), 400
+
+    try:
+        payload = {
+            "name": name,
+            "event_type": event_type,
+            "condition": data.get("condition", {}),
+            "action_type": action_type,
+            "action_config": data.get("action_config", {}),
+            "enabled": data.get("enabled", True),
+            "workspace_id": workspace_id,
+        }
+        r = requests.post(
+            f"{supabase_url}/rest/v1/automation_rules",
+            headers={
+                "apikey": service_key,
+                "Authorization": f"Bearer {service_key}",
+                "Content-Type": "application/json",
+                "Prefer": "return=representation",
+            },
+            json=payload,
+            timeout=10,
+        )
+        r.raise_for_status()
+        created = r.json()
+        return jsonify({"ok": True, "rule": created[0] if created else None}), 201
+    except Exception as e:
+        logger.warning("Failed to create automation rule: %s", e)
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/automations/<rule_id>", methods=["GET", "PATCH", "DELETE"])
+@require_auth
+@require_workspace_role("OPERATOR")
+def automation_detail(rule_id: str):
+    """Get, update, or delete a single automation rule."""
+    ctx = _governance_context()
+    workspace_id = ctx.get("workspace_id")
+
+    supabase_url = os.environ.get("SUPABASE_URL")
+    service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+    if not supabase_url or not service_key:
+        return jsonify({"ok": False, "error": "Supabase not configured"}), 503
+
+    if request.method == "GET":
+        r = requests.get(
+            f"{supabase_url}/rest/v1/automation_rules",
+            headers={
+                "apikey": service_key,
+                "Authorization": f"Bearer {service_key}",
+            },
+            params={"id": f"eq.{rule_id}", "workspace_id": f"eq.{workspace_id}"},
+            timeout=10,
+        )
+        r.raise_for_status()
+        rows = r.json()
+        if not rows:
+            return jsonify({"ok": False, "error": "rule not found"}), 404
+        return jsonify({"ok": True, "rule": rows[0]})
+
+    if request.method == "DELETE":
+        r = requests.delete(
+            f"{supabase_url}/rest/v1/automation_rules",
+            headers={
+                "apikey": service_key,
+                "Authorization": f"Bearer {service_key}",
+            },
+            params={"id": f"eq.{rule_id}", "workspace_id": f"eq.{workspace_id}"},
+            timeout=10,
+        )
+        r.raise_for_status()
+        return jsonify({"ok": True})
+
+    # PATCH
+    data = request.json or {}
+    updates: dict[str, Any] = {}
+    for field in ("name", "event_type", "condition", "action_type", "action_config", "enabled"):
+        if field in data:
+            updates[field] = data[field]
+    if not updates:
+        return jsonify({"ok": False, "error": "no fields to update"}), 400
+
+    r = requests.patch(
+        f"{supabase_url}/rest/v1/automation_rules",
+        headers={
+            "apikey": service_key,
+            "Authorization": f"Bearer {service_key}",
+            "Content-Type": "application/json",
+            "Prefer": "return=representation",
+        },
+        json=updates,
+        params={"id": f"eq.{rule_id}", "workspace_id": f"eq.{workspace_id}"},
+        timeout=10,
+    )
+    r.raise_for_status()
+    rows = r.json()
+    if not rows:
+        return jsonify({"ok": False, "error": "rule not found"}), 404
+    return jsonify({"ok": True, "rule": rows[0]})
+
+
+@app.route("/automations/<rule_id>/executions", methods=["GET"])
+@require_auth
+@require_workspace_role("VIEWER")
+def automation_executions(rule_id: str):
+    """List execution logs for an automation rule."""
+    ctx = _governance_context()
+    workspace_id = ctx.get("workspace_id")
+
+    supabase_url = os.environ.get("SUPABASE_URL")
+    service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+    if not supabase_url or not service_key:
+        return jsonify({"ok": False, "error": "Supabase not configured"}), 503
+
+    try:
+        r = requests.get(
+            f"{supabase_url}/rest/v1/automation_executions",
+            headers={
+                "apikey": service_key,
+                "Authorization": f"Bearer {service_key}",
+            },
+            params={
+                "rule_id": f"eq.{rule_id}",
+                "workspace_id": f"eq.{workspace_id}",
+                "order": "created_at.desc",
+                "limit": 50,
+            },
+            timeout=10,
+        )
+        r.raise_for_status()
+        return jsonify({"ok": True, "executions": r.json()})
+    except Exception as e:
+        logger.warning("Failed to list automation executions: %s", e)
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 # ── Graceful shutdown ────────────────────────────────────────────────────────
 def _shutdown():
     logger.info("Shutting down AEON kernel...")

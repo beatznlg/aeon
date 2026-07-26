@@ -103,6 +103,7 @@ AEON_ADMIN_NAME=AEON Admin
 | **15** | Multi-Language SDKs — Python, TypeScript, Go + Generator | ✅ |
 | **16** | Admin Panel, Notifications & Event System | ✅ |
 | **17** | Real-time Activity Feed & Presence | ✅ |
+| **18** | Event-Driven Automations — If-This-Then-That for AEON events | ✅ |
 
 ---
 

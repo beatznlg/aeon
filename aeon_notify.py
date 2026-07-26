@@ -236,4 +236,13 @@ def log_activity(
 
     # Broadcast via the Next.js real-time hub when configured.
     broadcast_event(type, payload, user_id, workspace_id)
+
+    # Evaluate event-driven automation rules (Phase 18).
+    try:
+        from aeon_automations import evaluate_automations
+
+        evaluate_automations(type, payload, user_id, workspace_id)
+    except Exception as exc:
+        logger.debug("Automation evaluation skipped for %s: %s", type, exc)
+
     return True
