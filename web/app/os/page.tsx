@@ -85,6 +85,12 @@ export default function OSPage() {
           <Link href="/os/governance" className="btn btn-primary">
             🛡️ Governance
           </Link>
+          <Link href="/os/notifications" className="btn btn-primary">
+            🔔 Notifications
+          </Link>
+          <Link href="/admin" className="btn btn-primary" style={{ borderColor: "#6366f1", color: "#6366f1" }}>
+            ⚙️ Admin
+          </Link>
         </div>
       </header>
 
