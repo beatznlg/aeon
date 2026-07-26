@@ -105,6 +105,7 @@ AEON_ADMIN_NAME=AEON Admin
 | **17** | Real-time Activity Feed & Presence | ✅ |
 | **18** | Event-Driven Automations — If-This-Then-That for AEON events | ✅ |
 | **19** | Human-in-the-Loop (HITL) Approvals — approval checkpoints for automations | ✅ |
+| **20** | Scheduled Automations (Cron Triggers) — time-based background execution | ✅ |
 
 ---
 

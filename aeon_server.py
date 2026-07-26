@@ -54,7 +54,7 @@ from aeon_governance import GovernanceManager, get_governance
 from aeon_integrations import IntegrationManager, WebhookDelivery, get_integration_catalog
 from aeon_llm import get_llm_provider, list_providers, set_active_provider
 from aeon_llm import test_provider as _test_llm_provider
-from aeon_automations import resolve_approval
+from aeon_automations import resolve_approval, start_scheduler, _compute_next_run
 from aeon_notify import broadcast_event
 from aeon_notify import log_activity
 from aeon_notify import notify as _notify
@@ -63,6 +63,14 @@ from aeon_stripe import get_stripe_client, init_stripe
 from aeon_usage import BillingCalculator, HealthCollector, UsageMeter
 
 app = Flask(__name__)
+
+# Start background scheduler for cron-based automations unless disabled.
+if os.environ.get("AEON_DISABLE_SCHEDULER") != "1":
+    try:
+        start_scheduler(interval_seconds=int(os.environ.get("AEON_SCHEDULER_INTERVAL_SECONDS", "60")))
+    except Exception as _sched_exc:
+        logger.warning("Could not start scheduled automations: %s", _sched_exc)
+
 
 # ── Security headers & CORS ─────────────────────────────────────────────────
 # Default CSP allows inline scripts/styles only for the Swagger UI served from
@@ -2355,10 +2363,22 @@ def automations_index():
     name = (data.get("name") or "").strip()
     event_type = (data.get("event_type") or "").strip()
     action_type = (data.get("action_type") or "").strip()
+    schedule_type = (data.get("schedule_type") or "event").strip()
+    cron_expression = (data.get("cron_expression") or "").strip()
     if not name or not event_type or not action_type:
         return jsonify({"ok": False, "error": "name, event_type, and action_type are required"}), 400
     if action_type not in {"webhook", "swarm", "workflow"}:
         return jsonify({"ok": False, "error": "action_type must be webhook, swarm, or workflow"}), 400
+    if schedule_type not in {"event", "cron"}:
+        return jsonify({"ok": False, "error": "schedule_type must be event or cron"}), 400
+    if schedule_type == "cron" and not cron_expression:
+        return jsonify({"ok": False, "error": "cron_expression is required for scheduled rules"}), 400
+
+    next_run_at = None
+    if schedule_type == "cron":
+        next_run_at = _compute_next_run(cron_expression)
+        if next_run_at is None:
+            return jsonify({"ok": False, "error": "invalid cron_expression"}), 400
 
     try:
         payload = {
@@ -2370,6 +2390,9 @@ def automations_index():
             "enabled": data.get("enabled", True),
             "approval_required": data.get("approval_required", False),
             "approver_message": data.get("approver_message", ""),
+            "schedule_type": schedule_type,
+            "cron_expression": cron_expression if schedule_type == "cron" else None,
+            "next_run_at": next_run_at.isoformat() if next_run_at else None,
             "workspace_id": workspace_id,
         }
         r = requests.post(
@@ -2445,9 +2468,24 @@ def automation_detail(rule_id: str):
         "enabled",
         "approval_required",
         "approver_message",
+        "schedule_type",
+        "cron_expression",
     ):
         if field in data:
             updates[field] = data[field]
+
+    # Recompute next_run_at when switching to cron or changing the expression
+    if ("schedule_type" in data or "cron_expression" in data) and updates.get("schedule_type") == "cron":
+        cron_expr = data.get("cron_expression") or updates.get("cron_expression")
+        if not cron_expr:
+            return jsonify({"ok": False, "error": "cron_expression is required for scheduled rules"}), 400
+        next_run_at = _compute_next_run(cron_expr)
+        if next_run_at is None:
+            return jsonify({"ok": False, "error": "invalid cron_expression"}), 400
+        updates["next_run_at"] = next_run_at.isoformat()
+    elif "schedule_type" in data and updates.get("schedule_type") != "cron":
+        updates["cron_expression"] = None
+        updates["next_run_at"] = None
     if not updates:
         return jsonify({"ok": False, "error": "no fields to update"}), 400
 
@@ -2468,6 +2506,52 @@ def automation_detail(rule_id: str):
     if not rows:
         return jsonify({"ok": False, "error": "rule not found"}), 404
     return jsonify({"ok": True, "rule": rows[0]})
+
+
+
+
+@app.route("/automations/<rule_id>/run", methods=["POST"])
+@require_auth
+@require_workspace_role("OPERATOR")
+def automation_run_now(rule_id: str):
+    """Manually execute a scheduled or event-driven automation rule."""
+    ctx = _governance_context()
+    workspace_id = ctx.get("workspace_id")
+
+    supabase_url = os.environ.get("SUPABASE_URL")
+    service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+    if not supabase_url or not service_key:
+        return jsonify({"ok": False, "error": "Supabase not configured"}), 503
+
+    try:
+        r = requests.get(
+            f"{supabase_url}/rest/v1/automation_rules",
+            headers={
+                "apikey": service_key,
+                "Authorization": f"Bearer {service_key}",
+            },
+            params={"id": f"eq.{rule_id}", "workspace_id": f"eq.{workspace_id}"},
+            timeout=10,
+        )
+        r.raise_for_status()
+        rows = r.json() or []
+        if not rows:
+            return jsonify({"ok": False, "error": "rule not found"}), 404
+        rule = rows[0]
+
+        from aeon_automations import execute_action_by_type
+        event = {
+            "type": rule.get("event_type") or "system",
+            "payload": {"manual": True, "rule_id": rule_id},
+            "user_id": ctx.get("user_id"),
+            "workspace_id": workspace_id,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+        result = execute_action_by_type(rule.get("action_type"), rule.get("action_config") or {}, event)
+        return jsonify({"ok": result.get("ok"), "result": result})
+    except Exception as e:
+        logger.warning("Failed to run automation rule manually: %s", e)
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 @app.route("/automations/<rule_id>/executions", methods=["GET"])

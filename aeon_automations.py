@@ -12,6 +12,8 @@ after an event is persisted/broadcast.
 import json
 import logging
 import os
+import threading
+from datetime import datetime, timezone, timedelta
 from typing import Any
 
 logger = logging.getLogger("aeon_automations")
@@ -457,3 +459,152 @@ def evaluate_automations(
         })
 
     return results
+
+
+# ── Scheduled / Cron Automations (Phase 20) ──────────────────────────────────
+
+def _compute_next_run(cron_expression: str, base_time: datetime | None = None) -> datetime | None:
+    """Return the next datetime a cron expression should fire.
+
+    Uses ``croniter`` when available; otherwise falls back to a simple
+    once-per-minute parser that only supports the special expression ``* * * * *``.
+    """
+    base = base_time or datetime.now(timezone.utc)
+    try:
+        from croniter import croniter
+        try:
+            return croniter(cron_expression, base).get_next(datetime)
+        except Exception as exc:
+            logger.warning("Invalid cron expression %r: %s", cron_expression, exc)
+            return None
+    except ImportError:
+        logger.debug("croniter not installed; using minimal cron fallback")
+        if cron_expression.strip() == "* * * * *":
+            return base + timedelta(minutes=1)
+        logger.warning("Cannot parse cron expression %r without croniter", cron_expression)
+        return None
+
+
+class ScheduledAutomationScheduler:
+    """Background scheduler that runs automation rules on a cron schedule."""
+
+    def __init__(self, interval_seconds: int = 60):
+        self.interval_seconds = interval_seconds
+        self._thread: threading.Thread | None = None
+        self._stop_event = threading.Event()
+
+    def start(self) -> None:
+        if self._thread is not None and self._thread.is_alive():
+            return
+        self._stop_event.clear()
+        self._thread = threading.Thread(
+            target=self._loop,
+            daemon=True,
+            name="aeon-scheduled-automations",
+        )
+        self._thread.start()
+        logger.info("Scheduled automation scheduler started (tick every %ss)", self.interval_seconds)
+
+    def stop(self) -> None:
+        self._stop_event.set()
+        if self._thread:
+            self._thread.join(timeout=5)
+
+    def _loop(self) -> None:
+        while not self._stop_event.is_set():
+            try:
+                self._tick()
+            except Exception as exc:
+                logger.warning("Scheduled automation tick failed: %s", exc)
+            self._stop_event.wait(self.interval_seconds)
+
+    def _tick(self) -> None:
+        db_url = _get_db_url()
+        headers = _supabase_headers()
+        if not db_url or not headers:
+            return
+
+        import requests
+
+        now = datetime.now(timezone.utc).isoformat()
+        try:
+            r = requests.get(
+                f"{db_url}/rest/v1/automation_rules",
+                headers=headers,
+                params={
+                    "enabled": "eq.true",
+                    "schedule_type": "eq.cron",
+                    "next_run_at": f"lte.{now}",
+                    "order": "next_run_at.asc",
+                },
+                timeout=10,
+            )
+            r.raise_for_status()
+            rules = r.json() or []
+        except Exception as exc:
+            logger.warning("Failed to fetch due scheduled rules: %s", exc)
+            return
+
+        for rule in rules:
+            self._run_rule(rule)
+
+    def _run_rule(self, rule: dict[str, Any]) -> None:
+        """Execute a single scheduled rule and update its run tracking."""
+        db_url = _get_db_url()
+        headers = _supabase_headers()
+        now_dt = datetime.now(timezone.utc)
+        event = {
+            "type": rule.get("event_type") or "system",
+            "payload": {"schedule_type": "cron", "rule_id": rule.get("id")},
+            "user_id": rule.get("created_by"),
+            "workspace_id": rule.get("workspace_id"),
+            "timestamp": now_dt.isoformat(),
+        }
+
+        # If approval is required, create a pending request instead of executing.
+        if rule.get("approval_required"):
+            approval_result = _create_approval_request(rule, event)
+            _log_execution_with_status(
+                rule,
+                event,
+                "pending_approval",
+                {"approval_id": (approval_result.get("approval") or {}).get("id"), "status": "pending"},
+            )
+        else:
+            result = _execute_action(rule, event)
+            _log_execution_with_status(rule, event, "triggered" if result.get("ok") else "failed", result)
+
+        # Advance last_run_at and next_run_at
+        next_run = _compute_next_run(rule.get("cron_expression", ""), now_dt)
+        update = {"last_run_at": "now"}
+        if next_run:
+            update["next_run_at"] = next_run.isoformat()
+        else:
+            update["next_run_at"] = None
+
+        if db_url and headers:
+            try:
+                import requests
+                requests.patch(
+                    f"{db_url}/rest/v1/automation_rules?id=eq.{rule.get('id')}",
+                    headers=headers,
+                    json=update,
+                    timeout=10,
+                ).raise_for_status()
+            except Exception as exc:
+                logger.warning("Failed to update scheduled rule timing: %s", exc)
+
+
+# Global scheduler instance
+_scheduler = ScheduledAutomationScheduler()
+
+
+def start_scheduler(interval_seconds: int = 60) -> None:
+    """Start the global scheduled automation scheduler."""
+    _scheduler.interval_seconds = interval_seconds
+    _scheduler.start()
+
+
+def stop_scheduler() -> None:
+    """Stop the global scheduled automation scheduler."""
+    _scheduler.stop()

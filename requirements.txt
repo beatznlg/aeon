@@ -42,3 +42,6 @@ werkzeug>=3.0
 
 # --- caching / rate limiting ---
 redis>=5.0
+
+# --- scheduled automations ---
+croniter>=1.4

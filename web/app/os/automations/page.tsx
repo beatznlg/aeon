@@ -12,6 +12,10 @@ interface AutomationRule {
   action_config: Record<string, any>;
   enabled: boolean;
   approval_required?: boolean;
+  schedule_type?: "event" | "cron";
+  cron_expression?: string;
+  last_run_at?: string;
+  next_run_at?: string;
   created_at: string;
 }
 
@@ -51,6 +55,8 @@ export default function AutomationsPage() {
     action_config: {},
     enabled: true,
     approval_required: false,
+    schedule_type: "event",
+    cron_expression: "",
   });
 
   useEffect(() => {
@@ -106,6 +112,8 @@ export default function AutomationsPage() {
           action_config: {},
           enabled: true,
           approval_required: false,
+          schedule_type: "event",
+          cron_expression: "",
         });
         await loadRules();
       } else {
@@ -137,6 +145,20 @@ export default function AutomationsPage() {
       await loadRules();
       if (selected?.id === id) setSelected(null);
     } catch {}
+  }
+
+  async function runRuleNow(id: string) {
+    try {
+      const res = await fetch(`/api/automations/${id}/run`, { method: "POST" });
+      const data = await res.json();
+      if (data.ok) {
+        alert("Rule executed successfully");
+      } else {
+        setError(data.error || "Failed to run rule");
+      }
+    } catch (e: any) {
+      setError(e.message || "Failed to run rule");
+    }
   }
 
   function updateActionConfig(key: string, value: string) {
@@ -252,6 +274,52 @@ export default function AutomationsPage() {
             </div>
 
             <div style={{ marginBottom: 16 }}>
+              <label style={{ display: "block", marginBottom: 6, fontSize: "0.8rem", fontWeight: 600 }}>
+                Trigger
+              </label>
+              <div style={{ display: "flex", gap: 12 }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "0.85rem" }}>
+                  <input
+                    type="radio"
+                    name="schedule_type"
+                    value="event"
+                    checked={form.schedule_type === "event"}
+                    onChange={() => setForm({ ...form, schedule_type: "event" })}
+                  />
+                  Event-driven
+                </label>
+                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "0.85rem" }}>
+                  <input
+                    type="radio"
+                    name="schedule_type"
+                    value="cron"
+                    checked={form.schedule_type === "cron"}
+                    onChange={() => setForm({ ...form, schedule_type: "cron" })}
+                  />
+                  Scheduled (cron)
+                </label>
+              </div>
+            </div>
+
+            {form.schedule_type === "cron" && (
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: "block", marginBottom: 6, fontSize: "0.8rem", fontWeight: 600 }}>
+                  Cron Expression
+                </label>
+                <input
+                  className="input"
+                  value={form.cron_expression || ""}
+                  onChange={(e) => setForm({ ...form, cron_expression: e.target.value })}
+                  placeholder="*/5 * * * *"
+                  required={form.schedule_type === "cron"}
+                />
+                <div style={{ fontSize: "0.75rem", color: "var(--fg-mute)", marginTop: 4 }}>
+                  Standard 5-field cron: minute hour day month weekday
+                </div>
+              </div>
+            )}
+
+            <div style={{ marginBottom: 16 }}>
               <label style={{ display: "block", marginBottom: 6, fontSize: "0.8rem", fontWeight: 600 }}>Action Config</label>
               {form.action_type === "webhook" && (
                 <input
@@ -338,8 +406,16 @@ export default function AutomationsPage() {
                     <div>
                       <div style={{ fontWeight: 600 }}>{rule.name}</div>
                       <div style={{ fontSize: "0.78rem", color: "var(--fg-mute)" }}>
-                        {rule.event_type} → {rule.action_type}
+                        {rule.schedule_type === "cron" ? `⏰ ${rule.cron_expression}` : rule.event_type} → {rule.action_type}
                       </div>
+                      {rule.schedule_type === "cron" && (
+                        <div style={{ fontSize: "0.72rem", color: "var(--fg-mute)" }}>
+                          {rule.next_run_at
+                            ? `Next run: ${new Date(rule.next_run_at).toLocaleString()}`
+                            : "Next run: not scheduled"}
+                          {rule.last_run_at && ` · Last run: ${new Date(rule.last_run_at).toLocaleString()}`}
+                        </div>
+                      )}
                     </div>
                     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                       {rule.approval_required && (
@@ -374,6 +450,15 @@ export default function AutomationsPage() {
                         }}
                       >
                         {rule.enabled ? "Disable" : "Enable"}
+                      </button>
+                      <button
+                        className="btn btn-sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          runRuleNow(rule.id);
+                        }}
+                      >
+                        Run Now
                       </button>
                       <button
                         className="btn btn-sm btn-danger"
