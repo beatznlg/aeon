@@ -2591,6 +2591,103 @@ def automation_executions(rule_id: str):
 
 
 
+
+
+# ── Inbound webhook management (Phase 21) ───────────────────────────────────
+def _generate_inbound_token() -> str:
+    import secrets
+    return secrets.token_urlsafe(32)
+
+
+@app.route("/inbound-webhooks", methods=["GET", "POST"])
+@require_auth
+@require_workspace_role("OPERATOR")
+def inbound_webhooks_index():
+    """List or create inbound webhooks for the current workspace."""
+    ctx = _governance_context()
+    workspace_id = ctx.get("workspace_id")
+
+    supabase_url = os.environ.get("SUPABASE_URL")
+    service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+    if not supabase_url or not service_key:
+        return jsonify({"ok": False, "error": "Supabase not configured"}), 503
+
+    if request.method == "GET":
+        try:
+            r = requests.get(
+                f"{supabase_url}/rest/v1/inbound_webhooks",
+                headers={
+                    "apikey": service_key,
+                    "Authorization": f"Bearer {service_key}",
+                },
+                params={
+                    "workspace_id": f"eq.{workspace_id}",
+                    "order": "created_at.desc",
+                },
+                timeout=10,
+            )
+            r.raise_for_status()
+            return jsonify({"ok": True, "webhooks": r.json()})
+        except Exception as e:
+            logger.warning("Failed to list inbound webhooks: %s", e)
+            return jsonify({"ok": False, "error": str(e)}), 500
+
+    # POST
+    data = request.json or {}
+    name = (data.get("name") or "Inbound Webhook").strip()
+    try:
+        payload = {
+            "workspace_id": workspace_id,
+            "name": name,
+            "token": _generate_inbound_token(),
+        }
+        r = requests.post(
+            f"{supabase_url}/rest/v1/inbound_webhooks",
+            headers={
+                "apikey": service_key,
+                "Authorization": f"Bearer {service_key}",
+                "Content-Type": "application/json",
+                "Prefer": "return=representation",
+            },
+            json=payload,
+            timeout=10,
+        )
+        r.raise_for_status()
+        created = r.json()
+        return jsonify({"ok": True, "webhook": created[0] if created else None}), 201
+    except Exception as e:
+        logger.warning("Failed to create inbound webhook: %s", e)
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/inbound-webhooks/<webhook_id>", methods=["DELETE"])
+@require_auth
+@require_workspace_role("OPERATOR")
+def inbound_webhook_detail(webhook_id: str):
+    """Delete an inbound webhook."""
+    ctx = _governance_context()
+    workspace_id = ctx.get("workspace_id")
+
+    supabase_url = os.environ.get("SUPABASE_URL")
+    service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+    if not supabase_url or not service_key:
+        return jsonify({"ok": False, "error": "Supabase not configured"}), 503
+
+    try:
+        r = requests.delete(
+            f"{supabase_url}/rest/v1/inbound_webhooks",
+            headers={
+                "apikey": service_key,
+                "Authorization": f"Bearer {service_key}",
+            },
+            params={"id": f"eq.{webhook_id}", "workspace_id": f"eq.{workspace_id}"},
+            timeout=10,
+        )
+        r.raise_for_status()
+        return jsonify({"ok": True})
+    except Exception as e:
+        logger.warning("Failed to delete inbound webhook: %s", e)
+        return jsonify({"ok": False, "error": str(e)}), 500
 # ---- Approval endpoints (Phase 19: HITL) ---------------------------------
 @app.route("/approvals", methods=["GET", "POST"])
 @require_auth
@@ -2716,6 +2813,118 @@ def approval_resolve(approval_id: str):
         return jsonify(result), 400
     return jsonify(result)
 
+
+
+# ── Inbound webhooks (Phase 21) ─────────────────────────────────────────────
+@app.route("/inbound/<token>", methods=["POST"])
+def inbound_webhook(token: str):
+    """Receive an inbound webhook from a third-party service and trigger AEON automations."""
+    supabase_url = os.environ.get("SUPABASE_URL")
+    service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+    if not supabase_url or not service_key:
+        return jsonify({"ok": False, "error": "Supabase not configured"}), 503
+
+    try:
+        import requests
+
+        r = requests.get(
+            f"{supabase_url}/rest/v1/inbound_webhooks",
+            headers={
+                "apikey": service_key,
+                "Authorization": f"Bearer {service_key}",
+            },
+            params={"token": f"eq.{token}", "select": "id,name,workspace_id"},
+            timeout=10,
+        )
+        r.raise_for_status()
+        rows = r.json() or []
+        if not rows:
+            return jsonify({"ok": False, "error": "unknown webhook token"}), 404
+        hook = rows[0]
+
+        body = request.get_json(silent=True) or {}
+        if not isinstance(body, dict):
+            body = {}
+
+        payload = {
+            "webhook_id": hook.get("id"),
+            "webhook_name": hook.get("name"),
+            "data": body,
+        }
+        log_activity(
+            "inbound_webhook",
+            payload,
+            user_id=None,
+            workspace_id=hook.get("workspace_id"),
+        )
+        return jsonify({"ok": True, "message": "event accepted"}), 202
+    except Exception as e:
+        logger.warning("Inbound webhook failed for token %s: %s", token, e)
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+# ── Slack interactive approvals (Phase 21) ──────────────────────────────────
+def _verify_slack_signature(raw_body: bytes, timestamp: str, signature: str) -> bool:
+    """Verify the HMAC-SHA256 signature Slack sends with interactive payloads."""
+    secret = os.environ.get("SLACK_SIGNING_SECRET")
+    if not secret:
+        return False
+    import hmac
+    import hashlib
+    sig_prefix = "v0="
+    expected = hmac.new(
+        key=secret.encode("utf-8"),
+        msg=f"v0:{timestamp}:{raw_body.decode('utf-8')}".encode("utf-8"),
+        digestmod=hashlib.sha256,
+    ).hexdigest()
+    return hmac.compare_digest(f"{sig_prefix}{expected}", signature)
+
+
+@app.route("/slack/interactions", methods=["POST"])
+def slack_interactions():
+    """Handle Slack interactive component callbacks (Block Kit button clicks)."""
+    timestamp = request.headers.get("X-Slack-Request-Timestamp", "")
+    signature = request.headers.get("X-Slack-Signature", "")
+    raw_body = request.get_data()
+
+    if not _verify_slack_signature(raw_body, timestamp, signature):
+        return jsonify({"ok": False, "error": "invalid slack signature"}), 403
+
+    encoded = request.form.get("payload", "")
+    if not encoded:
+        return jsonify({"ok": False, "error": "missing payload"}), 400
+
+    try:
+        payload = json.loads(encoded)
+    except Exception as e:
+        logger.warning("Failed to parse Slack payload: %s", e)
+        return jsonify({"ok": False, "error": "invalid payload"}), 400
+
+    action = payload.get("actions", [{}])[0]
+    action_value = action.get("value")
+    if not action_value:
+        return jsonify({"ok": False, "error": "no action value"}), 400
+
+    try:
+        value = json.loads(action_value)
+    except Exception as e:
+        logger.warning("Failed to parse Slack action value: %s", e)
+        return jsonify({"ok": False, "error": "invalid action value"}), 400
+
+    approval_id = value.get("approval_id")
+    decision = value.get("decision")
+    if not approval_id or not decision:
+        return jsonify({"ok": False, "error": "missing approval_id or decision"}), 400
+
+    slack_user = (payload.get("user") or {}).get("id") or "slack"
+    result = resolve_approval(str(approval_id), str(decision), str(slack_user), "Resolved via Slack")
+    if not result.get("ok"):
+        return jsonify({"ok": False, "error": result.get("error", "unknown")}), 400
+
+    return jsonify({
+        "ok": True,
+        "text": f"Approval {decision}.",
+    }), 200
 # ── Graceful shutdown ────────────────────────────────────────────────────────
 def _shutdown():
     logger.info("Shutting down AEON kernel...")

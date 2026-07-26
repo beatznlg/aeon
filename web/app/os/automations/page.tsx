@@ -27,6 +27,13 @@ interface Execution {
   result?: Record<string, any>;
 }
 
+interface InboundWebhook {
+  id: string;
+  name: string;
+  token: string;
+  created_at: string;
+}
+
 const EVENT_TYPES = [
   "swarm_status",
   "workflow_status",
@@ -35,6 +42,7 @@ const EVENT_TYPES = [
   "api_key_revoked",
   "workspace_activity",
   "system",
+  "inbound_webhook",
 ];
 
 const ACTION_TYPES = ["webhook", "swarm", "workflow"];
@@ -46,6 +54,9 @@ export default function AutomationsPage() {
   const [selected, setSelected] = useState<AutomationRule | null>(null);
   const [executions, setExecutions] = useState<Execution[]>([]);
   const [showForm, setShowForm] = useState(false);
+  const [webhooks, setWebhooks] = useState<InboundWebhook[]>([]);
+  const [webhookName, setWebhookName] = useState("");
+  const [copiedToken, setCopiedToken] = useState<string | null>(null);
 
   const [form, setForm] = useState<Partial<AutomationRule>>({
     name: "",
@@ -61,6 +72,7 @@ export default function AutomationsPage() {
 
   useEffect(() => {
     loadRules();
+    loadWebhooks();
   }, []);
 
   async function loadRules() {
@@ -79,6 +91,51 @@ export default function AutomationsPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function loadWebhooks() {
+    try {
+      const res = await fetch("/api/inbound-webhooks");
+      const data = await res.json();
+      if (data.ok && Array.isArray(data.webhooks)) {
+        setWebhooks(data.webhooks);
+      }
+    } catch {}
+  }
+
+  async function createWebhook(e: React.FormEvent) {
+    e.preventDefault();
+    try {
+      const res = await fetch("/api/inbound-webhooks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: webhookName || "Inbound Webhook" }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setWebhookName("");
+        await loadWebhooks();
+      } else {
+        setError(data.error || "Failed to create webhook");
+      }
+    } catch (e: any) {
+      setError(e.message || "Failed to create webhook");
+    }
+  }
+
+  async function deleteWebhook(id: string) {
+    if (!confirm("Delete this inbound webhook? External systems using it will stop working.")) return;
+    try {
+      await fetch(`/api/inbound-webhooks/${id}`, { method: "DELETE" });
+      await loadWebhooks();
+    } catch {}
+  }
+
+  function copyUrl(url: string) {
+    navigator.clipboard.writeText(url).then(() => {
+      setCopiedToken(url);
+      setTimeout(() => setCopiedToken(null), 2000);
+    });
   }
 
   async function loadExecutions(rule: AutomationRule) {
@@ -524,6 +581,73 @@ export default function AutomationsPage() {
           )}
         </section>
       </div>
+
+      <section
+        style={{
+          border: "1px solid var(--border)",
+          borderRadius: 12,
+          padding: 20,
+          background: "var(--bg)",
+          marginTop: 24,
+        }}
+      >
+        <h3 style={{ marginTop: 0 }}>🔗 Inbound Webhooks</h3>
+        <p style={{ color: "var(--fg-mute)", fontSize: "0.85rem" }}>
+          External services can POST to these URLs to trigger AEON automations. Create a webhook, then build a rule with
+          Event Type <strong>inbound_webhook</strong>.
+        </p>
+        <form onSubmit={createWebhook} style={{ display: "flex", gap: 12, marginBottom: 16 }}>
+          <input
+            className="input"
+            placeholder="Webhook name"
+            value={webhookName}
+            onChange={(e) => setWebhookName(e.target.value)}
+            style={{ flex: 1 }}
+          />
+          <button type="submit" className="btn btn-primary">
+            Create Webhook
+          </button>
+        </form>
+        {webhooks.length === 0 ? (
+          <p style={{ color: "var(--fg-mute)" }}>No inbound webhooks yet.</p>
+        ) : (
+          <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+            {webhooks.map((hook) => {
+              const url = `${typeof window !== "undefined" ? window.location.origin : ""}/inbound/${hook.token}`;
+              return (
+                <li
+                  key={hook.id}
+                  style={{
+                    padding: "12px 0",
+                    borderBottom: "1px solid var(--border)",
+                  }}
+                >
+                  <div style={{ fontWeight: 600 }}>{hook.name}</div>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      marginTop: 6,
+                      fontSize: "0.78rem",
+                      fontFamily: "monospace",
+                      wordBreak: "break-all",
+                    }}
+                  >
+                    <span style={{ color: "var(--fg-mute)", flex: 1 }}>{url}</span>
+                    <button className="btn btn-sm" onClick={() => copyUrl(url)}>
+                      {copiedToken === url ? "Copied!" : "Copy"}
+                    </button>
+                    <button className="btn btn-sm btn-danger" onClick={() => deleteWebhook(hook.id)}>
+                      Delete
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
     </div>
   );
 }

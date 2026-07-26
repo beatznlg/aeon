@@ -27,6 +27,7 @@ TRIGGER_EVENT_TYPES = frozenset({
     "api_key_revoked",
     "workspace_activity",
     "system",
+    "inbound_webhook",
 })
 
 
@@ -287,22 +288,118 @@ def _notify_approval_required(rule: dict[str, Any], approval_id: str, event: dic
 
     workspace_id = rule.get("workspace_id")
     user_id = event.get("user_id")
-    if not user_id:
+    if user_id:
+        notify(
+            user_id=user_id,
+            type="approval_requested",
+            title=f"Approval Required: {rule.get('name', 'Automation')}",
+            body=f"An automation rule '{rule.get('name')}' fired and requires your approval before proceeding.",
+            icon="✋",
+            link=f"/os/approvals?id={approval_id}",
+            workspace_id=workspace_id,
+            metadata={
+                "approval_id": approval_id,
+                "rule_id": rule.get("id"),
+                "event_type": event.get("type"),
+            },
+        )
+    _notify_slack_approval(rule, str(approval_id), event)
+
+
+def _notify_slack_approval(rule: dict[str, Any], approval_id: str, event: dict[str, Any]) -> None:
+    """Send an interactive Slack Block Kit message for an approval request."""
+    import urllib.parse
+
+    bot_token = os.environ.get("SLACK_BOT_TOKEN")
+    if not bot_token:
         return
-    notify(
-        user_id=user_id,
-        type="approval_requested",
-        title=f"Approval Required: {rule.get('name', 'Automation')}",
-        body=f"An automation rule '{rule.get('name')}' fired and requires your approval before proceeding.",
-        icon="✋",
-        link=f"/os/approvals?id={approval_id}",
-        workspace_id=workspace_id,
-        metadata={
-            "approval_id": approval_id,
-            "rule_id": rule.get("id"),
-            "event_type": event.get("type"),
-        },
-    )
+
+    db_url = _get_db_url()
+    headers = _supabase_headers()
+    channel = os.environ.get("SLACK_APPROVALS_CHANNEL")
+    if not channel and db_url and headers:
+        try:
+            import requests
+            ws = requests.get(
+                f"{db_url}/rest/v1/workspaces",
+                headers=headers,
+                params={"id": f"eq.{rule.get('workspace_id')}", "select": "slack_channel"},
+                timeout=10,
+            )
+            ws.raise_for_status()
+            rows = ws.json() or []
+            if rows:
+                channel = rows[0].get("slack_channel") or os.environ.get("SLACK_APPROVALS_CHANNEL")
+        except Exception as exc:
+            logger.debug("Could not fetch workspace Slack channel: %s", exc)
+
+    if not channel:
+        return
+
+    public_url = os.environ.get("AEON_PUBLIC_URL") or ""
+    resolve_url = f"{public_url.rstrip('/')}/slack/interactions"
+    try:
+        import requests
+
+        blocks = [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": (
+                        f"*AEON Approval Required*\n"
+                        f"Rule: {rule.get('name')}\n"
+                        f"Event: {event.get('type')}\n"
+                        f"Action: {rule.get('action_type')}"
+                    ),
+                },
+            },
+            {
+                "type": "actions",
+                "elements": [
+                    {
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": "Approve", "emoji": True},
+                        "style": "primary",
+                        "value": json.dumps({"approval_id": approval_id, "decision": "approved"}),
+                        "action_id": "approve_request",
+                    },
+                    {
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": "Reject", "emoji": True},
+                        "style": "danger",
+                        "value": json.dumps({"approval_id": approval_id, "decision": "rejected"}),
+                        "action_id": "reject_request",
+                    },
+                ],
+            },
+            {
+                "type": "context",
+                "elements": [
+                    {"type": "mrkdwn", "text": f"<{resolve_url}|Resolve in AEON>"},
+                ],
+            },
+        ]
+
+        resp = requests.post(
+            "https://slack.com/api/chat.postMessage",
+            headers={
+                "Authorization": f"Bearer {bot_token}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "channel": channel,
+                "text": f"AEON approval required: {rule.get('name')}",
+                "blocks": blocks,
+            },
+            timeout=10,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        if not data.get("ok"):
+            logger.warning("Slack approval notification failed: %s", data.get("error"))
+    except Exception as exc:
+        logger.warning("Failed to send Slack approval message: %s", exc)
 
 
 def resolve_approval(

@@ -106,6 +106,7 @@ AEON_ADMIN_NAME=AEON Admin
 | **18** | Event-Driven Automations — If-This-Then-That for AEON events | ✅ |
 | **19** | Human-in-the-Loop (HITL) Approvals — approval checkpoints for automations | ✅ |
 | **20** | Scheduled Automations (Cron Triggers) — time-based background execution | ✅ |
+| **21** | Inbound Webhooks & Slack HITL — external triggers and interactive approvals | ✅ |
 
 ---
 
