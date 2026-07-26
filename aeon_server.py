@@ -54,6 +54,7 @@ from aeon_governance import GovernanceManager, get_governance
 from aeon_integrations import IntegrationManager, WebhookDelivery, get_integration_catalog
 from aeon_llm import get_llm_provider, list_providers, set_active_provider
 from aeon_llm import test_provider as _test_llm_provider
+from aeon_notify import notify as _notify
 from aeon_os import AeonOS
 from aeon_stripe import get_stripe_client, init_stripe
 from aeon_usage import BillingCalculator, HealthCollector, UsageMeter
@@ -589,7 +590,17 @@ def auth_register():
             workspace_id = str(workspace.id)
 
         token = create_access_token(user.id, user.email, user.role, workspace_id)
-        logger.info("New user registered: %s (workspace: %s)", email, slug)
+        logger.info("New user registered: %s (workspace: %s)", email, slug        )
+        # Welcome notification
+        _notify(
+            user_id=str(user.id),
+            type="welcome",
+            title=f"Welcome to AEON, {name}!",
+            body="Your workspace has been created. Start chatting or explore the OS Launcher to get started.",
+            icon="👋",
+            link="/os",
+            workspace_id=workspace_id,
+        )
         return jsonify({
             "ok": True,
             "token": token,
@@ -1057,6 +1068,31 @@ def workflow_run(workflow_id: str):
             email=ctx.get("email"),
             metadata={"workflow_id": workflow_id, "ok": result.get("ok", True)},
         )
+        # Workflow completed/failed notification
+        wf_ok = result.get("ok", True)
+        wf_name = data.get("name", workflow_id)
+        if wf_ok:
+            _notify(
+                user_id=ctx.get("user_id", ""),
+                type="workflow_completed",
+                title=f"Workflow '{wf_name}' Completed",
+                body=f"Workflow {workflow_id} finished successfully in workspace {workspace_id[:8]}...",
+                icon="⚡",
+                link="/os/workflows",
+                workspace_id=workspace_id,
+                metadata={"workflow_id": workflow_id},
+            )
+        else:
+            _notify(
+                user_id=ctx.get("user_id", ""),
+                type="workflow_failed",
+                title=f"Workflow '{wf_name}' Failed",
+                body=result.get("error", f"Workflow {workflow_id} encountered an error."),
+                icon="❌",
+                link="/os/workflows",
+                workspace_id=workspace_id,
+                metadata={"workflow_id": workflow_id},
+            )
         return jsonify(result)
     except Exception as e:
         get_governance_manager().log_audit(
@@ -1093,6 +1129,30 @@ def swarm_run():
             email=ctx.get("email"),
             metadata={"app_ids": app_ids, "roles": roles, "ok": result.get("ok", True)},
         )
+        # Swarm completed/failed notification
+        swarm_ok = result.get("ok", True)
+        swarm_id = result.get("swarm_id", "")
+        if swarm_ok:
+            _notify(
+                user_id=ctx.get("user_id", ""),
+                type="swarm_completed",
+                title="Swarm Completed",
+                body=f"Swarm {swarm_id[:8]}... completed with prompt: {prompt[:80]}",
+                icon="🐝",
+                link=f"/swarms/{swarm_id}" if swarm_id else None,
+                workspace_id=ctx.get("workspace_id"),
+                metadata={"swarm_id": swarm_id, "app_ids": app_ids},
+            )
+        else:
+            _notify(
+                user_id=ctx.get("user_id", ""),
+                type="swarm_failed",
+                title="Swarm Failed",
+                body=result.get("error", f"Swarm with prompt '{prompt[:60]}' encountered an error."),
+                icon="⚠️",
+                workspace_id=ctx.get("workspace_id"),
+                metadata={"swarm_id": swarm_id, "app_ids": app_ids},
+            )
         return jsonify(result)
     except Exception as e:
         get_governance_manager().log_audit(
@@ -1205,6 +1265,16 @@ def api_keys_index():
         email=ctx.get("email"),
         metadata={"key_id": key.id, "name": name},
     )
+    # API key created notification
+    _notify(
+        user_id=ctx.get("user_id", ""),
+        type="api_key_created",
+        title=f"API Key Created: {name}",
+        body=f"A new API key '{name}' was created for workspace {workspace_id[:8]}...",
+        icon="🔑",
+        link="/os/api-keys",
+        workspace_id=workspace_id,
+    )
     # Return the plaintext key exactly once - it cannot be retrieved again!
     return jsonify({"ok": True, "key": key.to_dict(), "plaintext_key": plaintext})
 
@@ -1230,16 +1300,26 @@ def api_key_detail(key_id: str):
         key = mgr.get_key_by_id(key_id)
         if not key or key.workspace_id != workspace_id:
             return jsonify({"ok": False, "error": "key not found"}), 404
-        if mgr.revoke_key(key_id):
-            get_governance_manager().log_audit(
-                action="API_KEY_REVOKED",
-                module="api_keys",
-                user_id=ctx.get("user_id"),
-                workspace_id=workspace_id,
-                email=ctx.get("email"),
-                metadata={"key_id": key_id, "name": key.name},
-            )
-            return jsonify({"ok": True})
+            if mgr.revoke_key(key_id):
+                get_governance_manager().log_audit(
+                    action="API_KEY_REVOKED",
+                    module="api_keys",
+                    user_id=ctx.get("user_id"),
+                    workspace_id=workspace_id,
+                    email=ctx.get("email"),
+                    metadata={"key_id": key_id, "name": key.name},
+                )
+                # API key revoked notification
+                _notify(
+                    user_id=ctx.get("user_id", ""),
+                    type="api_key_revoked",
+                    title=f"API Key Revoked: {key.name}",
+                    body=f"The API key '{key.name}' has been revoked.",
+                    icon="🗑️",
+                    link="/os/api-keys",
+                    workspace_id=workspace_id,
+                )
+                return jsonify({"ok": True})
         return jsonify({"ok": False, "error": "key not found"}), 404
 
     # PATCH - update key metadata (ADMIN only)
@@ -1292,6 +1372,16 @@ def api_key_rotate(key_id: str):
         workspace_id=workspace_id,
         email=ctx.get("email"),
         metadata={"old_key_id": key_id, "new_key_id": new_key.id},
+    )
+    # API key rotated notification
+    _notify(
+        user_id=ctx.get("user_id", ""),
+        type="api_key_rotated",
+        title=f"API Key Rotated: {old_key.name}",
+        body=f"The API key '{old_key.name}' was rotated. Update any services using the old key.",
+        icon="🔄",
+        link="/os/api-keys",
+        workspace_id=workspace_id,
     )
     return jsonify({"ok": True, "key": new_key.to_dict(), "plaintext_key": plaintext})
 
@@ -1502,6 +1592,16 @@ def integration_run(integration_id: str):
             email=ctx.get("email"),
             metadata={"integration_id": integration_id, "error": str(e)},
         )
+        # Integration error notification
+        _notify(
+            user_id=ctx.get("user_id", ""),
+            type="integration_error",
+            title=f"Integration Run Failed: {integration_id[:8]}...",
+            body=str(e)[:200],
+            icon="🔌",
+            workspace_id=ctx.get("workspace_id"),
+            metadata={"integration_id": integration_id},
+        )
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
@@ -1596,12 +1696,23 @@ def billing_set_plan(workspace_id: str):
     if plan_id not in valid_plans:
         return jsonify({"ok": False, "error": f"invalid plan '{plan_id}'. Valid: {valid_plans}"}), 400
 
+    ctx = _governance_context()
     try:
         get_billing_calculator().set_plan(workspace_id, plan_id, credits)
         status = get_billing_calculator().workspace_status(workspace_id)
         get_governance_manager().log_audit(
             action="BILLING_PLAN_CHANGE",
             module="billing",
+            workspace_id=workspace_id,
+            metadata={"plan_id": plan_id, "credits": credits},
+        )
+        # Plan change notification
+        _notify(
+            user_id=ctx.get("user_id", ""),
+            type="plan_changed",
+            title=f"Plan Updated to {plan_id.title()}",
+            body=f"Workspace {workspace_id[:8]}... has been updated to the {plan_id} plan.",
+            icon="⭐",
             workspace_id=workspace_id,
             metadata={"plan_id": plan_id, "credits": credits},
         )
@@ -1621,6 +1732,7 @@ def billing_add_credits(workspace_id: str):
     if amount <= 0:
         return jsonify({"ok": False, "error": "amount must be positive"}), 400
 
+    ctx = _governance_context()
     try:
         get_billing_calculator().add_credits(workspace_id, amount)
         status = get_billing_calculator().workspace_status(workspace_id)
@@ -1629,6 +1741,16 @@ def billing_add_credits(workspace_id: str):
             module="billing",
             workspace_id=workspace_id,
             metadata={"amount": amount, "new_credits": status["credits"]},
+        )
+        # Credits added notification
+        _notify(
+            user_id=ctx.get("user_id", ""),
+            type="credits_added",
+            title=f"{amount} Credits Added",
+            body=f"{amount} credits added to workspace {workspace_id[:8]}...",
+            icon="💰",
+            workspace_id=workspace_id,
+            metadata={"amount": amount, "new_credits": status.get("credits")},
         )
         return jsonify({"ok": True, "billing": status})
     except Exception as e:
