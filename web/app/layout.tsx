@@ -6,6 +6,7 @@ import Link from "next/link";
 import { SessionProvider } from "next-auth/react";
 import UserMenu from "@/components/UserMenu";
 import NotificationBell from "@/components/NotificationBell";
+import CommandPalette from "@/components/CommandPalette";
 import "./globals.css";
 
 // ─── Navigation items ───────────────────────────────────────────
@@ -163,6 +164,22 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <h1>AEON OS</h1>
             </div>
             <div className="main-header-right">
+              <button
+                className="search-trigger-btn"
+                onClick={() => {
+                  const event = new KeyboardEvent("keydown", {
+                    key: "k",
+                    metaKey: true,
+                    bubbles: true,
+                  });
+                  document.dispatchEvent(event);
+                }}
+                title="Search (Cmd+K)"
+              >
+                <span>🔍</span>
+                <span className="search-trigger-text">Search</span>
+                <kbd className="search-trigger-kbd">⌘K</kbd>
+              </button>
               <NotificationBell />
               <UserMenu />
               <Link href="/settings" className="btn btn-sm">
@@ -175,6 +192,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </header>
           {children}
         </div>
+        <CommandPalette />
         </SessionProvider>
       </body>
     </html>
