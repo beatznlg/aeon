@@ -11,6 +11,7 @@ interface AutomationRule {
   action_type: string;
   action_config: Record<string, any>;
   enabled: boolean;
+  approval_required?: boolean;
   created_at: string;
 }
 
@@ -49,6 +50,7 @@ export default function AutomationsPage() {
     action_type: "webhook",
     action_config: {},
     enabled: true,
+    approval_required: false,
   });
 
   useEffect(() => {
@@ -103,6 +105,7 @@ export default function AutomationsPage() {
           action_type: "webhook",
           action_config: {},
           enabled: true,
+          approval_required: false,
         });
         await loadRules();
       } else {
@@ -236,6 +239,18 @@ export default function AutomationsPage() {
               />
             </div>
 
+            <div style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
+              <input
+                type="checkbox"
+                id="approval_required"
+                checked={!!form.approval_required}
+                onChange={(e) => setForm({ ...form, approval_required: e.target.checked })}
+              />
+              <label htmlFor="approval_required" style={{ fontSize: "0.85rem", fontWeight: 600 }}>
+                Require human approval before executing
+              </label>
+            </div>
+
             <div style={{ marginBottom: 16 }}>
               <label style={{ display: "block", marginBottom: 6, fontSize: "0.8rem", fontWeight: 600 }}>Action Config</label>
               {form.action_type === "webhook" && (
@@ -327,6 +342,19 @@ export default function AutomationsPage() {
                       </div>
                     </div>
                     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      {rule.approval_required && (
+                        <span
+                          style={{
+                            fontSize: "0.72rem",
+                            padding: "2px 8px",
+                            borderRadius: 999,
+                            background: "#f59e0b20",
+                            color: "#f59e0b",
+                          }}
+                        >
+                          approval
+                        </span>
+                      )}
                       <span
                         style={{
                           fontSize: "0.72rem",

@@ -24,6 +24,7 @@ export const NAV_ITEMS = [
       { href: "/os/notifications", label: "Notifications", icon: "🔔" },
       { href: "/os/activity", label: "Activity", icon: "" },
       { href: "/os/automations", label: "Automations", icon: "🤖" },
+      { href: "/os/approvals", label: "Approvals", icon: "✋" },
     ],
   },
   {

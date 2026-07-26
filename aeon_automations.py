@@ -92,6 +92,15 @@ def _execute_action(rule: dict[str, Any], event: dict[str, Any]) -> dict[str, An
     """Execute the action configured for a rule."""
     action_type = rule.get("action_type")
     action_config = rule.get("action_config") or {}
+    return execute_action_by_type(action_type, action_config, event)
+
+
+def execute_action_by_type(
+    action_type: str | None,
+    action_config: dict[str, Any],
+    event: dict[str, Any],
+) -> dict[str, Any]:
+    """Execute an action given its type, config, and triggering event."""
     event_payload = event.get("payload") or {}
 
     if action_type == "webhook":
@@ -202,6 +211,193 @@ def _log_execution(rule: dict[str, Any], event: dict[str, Any], result: dict[str
         logger.warning("Failed to log automation execution: %s", exc)
 
 
+def _log_execution_with_status(
+    rule: dict[str, Any],
+    event: dict[str, Any],
+    status: str,
+    result: dict[str, Any],
+) -> None:
+    """Log an automation execution with an explicit status string."""
+    db_url = _get_db_url()
+    headers = _supabase_headers()
+    if not db_url or not headers:
+        return
+
+    try:
+        import requests
+
+        requests.post(
+            f"{db_url}/rest/v1/automation_executions",
+            headers=headers,
+            json={
+                "rule_id": rule.get("id"),
+                "event_type": event.get("type"),
+                "event_payload": json.dumps(event.get("payload") or {}),
+                "status": status,
+                "result": json.dumps(result),
+                "workspace_id": rule.get("workspace_id"),
+                "user_id": event.get("user_id"),
+            },
+            timeout=10,
+        )
+    except Exception as exc:
+        logger.warning("Failed to log automation execution: %s", exc)
+
+
+def _create_approval_request(rule: dict[str, Any], event: dict[str, Any]) -> dict[str, Any]:
+    """Create a pending approval request for a rule that requires HITL approval."""
+    db_url = _get_db_url()
+    headers = _supabase_headers()
+    if not db_url or not headers:
+        return {"ok": False, "error": "Supabase not configured"}
+
+    try:
+        import requests
+
+        payload = {
+            "rule_id": rule.get("id"),
+            "event_type": event.get("type"),
+            "event_payload": json.dumps(event.get("payload") or {}),
+            "action_type": rule.get("action_type"),
+            "action_config": json.dumps(rule.get("action_config") or {}),
+            "status": "pending",
+            "workspace_id": rule.get("workspace_id"),
+            "user_id": event.get("user_id"),
+            "requested_by": event.get("user_id"),
+        }
+        r = requests.post(
+            f"{db_url}/rest/v1/approval_requests",
+            headers={**headers, "Prefer": "return=representation"},
+            json=payload,
+            timeout=10,
+        )
+        r.raise_for_status()
+        created = r.json()
+        return {"ok": True, "approval": created[0] if created else None}
+    except Exception as exc:
+        logger.warning("Failed to create approval request: %s", exc)
+        return {"ok": False, "error": str(exc)}
+
+
+def _notify_approval_required(rule: dict[str, Any], approval_id: str, event: dict[str, Any]) -> None:
+    """Send a notification that an automation is awaiting human approval."""
+    from aeon_notify import notify
+
+    workspace_id = rule.get("workspace_id")
+    user_id = event.get("user_id")
+    if not user_id:
+        return
+    notify(
+        user_id=user_id,
+        type="approval_requested",
+        title=f"Approval Required: {rule.get('name', 'Automation')}",
+        body=f"An automation rule '{rule.get('name')}' fired and requires your approval before proceeding.",
+        icon="✋",
+        link=f"/os/approvals?id={approval_id}",
+        workspace_id=workspace_id,
+        metadata={
+            "approval_id": approval_id,
+            "rule_id": rule.get("id"),
+            "event_type": event.get("type"),
+        },
+    )
+
+
+def resolve_approval(
+    approval_id: str,
+    decision: str,
+    resolver_user_id: str,
+    reason: str | None = None,
+) -> dict[str, Any]:
+    """Resolve a pending approval request.
+
+    decision must be 'approved' or 'rejected'. If approved, the deferred action
+    is executed and the result stored on the approval request.
+    """
+    if decision not in {"approved", "rejected"}:
+        return {"ok": False, "error": "decision must be approved or rejected"}
+
+    db_url = _get_db_url()
+    headers = _supabase_headers()
+    if not db_url or not headers:
+        return {"ok": False, "error": "Supabase not configured"}
+
+    try:
+        import requests
+
+        # Fetch the approval request
+        r = requests.get(
+            f"{db_url}/rest/v1/approval_requests?id=eq.{approval_id}",
+            headers=headers,
+            timeout=10,
+        )
+        r.raise_for_status()
+        rows = r.json() or []
+        if not rows:
+            return {"ok": False, "error": "approval request not found"}
+        approval = rows[0]
+
+        if approval["status"] != "pending":
+            return {"ok": False, "error": f"approval request already {approval['status']}"}
+
+        if decision == "rejected":
+            update = {
+                "status": "rejected",
+                "approved_by": resolver_user_id,
+                "reason": reason or "",
+                "resolved_at": "now",
+            }
+            requests.patch(
+                f"{db_url}/rest/v1/approval_requests?id=eq.{approval_id}",
+                headers=headers,
+                json=update,
+                timeout=10,
+            ).raise_for_status()
+            return {"ok": True, "status": "rejected", "approval_id": approval_id}
+
+        # approved: execute the deferred action
+        event = {
+            "type": approval["event_type"],
+            "payload": json.loads(approval.get("event_payload") or "{}"),
+            "user_id": approval.get("user_id"),
+            "workspace_id": approval.get("workspace_id"),
+            "timestamp": None,
+        }
+        action_config = json.loads(approval.get("action_config") or "{}")
+        result = execute_action_by_type(approval.get("action_type"), action_config, event)
+
+        update = {
+            "status": "approved",
+            "approved_by": resolver_user_id,
+            "reason": reason or "",
+            "result": json.dumps(result),
+            "resolved_at": "now",
+        }
+        requests.patch(
+            f"{db_url}/rest/v1/approval_requests?id=eq.{approval_id}",
+            headers=headers,
+            json=update,
+            timeout=10,
+        ).raise_for_status()
+
+        # Log the execution as triggered
+        rule = {
+            "id": approval.get("rule_id"),
+            "workspace_id": approval.get("workspace_id"),
+        }
+        _log_execution_with_status(rule, event, "triggered", result)
+
+        return {
+            "ok": True,
+            "status": "approved",
+            "approval_id": approval_id,
+            "result": result,
+        }
+    except Exception as exc:
+        logger.warning("Failed to resolve approval %s: %s", approval_id, exc)
+        return {"ok": False, "error": str(exc)}
+
+
 def evaluate_automations(
     event_type: str,
     payload: dict[str, Any],
@@ -226,6 +422,31 @@ def evaluate_automations(
         condition = rule.get("condition")
         if not _condition_matches(condition, payload):
             continue
+
+        # Phase 19: HITL approval checkpoint
+        if rule.get("approval_required"):
+            approval_result = _create_approval_request(rule, event)
+            if approval_result.get("ok"):
+                approval = approval_result.get("approval") or {}
+                approval_id = approval.get("id")
+                if approval_id:
+                    _notify_approval_required(rule, str(approval_id), event)
+                _log_execution_with_status(
+                    rule,
+                    event,
+                    "pending_approval",
+                    {"approval_id": approval_id, "status": "pending"},
+                )
+                results.append({
+                    "rule_id": rule.get("id"),
+                    "rule_name": rule.get("name"),
+                    "result": {
+                        "ok": True,
+                        "status": "pending_approval",
+                        "approval_id": approval_id,
+                    },
+                })
+                continue
 
         result = _execute_action(rule, event)
         _log_execution(rule, event, result)

@@ -89,6 +89,7 @@ _NOTIFICATION_TYPES = frozenset({
     "invoice_due",
     "integration_error",
     "system_alert",
+    "approval_requested",
 })
 
 

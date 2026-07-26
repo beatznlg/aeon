@@ -54,6 +54,7 @@ from aeon_governance import GovernanceManager, get_governance
 from aeon_integrations import IntegrationManager, WebhookDelivery, get_integration_catalog
 from aeon_llm import get_llm_provider, list_providers, set_active_provider
 from aeon_llm import test_provider as _test_llm_provider
+from aeon_automations import resolve_approval
 from aeon_notify import broadcast_event
 from aeon_notify import log_activity
 from aeon_notify import notify as _notify
@@ -2367,6 +2368,8 @@ def automations_index():
             "action_type": action_type,
             "action_config": data.get("action_config", {}),
             "enabled": data.get("enabled", True),
+            "approval_required": data.get("approval_required", False),
+            "approver_message": data.get("approver_message", ""),
             "workspace_id": workspace_id,
         }
         r = requests.post(
@@ -2433,7 +2436,16 @@ def automation_detail(rule_id: str):
     # PATCH
     data = request.json or {}
     updates: dict[str, Any] = {}
-    for field in ("name", "event_type", "condition", "action_type", "action_config", "enabled"):
+    for field in (
+        "name",
+        "event_type",
+        "condition",
+        "action_type",
+        "action_config",
+        "enabled",
+        "approval_required",
+        "approver_message",
+    ):
         if field in data:
             updates[field] = data[field]
     if not updates:
@@ -2492,6 +2504,133 @@ def automation_executions(rule_id: str):
         logger.warning("Failed to list automation executions: %s", e)
         return jsonify({"ok": False, "error": str(e)}), 500
 
+
+
+
+# ---- Approval endpoints (Phase 19: HITL) ---------------------------------
+@app.route("/approvals", methods=["GET", "POST"])
+@require_auth
+@require_workspace_role("VIEWER")
+def approvals_index():
+    """List pending approval requests for the current workspace or create one."""
+    ctx = _governance_context()
+    workspace_id = ctx.get("workspace_id")
+
+    supabase_url = os.environ.get("SUPABASE_URL")
+    service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+    if not supabase_url or not service_key:
+        return jsonify({"ok": False, "error": "Supabase not configured"}), 503
+
+    if request.method == "GET":
+        status = request.args.get("status", "pending")
+        try:
+            r = requests.get(
+                f"{supabase_url}/rest/v1/approval_requests",
+                headers={
+                    "apikey": service_key,
+                    "Authorization": f"Bearer {service_key}",
+                },
+                params={
+                    "workspace_id": f"eq.{workspace_id}",
+                    "status": f"eq.{status}" if status != "all" else None,
+                    "order": "created_at.desc",
+                    "limit": 100,
+                },
+                timeout=10,
+            )
+            r.raise_for_status()
+            return jsonify({"ok": True, "approvals": r.json()})
+        except Exception as e:
+            logger.warning("Failed to list approval requests: %s", e)
+            return jsonify({"ok": False, "error": str(e)}), 500
+
+    # POST - manual creation of an approval request
+    data = request.json or {}
+    try:
+        payload = {
+            "rule_id": data.get("rule_id"),
+            "event_type": data.get("event_type", "manual"),
+            "event_payload": json.dumps(data.get("event_payload") or {}),
+            "action_type": data.get("action_type", "webhook"),
+            "action_config": json.dumps(data.get("action_config") or {}),
+            "status": "pending",
+            "workspace_id": workspace_id,
+            "user_id": ctx.get("user_id"),
+            "requested_by": ctx.get("user_id"),
+        }
+        r = requests.post(
+            f"{supabase_url}/rest/v1/approval_requests",
+            headers={
+                "apikey": service_key,
+                "Authorization": f"Bearer {service_key}",
+                "Content-Type": "application/json",
+                "Prefer": "return=representation",
+            },
+            json=payload,
+            timeout=10,
+        )
+        r.raise_for_status()
+        created = r.json()
+        return jsonify({"ok": True, "approval": created[0] if created else None}), 201
+    except Exception as e:
+        logger.warning("Failed to create approval request: %s", e)
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/approvals/<approval_id>", methods=["GET"])
+@require_auth
+@require_workspace_role("VIEWER")
+def approval_detail(approval_id: str):
+    """Get a single approval request."""
+    ctx = _governance_context()
+    workspace_id = ctx.get("workspace_id")
+
+    supabase_url = os.environ.get("SUPABASE_URL")
+    service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+    if not supabase_url or not service_key:
+        return jsonify({"ok": False, "error": "Supabase not configured"}), 503
+
+    try:
+        r = requests.get(
+            f"{supabase_url}/rest/v1/approval_requests",
+            headers={
+                "apikey": service_key,
+                "Authorization": f"Bearer {service_key}",
+            },
+            params={
+                "id": f"eq.{approval_id}",
+                "workspace_id": f"eq.{workspace_id}",
+            },
+            timeout=10,
+        )
+        r.raise_for_status()
+        rows = r.json() or []
+        if not rows:
+            return jsonify({"ok": False, "error": "approval not found"}), 404
+        return jsonify({"ok": True, "approval": rows[0]})
+    except Exception as e:
+        logger.warning("Failed to get approval request: %s", e)
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/approvals/<approval_id>/resolve", methods=["POST"])
+@require_auth
+@require_workspace_role("OPERATOR")
+def approval_resolve(approval_id: str):
+    """Approve or reject a pending approval request."""
+    ctx = _governance_context()
+    data = request.json or {}
+    decision = (data.get("decision") or "").strip().lower()
+    reason = data.get("reason")
+    resolver_user_id = ctx.get("user_id")
+
+    if not decision:
+        return jsonify({"ok": False, "error": "decision is required"}), 400
+
+    result = resolve_approval(approval_id, decision, resolver_user_id, reason)
+    if not result.get("ok"):
+        return jsonify(result), 400
+    return jsonify(result)
 
 # ── Graceful shutdown ────────────────────────────────────────────────────────
 def _shutdown():

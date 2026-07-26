@@ -104,6 +104,7 @@ AEON_ADMIN_NAME=AEON Admin
 | **16** | Admin Panel, Notifications & Event System | ✅ |
 | **17** | Real-time Activity Feed & Presence | ✅ |
 | **18** | Event-Driven Automations — If-This-Then-That for AEON events | ✅ |
+| **19** | Human-in-the-Loop (HITL) Approvals — approval checkpoints for automations | ✅ |
 
 ---
 
@@ -226,6 +227,21 @@ pip-audit -r requirements.txt -r requirements-dev.txt --desc
 ```
 
 AEON now pins `transformers>=5.5.0` and `sentence-transformers>=5.6.1`, which clears the previous `transformers` 4.x RCE findings. The remaining project dependencies pass `pip-audit` cleanly.
+
+---
+
+## ✋ Human-in-the-Loop Approvals (Phase 19)
+
+AEON automations can require human approval before executing. When a rule has `approval_required: true`, the automation engine pauses and creates a pending approval request instead of running the action. Workspace operators can review the request in `/os/approvals` and choose to approve or reject it. Approved requests execute the deferred action immediately; rejected requests are logged and skipped.
+
+### Approval API
+
+```bash
+GET    /approvals?status=pending   # list pending approvals
+POST   /approvals                  # create a manual approval request
+GET    /approvals/<id>             # view a single approval
+POST   /approvals/<id>/resolve     # { "decision": "approved" | "rejected", "reason": "..." }
+```
 
 ---
 
