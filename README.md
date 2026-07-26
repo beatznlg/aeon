@@ -107,6 +107,7 @@ AEON_ADMIN_NAME=AEON Admin
 | **19** | Human-in-the-Loop (HITL) Approvals — approval checkpoints for automations | ✅ |
 | **20** | Scheduled Automations (Cron Triggers) — time-based background execution | ✅ |
 | **21** | Inbound Webhooks & Slack HITL — external triggers and interactive approvals | ✅ |
+| **22** | Automation Execution History & Observability — dashboard for automation runs, statuses, errors, and retries | ✅ |
 
 ---
 

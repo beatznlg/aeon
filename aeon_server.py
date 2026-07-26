@@ -2554,6 +2554,138 @@ def automation_run_now(rule_id: str):
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+@app.route("/automations/executions", methods=["GET"])
+@require_auth
+@require_workspace_role("VIEWER")
+def automation_executions_list():
+    """List execution logs across all automation rules in the workspace."""
+    ctx = _governance_context()
+    workspace_id = ctx.get("workspace_id")
+
+    supabase_url = os.environ.get("SUPABASE_URL")
+    service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+    if not supabase_url or not service_key:
+        return jsonify({"ok": False, "error": "Supabase not configured"}), 503
+
+    try:
+        limit = min(100, max(1, request.args.get("limit", 50, type=int)))
+        offset = max(0, request.args.get("offset", 0, type=int))
+        status = request.args.get("status")
+        event_type = request.args.get("event_type")
+        rule_id = request.args.get("rule_id")
+
+        params: dict[str, Any] = {
+            "workspace_id": f"eq.{workspace_id}",
+            "order": "created_at.desc",
+            "limit": limit,
+            "offset": offset,
+        }
+        if status and status in ("triggered", "failed"):
+            params["status"] = f"eq.{status}"
+        if event_type:
+            params["event_type"] = f"eq.{event_type}"
+        if rule_id:
+            params["rule_id"] = f"eq.{rule_id}"
+
+        r = requests.get(
+            f"{supabase_url}/rest/v1/automation_executions",
+            headers={
+                "apikey": service_key,
+                "Authorization": f"Bearer {service_key}",
+            },
+            params=params,
+            timeout=10,
+        )
+        r.raise_for_status()
+        executions = r.json()
+
+        # Enrich with rule names
+        rule_names: dict[str, str] = {}
+        if executions:
+            rule_ids = {e.get("rule_id") for e in executions if e.get("rule_id")}
+            if rule_ids:
+                r2 = requests.get(
+                    f"{supabase_url}/rest/v1/automation_rules",
+                    headers={
+                        "apikey": service_key,
+                        "Authorization": f"Bearer {service_key}",
+                    },
+                    params={
+                        "id": f"in.{','.join(rule_ids)}",
+                        "select": "id,name",
+                    },
+                    timeout=10,
+                )
+                if r2.ok:
+                    rule_names = {row["id"]: row["name"] for row in r2.json()}
+
+        for e in executions:
+            e["rule_name"] = rule_names.get(e.get("rule_id"))
+
+        return jsonify({"ok": True, "executions": executions})
+    except Exception as e:
+        logger.warning("Failed to list automation executions: %s", e)
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/automations/executions/<execution_id>", methods=["GET"])
+@require_auth
+@require_workspace_role("VIEWER")
+def automation_execution_detail(execution_id: str):
+    """Get a single automation execution log with rule name."""
+    ctx = _governance_context()
+    workspace_id = ctx.get("workspace_id")
+
+    supabase_url = os.environ.get("SUPABASE_URL")
+    service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+    if not supabase_url or not service_key:
+        return jsonify({"ok": False, "error": "Supabase not configured"}), 503
+
+    try:
+        r = requests.get(
+            f"{supabase_url}/rest/v1/automation_executions",
+            headers={
+                "apikey": service_key,
+                "Authorization": f"Bearer {service_key}",
+            },
+            params={
+                "id": f"eq.{execution_id}",
+                "workspace_id": f"eq.{workspace_id}",
+                "limit": 1,
+            },
+            timeout=10,
+        )
+        r.raise_for_status()
+        rows = r.json()
+        if not rows:
+            return jsonify({"ok": False, "error": "execution not found"}), 404
+
+        execution = rows[0]
+
+        # Enrich with rule name
+        rule_id = execution.get("rule_id")
+        if rule_id:
+            r2 = requests.get(
+                f"{supabase_url}/rest/v1/automation_rules",
+                headers={
+                    "apikey": service_key,
+                    "Authorization": f"Bearer {service_key}",
+                },
+                params={
+                    "id": f"eq.{rule_id}",
+                    "select": "id,name",
+                },
+                timeout=10,
+            )
+            if r2.ok and r2.json():
+                execution["rule_name"] = r2.json()[0].get("name")
+
+        return jsonify({"ok": True, "execution": execution})
+    except Exception as e:
+        logger.warning("Failed to get automation execution: %s", e)
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/automations/<rule_id>/executions", methods=["GET"])
 @require_auth
 @require_workspace_role("VIEWER")
