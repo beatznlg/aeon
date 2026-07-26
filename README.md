@@ -100,19 +100,58 @@ AEON_ADMIN_NAME=AEON Admin
 | **7** | Monitoring & Alerting — Prometheus, Grafana | ✅ |
 | **10** | Developer Experience — OpenAPI, SDKs, Quickstarts | ✅ |
 | **14** | Advanced Agent Orchestration — Multi-Agent Swarms | ✅ |
+| **15** | Multi-Language SDKs — Python, TypeScript, Go + Generator | ✅ |
 
 ---
 
 ## 🛠️ Developer Experience
 
-AEON ships with first-class developer tooling:
+AEON ships with first-class developer tooling and auto-generated multi-language SDKs:
 
 - **OpenAPI Spec & Swagger UI**: Start the backend and visit [`http://localhost:5000/docs`](http://localhost:5000/docs) for interactive documentation.
 - **OpenAPI JSON**: `GET /openapi.json` serves the latest spec.
-- **Official SDKs**:
-  - Python SDK in [`sdk/python`](sdk/python)
-  - TypeScript SDK in [`sdk/typescript`](sdk/typescript)
-- **Quickstarts**: See [`examples`](examples) for runnable Python and TypeScript examples.
+- **Official SDKs** (hand-crafted, full API coverage):
+  - [Python SDK](sdk/python) — `pip install aeon-os`
+  - [TypeScript SDK](sdk/typescript) — `npm install aeon-os`
+  - [Go SDK](sdk/go) — `import "github.com/beatznlg/aeon/sdk/go/aeon"`
+- **SDK Generator** ([`sdk/generator`](sdk/generator)) — auto-generates idiomatic clients from the OpenAPI spec:
+  ```bash
+  python3 sdk/generator/generate.py
+  # Produces sdk/python/aeon_sdk.py, sdk/typescript/src/index.ts, sdk/go/aeon/aeon.go
+  ```
+- **Quickstarts**: See [`examples`](examples) for runnable Python, TypeScript, and Go examples.
+
+## 🔧 SDK Reference
+
+### Python
+
+```python
+from aeon_sdk import AeonClient
+
+client = AeonClient("http://localhost:5000", api_key="aeon_...")
+health = client.health()
+reply = client.chat("Hello!")
+```
+
+### TypeScript
+
+```typescript
+import { AeonClient } from "aeon-os";
+
+const client = new AeonClient({ baseURL: "http://localhost:5000", apiKey: "aeon_..." });
+const health = await client.health();
+const reply = await client.chat("Hello!");
+```
+
+### Go
+
+```go
+import "github.com/beatznlg/aeon/sdk/go/aeon"
+
+client := aeon.NewClient("http://localhost:5000", aeon.WithAPIKey("aeon_..."))
+health, err := client.Health()
+reply, err := client.Chat("Hello!", "", "")
+```
 
 ---
 
