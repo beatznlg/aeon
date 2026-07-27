@@ -19,6 +19,9 @@ from typing import Any
 
 logger = logging.getLogger("aeon_automations")
 
+# Maximum depth for nested sub-automation calls (Phase 33)
+MAX_CALL_DEPTH = 5
+
 # Supported event types that can trigger automations
 TRIGGER_EVENT_TYPES = frozenset({
     "swarm_status",
@@ -256,12 +259,96 @@ def _update_last_triggered(rule: dict[str, Any]) -> None:
         logger.warning("Failed to update last_triggered_at for rule %s: %s", rule.get("id"), exc)
 
 
+def _fetch_rule_by_id(rule_id: str, workspace_id: str | None) -> dict[str, Any] | None:
+    """Fetch a single automation rule by ID, scoped to a workspace if provided."""
+    db_url = _get_db_url()
+    headers = _supabase_headers()
+    if not db_url or not headers or not rule_id:
+        return None
+    try:
+        import requests
+        query = f"id=eq.{rule_id}"
+        if workspace_id:
+            query += f"&workspace_id=eq.{workspace_id}"
+        r = requests.get(
+            f"{db_url}/rest/v1/automation_rules?{query}",
+            headers=headers,
+            timeout=10,
+        )
+        r.raise_for_status()
+        rows = r.json() or []
+        return rows[0] if rows else None
+    except Exception as exc:
+        logger.warning("Failed to fetch rule %s: %s", rule_id, exc)
+        return None
+
+
+def _execute_call_rule(
+    action_config: dict[str, Any],
+    event: dict[str, Any],
+    context: dict[str, Any],
+) -> dict[str, Any]:
+    """Execute a sub-automation (rule chaining / composition).
+
+    ``action_config`` must contain:
+        - ``rule_id``: the ID of the target automation rule to invoke.
+    Optional:
+        - ``payload``: a dict/template passed as the sub-rule's event payload.
+        - ``event_type``: event type for the synthetic sub-event (default ``sub_request``).
+        - ``wait_for_completion``: if true (default), block and return the
+          sub-rule's result; otherwise run synchronously but do not block the
+          parent chain on the outcome.
+
+    A ``call_depth`` guard prevents runaway recursion (max ``MAX_CALL_DEPTH``).
+    """
+    rule_id = action_config.get("rule_id")
+    if not rule_id:
+        return {"ok": False, "error": "call_rule action requires rule_id"}
+
+    parent_event = context.get("event") or event
+    workspace_id = parent_event.get("workspace_id") or context.get("rule", {}).get("workspace_id")
+    target_rule = _fetch_rule_by_id(str(rule_id), workspace_id)
+    if not target_rule:
+        return {"ok": False, "error": f"target rule {rule_id} not found"}
+
+    current_depth = int(context.get("call_depth", 0) or 0)
+    if current_depth >= MAX_CALL_DEPTH:
+        return {"ok": False, "error": f"max sub-automation depth ({MAX_CALL_DEPTH}) exceeded"}
+
+    payload = action_config.get("payload") or {}
+    interpolated_payload = _interpolate(payload, context)
+    event_type = action_config.get("event_type") or "sub_request"
+    sub_event = {
+        "type": event_type,
+        "payload": interpolated_payload,
+        "user_id": parent_event.get("user_id"),
+        "workspace_id": workspace_id,
+        "timestamp": None,
+    }
+
+    wait_for_completion = action_config.get("wait_for_completion", True)
+    if not wait_for_completion:
+        # Fire-and-forget: run synchronously for simplicity, but the parent
+        # chain does not wait on the result.
+        _execute_action(target_rule, sub_event, call_depth=current_depth + 1)
+        return {"ok": True, "rule_id": rule_id, "wait_for_completion": False}
+
+    sub_result = _execute_action(target_rule, sub_event, call_depth=current_depth + 1)
+    return {
+        "ok": sub_result.get("ok", False),
+        "rule_id": rule_id,
+        "wait_for_completion": True,
+        "sub_result": sub_result,
+    }
+
+
 def _execute_action(
     rule: dict[str, Any],
     event: dict[str, Any],
     *,
     start_index: int = 0,
     initial_steps: list[dict[str, Any]] | None = None,
+    call_depth: int = 0,
 ) -> dict[str, Any]:
     """Execute the action(s) configured for a rule.
 
@@ -291,7 +378,7 @@ def _execute_action(
 
     steps: list[dict[str, Any]] = list(initial_steps) if initial_steps else []
     state = _fetch_workspace_variables(rule.get("workspace_id"))
-    context = {"event": event, "rule": rule, "steps": steps, "state": state}
+    context = {"event": event, "rule": rule, "steps": steps, "state": state, "call_depth": call_depth}
 
     for idx, action in enumerate(actions):
         if idx < start_index:
@@ -550,6 +637,8 @@ def execute_action_by_type(
         return _execute_delete_variable(interpolated_config, event)
     if action_type == "increment_variable":
         return _execute_increment_variable(interpolated_config, event)
+    if action_type == "call_rule":
+        return _execute_call_rule(interpolated_config, event, context)
     return {"ok": False, "error": f"unsupported action_type {action_type}"}
 
 

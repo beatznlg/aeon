@@ -823,3 +823,65 @@ def test_increment_variable_requires_workspace_id():
     result = _execute_increment_variable({"key": "counter", "amount": 1}, {})
     assert result["ok"] is False
     assert "workspace_id" in result["error"]
+
+
+def test_call_rule_requires_rule_id():
+    from aeon_automations import _execute_call_rule
+
+    result = _execute_call_rule({}, {}, {"event": {}, "rule": {}})
+    assert result["ok"] is False
+    assert "rule_id" in result["error"]
+
+
+def test_call_rule_executes_sub_rule(sample_event, sample_rule):
+    from aeon_automations import _execute_action
+
+    child_rule = {
+        "id": "child-rule",
+        "workspace_id": "ws-1",
+        "actions": [
+            {"type": "set_variable", "config": {"key": "sub_key", "value": "sub_value"}},
+        ],
+    }
+    parent_rule = {
+        **sample_rule,
+        "actions": [
+            {
+                "type": "call_rule",
+                "config": {
+                    "rule_id": "child-rule",
+                    "payload": {"issue": "{{ event.payload.issue }}"},
+                },
+            },
+        ],
+    }
+
+    with mock.patch("aeon_automations._fetch_rule_by_id", return_value=child_rule):
+        with mock.patch("aeon_automations._execute_set_variable") as mock_set:
+            mock_set.return_value = {"ok": True, "key": "sub_key", "value": "sub_value"}
+            result = _execute_action(parent_rule, sample_event)
+
+    assert result["ok"] is True
+    assert result["status"] == "completed"
+    assert result["steps"][0]["rule_id"] == "child-rule"
+    assert result["steps"][0]["sub_result"]["ok"] is True
+
+
+def test_call_rule_depth_guard(sample_event, sample_rule):
+    from aeon_automations import _execute_action, MAX_CALL_DEPTH
+
+    # A rule that calls itself; the depth guard should stop the recursion.
+    recursive_rule = {
+        "id": "recursive-rule",
+        "workspace_id": "ws-1",
+        "actions": [
+            {"type": "call_rule", "config": {"rule_id": "recursive-rule"}},
+        ],
+    }
+
+    with mock.patch("aeon_automations._fetch_rule_by_id", return_value=recursive_rule):
+        result = _execute_action(recursive_rule, sample_event)
+
+    # The recursion should be halted cleanly before exhausting the stack.
+    assert result["ok"] is False
+    assert "depth" in str(result)

@@ -66,6 +66,7 @@ const ACTION_TYPES = [
   "get_variable",
   "delete_variable",
   "increment_variable",
+  "call_rule",
 ];
 
 function TestConditionButton({ condition }: { condition: Record<string, any> }) {
@@ -325,6 +326,45 @@ function ActionConfigEditor({
           />
           <div style={{ fontSize: "0.75rem", color: "var(--fg-mute)" }}>
             Atomically increment a numeric variable by the given amount. Creates the variable if it does not exist.
+          </div>
+        </>
+      )}
+      {actionType === "call_rule" && (
+        <>
+          <input
+            className="input"
+            placeholder="Target rule ID"
+            onChange={(e) => updateConfig("rule_id", e.target.value)}
+            style={{ marginBottom: 8 }}
+          />
+          <textarea
+            className="input"
+            rows={3}
+            placeholder="Payload (JSON, supports {{ event.payload.key }} templates)"
+            onChange={(e) => {
+              try {
+                updateConfig("payload", e.target.value ? JSON.parse(e.target.value) : {});
+              } catch {}
+            }}
+            style={{ marginBottom: 8 }}
+          />
+          <input
+            className="input"
+            placeholder="Event type for synthetic sub-event (default: sub_request)"
+            onChange={(e) => updateConfig("event_type", e.target.value)}
+            style={{ marginBottom: 8 }}
+          />
+          <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, fontSize: "0.85rem" }}>
+            <input
+              type="checkbox"
+              defaultChecked
+              onChange={(e) => updateConfig("wait_for_completion", e.target.checked)}
+            />
+            Wait for sub-rule to complete before continuing
+          </label>
+          <div style={{ fontSize: "0.75rem", color: "var(--fg-mute)" }}>
+            Invoke another automation rule as a sub-workflow. The sub-rule&apos;s result is available via{" "}
+            {"{{ steps.N.sub_result }}"}. Circular calls are blocked at a depth of 5.
           </div>
         </>
       )}
