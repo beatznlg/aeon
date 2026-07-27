@@ -55,7 +55,7 @@ const EVENT_TYPES = [
   "inbound_webhook",
 ];
 
-const ACTION_TYPES = ["webhook", "outbound_webhook", "swarm", "workflow"];
+const ACTION_TYPES = ["webhook", "outbound_webhook", "swarm", "workflow", "delay"];
 
 function TestConditionButton({ condition }: { condition: Record<string, any> }) {
   const [payload, setPayload] = useState<string>('{"status": "failed", "severity": 5}');
@@ -209,6 +209,21 @@ function ActionConfigEditor({
             placeholder="Initial input"
             onChange={(e) => updateConfig("initial_input", e.target.value)}
           />
+        </>
+      )}
+      {actionType === "delay" && (
+        <>
+          <input
+            className="input"
+            type="number"
+            min={1}
+            placeholder="Duration (minutes)"
+            onChange={(e) => updateConfig("duration_minutes", parseInt(e.target.value || "1", 10))}
+            style={{ marginBottom: 8 }}
+          />
+          <div style={{ fontSize: "0.75rem", color: "var(--fg-mute)" }}>
+            Pause the automation chain for this many minutes, then resume from the next step.
+          </div>
         </>
       )}
     </>

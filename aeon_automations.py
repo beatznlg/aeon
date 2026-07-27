@@ -256,7 +256,13 @@ def _update_last_triggered(rule: dict[str, Any]) -> None:
         logger.warning("Failed to update last_triggered_at for rule %s: %s", rule.get("id"), exc)
 
 
-def _execute_action(rule: dict[str, Any], event: dict[str, Any]) -> dict[str, Any]:
+def _execute_action(
+    rule: dict[str, Any],
+    event: dict[str, Any],
+    *,
+    start_index: int = 0,
+    initial_steps: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     """Execute the action(s) configured for a rule.
 
     Supports an ordered ``actions`` array of action steps. Each step's output is
@@ -268,6 +274,11 @@ def _execute_action(rule: dict[str, Any], event: dict[str, Any]) -> dict[str, An
     ``continue_on_error`` (bool). When a step fails, the fallback action runs
     with ``{{ error.message }}`` and ``{{ error.step }}`` available in context.
     If ``continue_on_error`` is true, execution proceeds to the next step.
+
+    Phase 30: supports ``delay`` steps that put the execution to sleep until a
+    later time. When a delay is hit, returns ``status == "sleeping"`` with the
+    ``pending_step_index`` and ``resume_at`` timestamp so the scheduler can
+    resume later.
     """
     actions = rule.get("actions") or []
     if not actions:
@@ -278,10 +289,13 @@ def _execute_action(rule: dict[str, Any], event: dict[str, Any]) -> dict[str, An
             }
         ]
 
-    steps: list[dict[str, Any]] = []
+    steps: list[dict[str, Any]] = list(initial_steps) if initial_steps else []
     context = {"event": event, "rule": rule, "steps": steps}
 
     for idx, action in enumerate(actions):
+        if idx < start_index:
+            continue
+
         action_type = action.get("type") or action.get("action_type")
         action_config = action.get("config") or action.get("action_config") or {}
         run_if = action.get("run_if")
@@ -293,6 +307,21 @@ def _execute_action(rule: dict[str, Any], event: dict[str, Any]) -> dict[str, An
 
         on_error = action.get("on_error")
         continue_on_error = bool(action.get("continue_on_error"))
+
+        # Phase 30: delay steps are handled before loops because they don't
+        # perform real work; they just schedule a resume time.
+        if action_type == "delay":
+            result = execute_action_by_type(action_type, action_config, context)
+            steps.append(result)
+            if result.get("status") == "sleeping":
+                return {
+                    "ok": True,
+                    "status": "sleeping",
+                    "steps": steps,
+                    "pending_step_index": idx + 1,
+                    "resume_at": result.get("resume_at"),
+                }
+            continue
 
         loop_over = action.get("loop_over")
         if loop_over:
@@ -493,7 +522,33 @@ def execute_action_by_type(
         return _execute_swarm(interpolated_config, event_payload)
     if action_type == "workflow":
         return _execute_workflow(interpolated_config, event_payload)
+    if action_type == "delay":
+        return _execute_delay(interpolated_config, event)
     return {"ok": False, "error": f"unsupported action_type {action_type}"}
+
+
+def _execute_delay(action_config: dict[str, Any], event: dict[str, Any]) -> dict[str, Any]:
+    """Return a sleeping result that tells the scheduler to resume later.
+
+    ``action_config`` must contain a positive ``duration_minutes`` value.
+    The result includes an ISO-formatted ``resume_at`` timestamp.
+    """
+    duration = action_config.get("duration_minutes")
+    try:
+        duration = float(duration)
+    except (TypeError, ValueError):
+        return {"ok": False, "error": "delay action requires a numeric duration_minutes"}
+    if duration <= 0:
+        return {"ok": False, "error": "duration_minutes must be positive"}
+
+    resume_at = datetime.now(timezone.utc) + timedelta(minutes=duration)
+    return {
+        "ok": True,
+        "status": "sleeping",
+        "delayed": True,
+        "duration_minutes": duration,
+        "resume_at": resume_at.isoformat(),
+    }
 
 
 def _execute_webhook(action_config: dict[str, Any], event: dict[str, Any]) -> dict[str, Any]:
@@ -635,8 +690,15 @@ def _log_execution_with_status(
     event: dict[str, Any],
     status: str,
     result: dict[str, Any],
+    *,
+    resume_at: str | None = None,
+    state: dict[str, Any] | None = None,
 ) -> None:
-    """Log an automation execution with an explicit status string."""
+    """Log an automation execution with an explicit status string.
+
+    Phase 30: supports persisting ``resume_at`` and ``state`` for sleeping
+    executions so the scheduler can resume them later.
+    """
     db_url = _get_db_url()
     headers = _supabase_headers()
     if not db_url or not headers:
@@ -645,18 +707,23 @@ def _log_execution_with_status(
     try:
         import requests
 
+        payload: dict[str, Any] = {
+            "rule_id": rule.get("id"),
+            "event_type": event.get("type"),
+            "event_payload": json.dumps(event.get("payload") or {}),
+            "status": status,
+            "result": json.dumps(result),
+            "workspace_id": rule.get("workspace_id"),
+            "user_id": event.get("user_id"),
+        }
+        if resume_at:
+            payload["resume_at"] = resume_at
+        if state is not None:
+            payload["state"] = json.dumps(state)
         requests.post(
             f"{db_url}/rest/v1/automation_executions",
             headers=headers,
-            json={
-                "rule_id": rule.get("id"),
-                "event_type": event.get("type"),
-                "event_payload": json.dumps(event.get("payload") or {}),
-                "status": status,
-                "result": json.dumps(result),
-                "workspace_id": rule.get("workspace_id"),
-                "user_id": event.get("user_id"),
-            },
+            json=payload,
             timeout=10,
         )
     except Exception as exc:
@@ -989,7 +1056,20 @@ def evaluate_automations(
 
         result = _execute_action(rule, event)
         _update_last_triggered(rule)
-        _log_execution(rule, event, result)
+        if result.get("status") == "sleeping":
+            _log_execution_with_status(
+                rule,
+                event,
+                "sleeping",
+                result,
+                resume_at=result.get("resume_at"),
+                state={
+                    "pending_step_index": result.get("pending_step_index"),
+                    "steps": result.get("steps"),
+                },
+            )
+        else:
+            _log_execution(rule, event, result)
         results.append({
             "rule_id": rule.get("id"),
             "rule_name": rule.get("name"),
@@ -997,6 +1077,129 @@ def evaluate_automations(
         })
 
     return results
+
+
+def resume_sleeping_executions() -> list[dict[str, Any]]:
+    """Find and resume automation executions that are due to wake up.
+
+    Queries ``automation_executions`` for rows with ``status = 'sleeping'`` and
+    ``resume_at <= now()``. For each, reconstructs the rule/event context and
+    continues execution from the saved step index. Returns a list of resume
+    results.
+    """
+    db_url = _get_db_url()
+    headers = _supabase_headers()
+    if not db_url or not headers:
+        return []
+
+    try:
+        import requests
+
+        now = datetime.now(timezone.utc).isoformat()
+        r = requests.get(
+            f"{db_url}/rest/v1/automation_executions",
+            headers=headers,
+            params={
+                "status": "eq.sleeping",
+                "resume_at": f"lte.{now}",
+                "order": "created_at.asc",
+            },
+            timeout=10,
+        )
+        r.raise_for_status()
+        executions = r.json() or []
+    except Exception as exc:
+        logger.warning("Failed to fetch sleeping executions: %s", exc)
+        return []
+
+    results: list[dict[str, Any]] = []
+    for execution in executions:
+        try:
+            result = resume_execution(execution)
+            results.append(result)
+        except Exception as exc:
+            logger.warning("Failed to resume execution %s: %s", execution.get("id"), exc)
+
+    return results
+
+
+def resume_execution(execution: dict[str, Any]) -> dict[str, Any]:
+    """Resume a single sleeping execution from where it left off."""
+    db_url = _get_db_url()
+    headers = _supabase_headers()
+
+    execution_id = execution.get("id")
+    state = execution.get("state") or {}
+    if isinstance(state, str):
+        try:
+            state = json.loads(state)
+        except Exception:
+            state = {}
+
+    pending_step_index = int(state.get("pending_step_index", 0) or 0)
+    initial_steps = state.get("steps") or []
+    event_payload = execution.get("event_payload")
+    if isinstance(event_payload, str):
+        try:
+            event_payload = json.loads(event_payload)
+        except Exception:
+            event_payload = {}
+    elif event_payload is None:
+        event_payload = {}
+
+    event = {
+        "type": execution.get("event_type"),
+        "payload": event_payload,
+        "user_id": execution.get("user_id"),
+        "workspace_id": execution.get("workspace_id"),
+        "timestamp": None,
+    }
+
+    # Fetch the original rule
+    rule: dict[str, Any] = {}
+    if db_url and headers:
+        try:
+            import requests
+            r = requests.get(
+                f"{db_url}/rest/v1/automation_rules?id=eq.{execution.get('rule_id')}",
+                headers=headers,
+                timeout=10,
+            )
+            r.raise_for_status()
+            rows = r.json() or []
+            if rows:
+                rule = rows[0]
+        except Exception as exc:
+            logger.warning("Failed to fetch rule for resumed execution %s: %s", execution_id, exc)
+
+    if not rule:
+        return {"ok": False, "error": "rule not found", "execution_id": execution_id}
+
+    # Mark the execution as running to prevent duplicate resumptions
+    if db_url and headers:
+        try:
+            import requests
+            requests.patch(
+                f"{db_url}/rest/v1/automation_executions?id=eq.{execution_id}",
+                headers=headers,
+                json={"status": "triggered"},
+                timeout=10,
+            ).raise_for_status()
+        except Exception as exc:
+            logger.warning("Failed to mark execution %s as running: %s", execution_id, exc)
+
+    result = _execute_action(rule, event, start_index=pending_step_index, initial_steps=initial_steps)
+
+    # Log the resumed execution result
+    status = "completed" if result.get("status") == "completed" else ("sleeping" if result.get("status") == "sleeping" else "failed")
+    resume_at = result.get("resume_at")
+    new_state = {
+        "pending_step_index": result.get("pending_step_index"),
+        "steps": result.get("steps"),
+    } if result.get("status") == "sleeping" else None
+    _log_execution_with_status(rule, event, status, result, resume_at=resume_at, state=new_state)
+
+    return {"ok": True, "execution_id": execution_id, "status": status, "result": result}
 
 
 # ── Scheduled / Cron Automations (Phase 20) ──────────────────────────────────
@@ -1062,6 +1265,13 @@ class ScheduledAutomationScheduler:
         if not db_url or not headers:
             return
 
+        # Phase 30: resume any sleeping executions that are due to wake up
+        # before triggering new scheduled rules.
+        try:
+            resume_sleeping_executions()
+        except Exception as exc:
+            logger.warning("Failed to resume sleeping executions: %s", exc)
+
         import requests
 
         now = datetime.now(timezone.utc).isoformat()
@@ -1110,7 +1320,20 @@ class ScheduledAutomationScheduler:
             )
         else:
             result = _execute_action(rule, event)
-            _log_execution_with_status(rule, event, "triggered" if result.get("ok") else "failed", result)
+            if result.get("status") == "sleeping":
+                _log_execution_with_status(
+                    rule,
+                    event,
+                    "sleeping",
+                    result,
+                    resume_at=result.get("resume_at"),
+                    state={
+                        "pending_step_index": result.get("pending_step_index"),
+                        "steps": result.get("steps"),
+                    },
+                )
+            else:
+                _log_execution_with_status(rule, event, "triggered" if result.get("ok") else "failed", result)
 
         # Advance last_run_at and next_run_at
         next_run = _compute_next_run(rule.get("cron_expression", ""), now_dt)

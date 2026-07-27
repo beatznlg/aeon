@@ -441,6 +441,77 @@ def test_execute_action_loop_over_non_list_fails(sample_event, sample_rule):
     assert result["failed_step"] == 1
 
 
+def test_execute_action_delay_returns_sleeping(sample_event, sample_rule):
+    from aeon_automations import _execute_action
+    from datetime import datetime, timezone, timedelta
+
+    rule = {
+        **sample_rule,
+        "actions": [
+            {"type": "outbound_webhook", "config": {"url": "https://api.test/step1", "method": "POST"}},
+            {"type": "delay", "config": {"duration_minutes": 10}},
+            {"type": "outbound_webhook", "config": {"url": "https://api.test/step2", "method": "POST"}},
+        ],
+    }
+    def _exec_side_effect(action_type, action_config, context):
+        if action_type == "delay":
+            from datetime import timezone as _tz
+            return {
+                "ok": True,
+                "status": "sleeping",
+                "delayed": True,
+                "duration_minutes": action_config.get("duration_minutes"),
+                "resume_at": (datetime.now(_tz.utc) + timedelta(minutes=10)).isoformat(),
+            }
+        return {"ok": True, "status_code": 200}
+
+    with mock.patch("aeon_automations.execute_action_by_type") as mock_exec:
+        mock_exec.side_effect = _exec_side_effect
+        result = _execute_action(rule, sample_event)
+
+    assert result["ok"] is True
+    assert result["status"] == "sleeping"
+    assert result["pending_step_index"] == 2
+    assert len(result["steps"]) == 2
+    assert result["steps"][1].get("delayed") is True
+    resume_at = datetime.fromisoformat(result["resume_at"])
+    assert (resume_at - datetime.now(timezone.utc)).total_seconds() > 500
+
+
+def test_execute_action_resumes_after_delay(sample_event, sample_rule):
+    from aeon_automations import _execute_action
+
+    rule = {
+        **sample_rule,
+        "actions": [
+            {"type": "outbound_webhook", "config": {"url": "https://api.test/step1", "method": "POST"}},
+            {"type": "delay", "config": {"duration_minutes": 10}},
+            {"type": "outbound_webhook", "config": {"url": "https://api.test/step2", "method": "POST"}},
+        ],
+    }
+    initial_steps = [
+        {"ok": True, "status_code": 200},
+        {"ok": True, "status": "sleeping", "delayed": True, "duration_minutes": 10, "resume_at": "2025-01-01T00:00:00+00:00"},
+    ]
+    with mock.patch("aeon_automations.execute_action_by_type") as mock_exec:
+        mock_exec.return_value = {"ok": True, "status_code": 201}
+        result = _execute_action(rule, sample_event, start_index=2, initial_steps=initial_steps)
+
+    assert result["ok"] is True
+    assert result["status"] == "completed"
+    assert len(result["steps"]) == 3
+    assert result["steps"][2]["status_code"] == 201
+
+
+def test_execute_delay_validates_duration():
+    from aeon_automations import _execute_delay
+
+    assert _execute_delay({"duration_minutes": 5}, {})["status"] == "sleeping"
+    assert _execute_delay({"duration_minutes": 0}, {})["ok"] is False
+    assert _execute_delay({"duration_minutes": -1}, {})["ok"] is False
+    assert _execute_delay({}, {})["ok"] is False
+
+
 def test_execute_action_on_error_fallback_runs_and_halt(sample_event, sample_rule):
     from aeon_automations import _execute_action
 
