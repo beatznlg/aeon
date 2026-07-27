@@ -14,6 +14,7 @@ import logging
 import os
 import re
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone, timedelta
 from typing import Any
 
@@ -394,6 +395,78 @@ def _execute_transform(action_config: dict[str, Any], event: dict[str, Any]) -> 
         return {"ok": False, "error": str(exc)}
 
 
+def _execute_parallel(
+    action_config: dict[str, Any],
+    event: dict[str, Any],
+    context: dict[str, Any],
+) -> dict[str, Any]:
+    """Execute multiple action branches concurrently (scatter-gather / fan-out).
+
+    ``action_config`` must contain:
+        - ``branches``: a list of branch definitions. Each branch may have:
+            - ``name``: optional human-readable branch name.
+            - ``actions``: a list of action steps to execute in the branch.
+    Optional:
+        - ``continue_on_error``: if true, the overall step still succeeds even
+          when one or more branches fail. Failed branches are listed in
+          ``failed_branches``.
+
+    Each branch is executed in its own thread. The aggregated result contains
+    a ``branches`` array with each branch's outcome, and a ``failed_branches``
+    list of branch names that did not succeed.
+    """
+    branches = action_config.get("branches") or []
+    if not isinstance(branches, list) or not branches:
+        return {"ok": False, "error": "parallel action requires a non-empty branches list"}
+
+    continue_on_error = bool(action_config.get("continue_on_error"))
+    workspace_id = (context.get("event") or event).get("workspace_id") or context.get("rule", {}).get("workspace_id")
+    call_depth = int(context.get("call_depth", 0) or 0)
+
+    def _run_branch(branch: dict[str, Any]) -> dict[str, Any]:
+        name = branch.get("name") or f"branch_{branches.index(branch)}"
+        branch_actions = branch.get("actions") or []
+        if not branch_actions:
+            return {"name": name, "ok": False, "error": "branch has no actions"}
+        branch_rule = {
+            "actions": branch_actions,
+            "workspace_id": workspace_id,
+        }
+        try:
+            result = _execute_action(branch_rule, event, call_depth=call_depth)
+        except Exception as exc:
+            logger.warning("Parallel branch %s failed: %s", name, exc)
+            return {"name": name, "ok": False, "error": str(exc)}
+        return {
+            "name": name,
+            "ok": result.get("ok", False),
+            "status": result.get("status"),
+            "steps": result.get("steps"),
+        }
+
+    try:
+        with ThreadPoolExecutor(max_workers=max(1, len(branches))) as executor:
+            branch_results = list(executor.map(_run_branch, branches))
+    except Exception as exc:
+        logger.warning("Failed to execute parallel branches: %s", exc)
+        return {"ok": False, "error": str(exc)}
+
+    failed = [r["name"] for r in branch_results if not r.get("ok")]
+    if failed and not continue_on_error:
+        return {
+            "ok": False,
+            "error": f"branches failed: {failed}",
+            "branches": branch_results,
+            "failed_branches": failed,
+        }
+
+    return {
+        "ok": True,
+        "branches": branch_results,
+        "failed_branches": failed,
+    }
+
+
 def _execute_call_rule(
     action_config: dict[str, Any],
     event: dict[str, Any],
@@ -752,6 +825,8 @@ def execute_action_by_type(
         return _execute_call_rule(interpolated_config, event, context)
     if action_type == "transform":
         return _execute_transform(interpolated_config, event)
+    if action_type == "parallel":
+        return _execute_parallel(interpolated_config, event, context)
     return {"ok": False, "error": f"unsupported action_type {action_type}"}
 
 

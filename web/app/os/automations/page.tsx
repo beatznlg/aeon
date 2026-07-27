@@ -68,6 +68,7 @@ const ACTION_TYPES = [
   "increment_variable",
   "call_rule",
   "transform",
+  "parallel",
 ];
 
 function TestConditionButton({ condition }: { condition: Record<string, any> }) {
@@ -481,7 +482,151 @@ function ActionConfigEditor({
           </div>
         </>
       )}
+      {actionType === "parallel" && (
+        <ParallelBranchEditor config={config} updateConfig={updateConfig} />
+      )}
     </>
+  );
+}
+
+interface ParallelBranch {
+  name?: string;
+  actions: { type: string; config: Record<string, any> }[];
+}
+
+function ParallelBranchEditor({
+  config,
+  updateConfig,
+}: {
+  config: Record<string, any>;
+  updateConfig: (key: string, value: any) => void;
+}) {
+  const branches = (config?.branches || []) as ParallelBranch[];
+
+  function updateBranches(next: ParallelBranch[]) {
+    updateConfig("branches", next);
+  }
+
+  return (
+    <div>
+      <div style={{ fontSize: "0.75rem", color: "var(--fg-mute)", marginBottom: 12 }}>
+        Run multiple action branches concurrently. Each branch has its own action chain.
+      </div>
+      {branches.map((branch, bidx) => (
+        <div
+          key={bidx}
+          style={{
+            border: "1px solid var(--border)",
+            borderRadius: 8,
+            padding: 12,
+            marginBottom: 12,
+          }}
+        >
+          <div style={{ display: "flex", gap: 8, marginBottom: 12, alignItems: "center" }}>
+            <input
+              className="input"
+              placeholder="Branch name"
+              value={branch.name || `Branch ${bidx + 1}`}
+              onChange={(e) => {
+                const next = [...branches];
+                next[bidx] = { ...next[bidx], name: e.target.value };
+                updateBranches(next);
+              }}
+              style={{ flex: 1 }}
+            />
+            <button
+              type="button"
+              className="btn btn-sm btn-danger"
+              onClick={() => {
+                const next = [...branches];
+                next.splice(bidx, 1);
+                updateBranches(next);
+              }}
+            >
+              Remove
+            </button>
+          </div>
+
+          {branch.actions.map((act, aidx) => (
+            <div
+              key={aidx}
+              style={{
+                marginBottom: 8,
+                padding: 8,
+                border: "1px dashed var(--border)",
+                borderRadius: 6,
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                <span style={{ fontSize: "0.8rem", fontWeight: 600 }}>Action {aidx + 1}</span>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-danger"
+                  onClick={() => {
+                    const next = [...branches];
+                    next[bidx].actions = next[bidx].actions.filter((_, i) => i !== aidx);
+                    updateBranches(next);
+                  }}
+                >
+                  Remove
+                </button>
+              </div>
+              <select
+                className="input"
+                value={act.type}
+                onChange={(e) => {
+                  const next = [...branches];
+                  next[bidx].actions[aidx] = { ...next[bidx].actions[aidx], type: e.target.value, config: {} };
+                  updateBranches(next);
+                }}
+                style={{ marginBottom: 8 }}
+              >
+                  {ACTION_TYPES.filter((t) => t !== "parallel").map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+              </select>
+              <ActionConfigEditor
+                actionType={act.type}
+                config={act.config || {}}
+                updateConfig={(k, v) => {
+                  const next = [...branches];
+                  next[bidx].actions[aidx] = {
+                    ...next[bidx].actions[aidx],
+                    config: { ...next[bidx].actions[aidx].config, [k]: v },
+                  };
+                  updateBranches(next);
+                }}
+              />
+            </div>
+          ))}
+          <button
+            type="button"
+            className="btn btn-sm"
+            onClick={() => {
+              const next = [...branches];
+              next[bidx].actions = [...(next[bidx].actions || []), { type: "webhook", config: {} }];
+              updateBranches(next);
+            }}
+          >
+            + Add Action to Branch
+          </button>
+        </div>
+      ))}
+      <button
+        type="button"
+        className="btn btn-sm"
+        onClick={() => {
+          updateBranches([
+            ...branches,
+            { name: `Branch ${branches.length + 1}`, actions: [{ type: "webhook", config: {} }] },
+          ]);
+        }}
+      >
+        + Add Branch
+      </button>
+    </div>
   );
 }
 

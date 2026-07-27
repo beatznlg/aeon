@@ -120,6 +120,7 @@ AEON_ADMIN_NAME=AEON Admin
 | **32** | Persistent Automation State (Key-Value Variables) — `set_variable`, `get_variable`, `delete_variable`, `increment_variable`, and `{{ state.KEY }}` templates | ✅ |
 | **33** | Sub-Automations (Rule Chaining) — `call_rule` actions to compose reusable workflows with payload passing and circular-loop mitigation | ✅ |
 | **34** | Data Transformation & Formatting Actions — `transform` steps for math, `date_format`, `regex_extract`, `json_parse`, and `json_stringify` with `{{ steps.N.result }}` references | ✅ |
+| **35** | Parallel Action Branches (Scatter-Gather / Fan-Out-Fan-In) — `parallel` steps that run multiple action branches concurrently and aggregate results | ✅ |
 
 ---
 

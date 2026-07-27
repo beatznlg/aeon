@@ -964,3 +964,125 @@ def test_execute_action_transform_chain(sample_event, sample_rule):
     assert result["steps"][0]["result"] == 20
     called_url = mock_request.call_args.args[1]
     assert "value/20" in called_url
+
+
+def test_execute_parallel_branches_success(sample_event, sample_rule):
+    from aeon_automations import _execute_action
+
+    rule = {
+        **sample_rule,
+        "actions": [
+            {
+                "type": "parallel",
+                "config": {
+                    "branches": [
+                        {
+                            "name": "double",
+                            "actions": [
+                                {"type": "transform", "config": {"operation": "math", "operator": "*", "left": 2, "right": 3}}
+                            ],
+                        },
+                        {
+                            "name": "add",
+                            "actions": [
+                                {"type": "transform", "config": {"operation": "math", "operator": "+", "left": 10, "right": 5}}
+                            ],
+                        },
+                    ]
+                },
+            }
+        ],
+    }
+    result = _execute_action(rule, sample_event)
+    assert result["ok"] is True
+    assert result["status"] == "completed"
+    parallel_step = result["steps"][0]
+    assert parallel_step["ok"] is True
+    assert len(parallel_step["branches"]) == 2
+    assert parallel_step["branches"][0]["name"] == "double"
+    assert parallel_step["branches"][0]["steps"][0]["result"] == 6
+    assert parallel_step["branches"][1]["steps"][0]["result"] == 15
+
+
+def test_execute_parallel_branch_failure(sample_event, sample_rule):
+    from aeon_automations import _execute_action
+
+    rule = {
+        **sample_rule,
+        "actions": [
+            {
+                "type": "parallel",
+                "config": {
+                    "branches": [
+                        {
+                            "name": "ok_branch",
+                            "actions": [
+                                {"type": "transform", "config": {"operation": "math", "operator": "+", "left": 1, "right": 1}}
+                            ],
+                        },
+                        {
+                            "name": "failing_branch",
+                            "actions": [
+                                {"type": "outbound_webhook", "config": {"url": ""}}
+                            ],
+                        },
+                    ]
+                },
+            }
+        ],
+    }
+    result = _execute_action(rule, sample_event)
+    assert result["ok"] is False
+    assert result["status"] == "failed"
+    parallel_step = result["steps"][0]
+    assert parallel_step["ok"] is False
+    assert "failing_branch" in parallel_step["failed_branches"]
+
+
+def test_execute_parallel_continue_on_error(sample_event, sample_rule):
+    from aeon_automations import _execute_action
+
+    rule = {
+        **sample_rule,
+        "actions": [
+            {
+                "type": "parallel",
+                "config": {
+                    "continue_on_error": True,
+                    "branches": [
+                        {
+                            "name": "ok_branch",
+                            "actions": [
+                                {"type": "transform", "config": {"operation": "math", "operator": "+", "left": 1, "right": 1}}
+                            ],
+                        },
+                        {
+                            "name": "failing_branch",
+                            "actions": [
+                                {"type": "outbound_webhook", "config": {"url": ""}}
+                            ],
+                        },
+                    ]
+                },
+            }
+        ],
+    }
+    result = _execute_action(rule, sample_event)
+    assert result["ok"] is True
+    parallel_step = result["steps"][0]
+    assert parallel_step["ok"] is True
+    assert "failing_branch" in parallel_step["failed_branches"]
+
+
+def test_execute_parallel_invalid_config(sample_event, sample_rule):
+    from aeon_automations import _execute_action
+
+    rule = {
+        **sample_rule,
+        "actions": [
+            {"type": "parallel", "config": {"branches": []}}
+        ],
+    }
+    result = _execute_action(rule, sample_event)
+    assert result["ok"] is False
+    assert "branches" in result["error"].lower()
