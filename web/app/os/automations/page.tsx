@@ -67,6 +67,7 @@ const ACTION_TYPES = [
   "delete_variable",
   "increment_variable",
   "call_rule",
+  "transform",
 ];
 
 function TestConditionButton({ condition }: { condition: Record<string, any> }) {
@@ -365,6 +366,118 @@ function ActionConfigEditor({
           <div style={{ fontSize: "0.75rem", color: "var(--fg-mute)" }}>
             Invoke another automation rule as a sub-workflow. The sub-rule&apos;s result is available via{" "}
             {"{{ steps.N.sub_result }}"}. Circular calls are blocked at a depth of 5.
+          </div>
+        </>
+      )}
+      {actionType === "transform" && (
+        <>
+          <select
+            className="input"
+            value={(config?.operation as string) || "math"}
+            onChange={(e) => updateConfig("operation", e.target.value)}
+            style={{ marginBottom: 8 }}
+          >
+            {["math", "date_format", "regex_extract", "json_parse", "json_stringify"].map((op) => (
+              <option key={op} value={op}>
+                {op}
+              </option>
+            ))}
+          </select>
+          {config?.operation === "math" && (
+            <>
+              <input
+                className="input"
+                type="number"
+                placeholder="Left operand"
+                onChange={(e) => updateConfig("left", parseFloat(e.target.value))}
+                style={{ marginBottom: 8 }}
+              />
+              <select
+                className="input"
+                value={(config?.operator as string) || "+"}
+                onChange={(e) => updateConfig("operator", e.target.value)}
+                style={{ marginBottom: 8 }}
+              >
+                {["+", "-", "*", "/"].map((op) => (
+                  <option key={op} value={op}>
+                    {op}
+                  </option>
+                ))}
+              </select>
+              <input
+                className="input"
+                type="number"
+                placeholder="Right operand"
+                onChange={(e) => updateConfig("right", parseFloat(e.target.value))}
+                style={{ marginBottom: 8 }}
+              />
+            </>
+          )}
+          {config?.operation === "date_format" && (
+            <>
+              <input
+                className="input"
+                placeholder="Input timestamp"
+                onChange={(e) => updateConfig("input", e.target.value)}
+                style={{ marginBottom: 8 }}
+              />
+              <input
+                className="input"
+                placeholder="Output strftime format (e.g. %Y-%m-%d %H:%M)"
+                onChange={(e) => updateConfig("output_format", e.target.value)}
+                style={{ marginBottom: 8 }}
+              />
+              <input
+                className="input"
+                placeholder="Input strptime format (optional)"
+                onChange={(e) => updateConfig("input_format", e.target.value || undefined)}
+                style={{ marginBottom: 8 }}
+              />
+            </>
+          )}
+          {config?.operation === "regex_extract" && (
+            <>
+              <input
+                className="input"
+                placeholder="Pattern"
+                onChange={(e) => updateConfig("pattern", e.target.value)}
+                style={{ marginBottom: 8 }}
+              />
+              <input
+                className="input"
+                placeholder="Input string"
+                onChange={(e) => updateConfig("input", e.target.value)}
+                style={{ marginBottom: 8 }}
+              />
+              <input
+                className="input"
+                type="number"
+                placeholder="Group index (default 0)"
+                onChange={(e) => updateConfig("group", parseInt(e.target.value || "0", 10))}
+                style={{ marginBottom: 8 }}
+              />
+            </>
+          )}
+          {(config?.operation === "json_parse" || config?.operation === "json_stringify") && (
+            <textarea
+              className="input"
+              rows={3}
+              placeholder={
+                config?.operation === "json_parse"
+                  ? "JSON string to parse"
+                  : "Value to serialize (JSON)"
+              }
+              onChange={(e) => {
+                try {
+                  updateConfig("input", e.target.value ? JSON.parse(e.target.value) : null);
+                } catch {}
+              }}
+              style={{ marginBottom: 8 }}
+            />
+          )}
+          <div style={{ fontSize: "0.75rem", color: "var(--fg-mute)" }}>
+            Transform data and store the result in{" "}
+            {"{{ steps.N.result }}"} for use by later steps.
           </div>
         </>
       )}

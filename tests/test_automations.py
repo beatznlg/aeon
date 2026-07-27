@@ -885,3 +885,82 @@ def test_call_rule_depth_guard(sample_event, sample_rule):
     # The recursion should be halted cleanly before exhausting the stack.
     assert result["ok"] is False
     assert "depth" in str(result)
+
+
+def test_transform_math_operations():
+    from aeon_automations import _execute_transform
+
+    assert _execute_transform({"operation": "math", "operator": "+", "left": 5, "right": 3}, {})["result"] == 8
+    assert _execute_transform({"operation": "math", "operator": "-", "left": 5, "right": 3}, {})["result"] == 2
+    assert _execute_transform({"operation": "math", "operator": "*", "left": 5, "right": 3}, {})["result"] == 15
+    assert _execute_transform({"operation": "math", "operator": "/", "left": 6, "right": 3}, {})["result"] == 2.0
+
+
+def test_transform_math_invalid_operands():
+    from aeon_automations import _execute_transform
+
+    result = _execute_transform({"operation": "math", "operator": "+", "left": "abc", "right": 3}, {})
+    assert result["ok"] is False
+    assert "numeric" in result["error"]
+
+
+def test_transform_date_format():
+    from aeon_automations import _execute_transform
+
+    result = _execute_transform(
+        {"operation": "date_format", "input": "2024-03-15T12:30:00+00:00", "output_format": "%Y-%m-%d"},
+        {},
+    )
+    assert result["ok"] is True
+    assert result["result"] == "2024-03-15"
+
+
+def test_transform_regex_extract():
+    from aeon_automations import _execute_transform
+
+    result = _execute_transform(
+        {"operation": "regex_extract", "pattern": "Order #(\\d+)", "input": "Order #12345 shipped", "group": 1},
+        {},
+    )
+    assert result["ok"] is True
+    assert result["result"] == "12345"
+
+
+def test_transform_json_parse():
+    from aeon_automations import _execute_transform
+
+    result = _execute_transform({"operation": "json_parse", "input": '{"key": "value"}'}, {})
+    assert result["ok"] is True
+    assert result["result"] == {"key": "value"}
+
+
+def test_transform_json_stringify():
+    from aeon_automations import _execute_transform
+
+    result = _execute_transform({"operation": "json_stringify", "input": {"key": "value"}}, {})
+    assert result["ok"] is True
+    assert result["result"] == '{"key": "value"}'
+
+
+def test_execute_action_transform_chain(sample_event, sample_rule):
+    from aeon_automations import _execute_action
+
+    rule = {
+        **sample_rule,
+        "actions": [
+            {"type": "transform", "config": {"operation": "math", "operator": "*", "left": 10, "right": 2}},
+            {"type": "outbound_webhook", "config": {"url": "https://api.test/value/{{ steps.0.result }}"}},
+        ],
+    }
+    with mock.patch("requests.request") as mock_request:
+        mock_response = mock.Mock()
+        mock_response.status_code = 200
+        mock_response.raise_for_status.return_value = None
+        mock_request.return_value = mock_response
+
+        result = _execute_action(rule, sample_event)
+
+    assert result["ok"] is True
+    assert result["steps"][0]["result"] == 20
+    called_url = mock_request.call_args.args[1]
+    assert "value/20" in called_url

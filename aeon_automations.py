@@ -283,6 +283,117 @@ def _fetch_rule_by_id(rule_id: str, workspace_id: str | None) -> dict[str, Any] 
         return None
 
 
+def _to_number(value: Any) -> float | None:
+    """Convert a value to a float for math operations."""
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return None
+    return None
+
+
+def _execute_transform(action_config: dict[str, Any], event: dict[str, Any]) -> dict[str, Any]:
+    """Execute a data transformation / formatting action.
+
+    Supported operations:
+      - ``math``: basic arithmetic on two operands.
+        ``operator``: one of ``+``, ``-``, ``*``, ``/``.
+        ``left``, ``right``: numeric values or templates resolving to numbers.
+      - ``date_format``: parse an ISO timestamp and reformat it.
+        ``input``: ISO timestamp string (supports ``{{ event.payload.x }}``).
+        ``output_format``: strftime format (e.g. ``%Y-%m-%d %H:%M``).
+        ``input_format``: optional strptime format when input is not ISO.
+      - ``regex_extract``: extract a capture group from a string.
+        ``pattern``: regex pattern.
+        ``input``: string to search.
+        ``group``: group index or name (default 0).
+      - ``json_parse``: parse a JSON string into an object.
+        ``input``: JSON string.
+      - ``json_stringify``: serialize an object to a JSON string.
+        ``input``: any JSON-serializable value.
+
+    Returns the transformed value under ``result`` for use in subsequent steps
+    via ``{{ steps.N.result }}``.
+    """
+    operation = action_config.get("operation")
+    if not operation:
+        return {"ok": False, "error": "transform action requires operation"}
+
+    try:
+        if operation == "math":
+            operator = action_config.get("operator")
+            if operator not in {"+", "-", "*", "/"}:
+                return {"ok": False, "error": f"unsupported math operator: {operator}"}
+            left = _to_number(action_config.get("left"))
+            right = _to_number(action_config.get("right"))
+            if left is None or right is None:
+                return {"ok": False, "error": "math operation requires numeric left and right operands"}
+            if operator == "+":
+                result = left + right
+            elif operator == "-":
+                result = left - right
+            elif operator == "*":
+                result = left * right
+            else:  # operator == "/"
+                if right == 0:
+                    return {"ok": False, "error": "division by zero"}
+                result = left / right
+            return {"ok": True, "operation": operation, "result": result}
+
+        if operation == "date_format":
+            input_value = action_config.get("input")
+            if not input_value:
+                return {"ok": False, "error": "date_format requires input"}
+            input_format = action_config.get("input_format")
+            output_format = action_config.get("output_format") or "%Y-%m-%d %H:%M:%S"
+            if input_format:
+                dt = datetime.strptime(str(input_value), input_format)
+            else:
+                # Try parsing ISO; handle trailing Z.
+                iso = str(input_value).replace("Z", "+00:00")
+                dt = datetime.fromisoformat(iso)
+            return {"ok": True, "operation": operation, "result": dt.strftime(output_format)}
+
+        if operation == "regex_extract":
+            pattern = action_config.get("pattern")
+            input_value = action_config.get("input")
+            if not pattern or input_value is None:
+                return {"ok": False, "error": "regex_extract requires pattern and input"}
+            try:
+                compiled = re.compile(pattern)
+            except re.error as exc:
+                return {"ok": False, "error": f"invalid regex: {exc}"}
+            match = compiled.search(str(input_value))
+            if not match:
+                return {"ok": False, "error": "pattern did not match input"}
+            group = action_config.get("group", 0)
+            try:
+                value = match.group(group)
+            except IndexError:
+                return {"ok": False, "error": f"group {group} not present in match"}
+            return {"ok": True, "operation": operation, "result": value}
+
+        if operation == "json_parse":
+            input_value = action_config.get("input")
+            if input_value is None:
+                return {"ok": False, "error": "json_parse requires input"}
+            return {"ok": True, "operation": operation, "result": json.loads(str(input_value))}
+
+        if operation == "json_stringify":
+            input_value = action_config.get("input")
+            if input_value is None:
+                return {"ok": False, "error": "json_stringify requires input"}
+            return {"ok": True, "operation": operation, "result": json.dumps(input_value)}
+
+        return {"ok": False, "error": f"unsupported transform operation: {operation}"}
+    except Exception as exc:
+        logger.warning("transform action failed: %s", exc)
+        return {"ok": False, "error": str(exc)}
+
+
 def _execute_call_rule(
     action_config: dict[str, Any],
     event: dict[str, Any],
@@ -639,6 +750,8 @@ def execute_action_by_type(
         return _execute_increment_variable(interpolated_config, event)
     if action_type == "call_rule":
         return _execute_call_rule(interpolated_config, event, context)
+    if action_type == "transform":
+        return _execute_transform(interpolated_config, event)
     return {"ok": False, "error": f"unsupported action_type {action_type}"}
 
 
