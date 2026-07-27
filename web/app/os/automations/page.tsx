@@ -47,6 +47,69 @@ const EVENT_TYPES = [
 
 const ACTION_TYPES = ["webhook", "outbound_webhook", "swarm", "workflow"];
 
+function TestConditionButton({ condition }: { condition: Record<string, any> }) {
+  const [payload, setPayload] = useState<string>('{"status": "failed", "severity": 5}');
+  const [result, setResult] = useState<{ matches?: boolean; error?: string } | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  async function test() {
+    setLoading(true);
+    setResult(null);
+    try {
+      let parsedPayload: any = {};
+      try {
+        parsedPayload = JSON.parse(payload);
+      } catch (e: any) {
+        setResult({ error: "Invalid payload JSON" });
+        setLoading(false);
+        return;
+      }
+      const res = await fetch("/api/automations/test-condition", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ condition, payload: parsedPayload }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setResult({ matches: data.matches });
+      } else {
+        setResult({ error: data.error || "Test failed" });
+      }
+    } catch (e: any) {
+      setResult({ error: e.message || "Test failed" });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div style={{ marginTop: 8, padding: 12, border: "1px solid var(--border)", borderRadius: 8 }}>
+      <label style={{ display: "block", marginBottom: 6, fontSize: "0.8rem", fontWeight: 600 }}>Test payload (JSON)</label>
+      <textarea
+        className="input"
+        rows={3}
+        value={payload}
+        onChange={(e) => setPayload(e.target.value)}
+        style={{ marginBottom: 8 }}
+      />
+      <button type="button" className="btn btn-sm" onClick={test} disabled={loading}>
+        {loading ? "Testing…" : "Test Condition"}
+      </button>
+      {result && (
+        <div style={{ marginTop: 8, fontSize: "0.85rem" }}>
+          {typeof result.matches === "boolean" ? (
+            <span style={{ color: result.matches ? "#22c55e" : "#ef4444", fontWeight: 600 }}>
+              {result.matches ? "✅ Matches" : "❌ Does not match"}
+            </span>
+          ) : (
+            <span style={{ color: "#ef4444" }}>{result.error}</span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AutomationsPage() {
   const [rules, setRules] = useState<AutomationRule[]>([]);
   const [loading, setLoading] = useState(true);
@@ -316,6 +379,10 @@ export default function AutomationsPage() {
                 }}
                 placeholder='{"status": "failed"}'
               />
+              <div style={{ fontSize: "0.75rem", color: "var(--fg-mute)", marginTop: 4 }}>
+                Operators: {"$eq"}, {"$neq"}, {"$gt"}, {"$lt"}, {"$gte"}, {"$lte"}, {"$in"}, {"$contains"}, {"$exists"}, {"$regex"}. Use {"$and"} / {"$or"} / {"$not"} for logic.
+              </div>
+              <TestConditionButton condition={form.condition || {}} />
             </div>
 
             <div style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>

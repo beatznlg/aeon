@@ -109,6 +109,7 @@ AEON_ADMIN_NAME=AEON Admin
 | **21** | Inbound Webhooks & Slack HITL — external triggers and interactive approvals | ✅ |
 | **22** | Automation Execution History & Observability — dashboard for automation runs, statuses, errors, and retries | ✅ |
 | **23** | Dynamic Context Mapping & Outbound Webhooks — `{{ event.payload }}` templating and bidirectional HTTP actions | ✅ |
+| **24** | Advanced Condition Engine — MongoDB-style operators (`$gt`, `$in`, `$contains`, `$regex`, `$and`/`$or`/`$not`) and nested dot-path conditions | ✅ |
 
 ---
 

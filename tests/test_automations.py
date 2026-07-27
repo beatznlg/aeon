@@ -132,3 +132,51 @@ def test_execute_action_by_type_interpolates_outbound_webhook(sample_event, samp
         called_data = mock_request.call_args.kwargs["data"]
         assert called_url == "https://api.test/events/inbound_webhook"
         assert called_data == "Alice"
+
+
+def test_evaluate_condition_equality():
+    from aeon_automations import evaluate_condition
+
+    assert evaluate_condition({"status": "failed"}, {"status": "failed"}) is True
+    assert evaluate_condition({"status": "failed"}, {"status": "ok"}) is False
+
+
+def test_evaluate_condition_operators():
+    from aeon_automations import evaluate_condition
+
+    payload = {"amount": 1500, "count": 5, "tag": "urgent", "status": "failed"}
+    assert evaluate_condition({"amount": {"$gt": 1000}}, payload) is True
+    assert evaluate_condition({"amount": {"$lt": 2000}}, payload) is True
+    assert evaluate_condition({"count": {"$gte": 5}}, payload) is True
+    assert evaluate_condition({"count": {"$lte": 4}}, payload) is False
+    assert evaluate_condition({"status": {"$in": ["failed", "timeout"]}}, payload) is True
+    assert evaluate_condition({"tag": {"$contains": "gen"}}, payload) is True
+    assert evaluate_condition({"missing": {"$exists": True}}, payload) is False
+    assert evaluate_condition({"amount": {"$exists": True}}, payload) is True
+
+
+def test_evaluate_condition_nested_paths():
+    from aeon_automations import evaluate_condition
+
+    payload = {"user": {"plan": "premium"}, "meta": {"score": 95}}
+    assert evaluate_condition({"user.plan": "premium"}, payload) is True
+    assert evaluate_condition({"user.plan": {"$neq": "free"}}, payload) is True
+    assert evaluate_condition({"meta.score": {"$gte": 90}}, payload) is True
+
+
+def test_evaluate_condition_logical_operators():
+    from aeon_automations import evaluate_condition
+
+    payload = {"status": "failed", "severity": 7}
+    assert evaluate_condition({"$or": [{"status": "ok"}, {"severity": {"$gt": 5}}]}, payload) is True
+    assert evaluate_condition({"$and": [{"status": "failed"}, {"severity": {"$lt": 5}}]}, payload) is False
+    assert evaluate_condition({"$not": {"status": "ok"}}, payload) is True
+
+
+def test_evaluate_condition_regex():
+    from aeon_automations import evaluate_condition
+
+    payload = {"message": "RateLimit exceeded"}
+    assert evaluate_condition({"message": {"$regex": "RateLimit"}}, payload) is True
+    assert evaluate_condition({"message": {"$regex": "^RateLimit"}}, payload) is True
+    assert evaluate_condition({"message": {"$regex": "timeout"}}, payload) is False

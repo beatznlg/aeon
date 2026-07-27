@@ -76,20 +76,140 @@ def _fetch_rules_for_event(event_type: str, workspace_id: str | None = None) -> 
         return []
 
 
-def _condition_matches(condition: dict[str, Any] | None, payload: dict[str, Any]) -> bool:
-    """Evaluate a simple condition against an event payload.
+def _get_path(payload: Any, path: str) -> Any:
+    """Return the value at a dotted path in a nested dict, or None if absent."""
+    value = payload
+    for part in path.split("."):
+        if isinstance(value, dict) and part in value:
+            value = value[part]
+        else:
+            return None
+    return value
 
-    Condition format supports equality checks on top-level keys:
-        {"status": "failed", "ok": false}
-    Returns True if the payload matches all specified conditions.
+
+def _operator_matches(actual: Any, operator_spec: dict[str, Any]) -> bool:
+    """Evaluate a MongoDB-style operator spec against an actual value.
+
+    Supports: $eq, $neq, $gt, $lt, $gte, $lte, $in, $contains, $exists, $regex.
+    Multiple operators in the same spec are AND-ed together.
+    """
+    for op, expected in operator_spec.items():
+        match op:
+            case "$eq":
+                if actual != expected:
+                    return False
+            case "$neq":
+                if actual == expected:
+                    return False
+            case "$gt":
+                try:
+                    if actual is None or expected is None or not (actual > expected):
+                        return False
+                except TypeError:
+                    return False
+            case "$lt":
+                try:
+                    if actual is None or expected is None or not (actual < expected):
+                        return False
+                except TypeError:
+                    return False
+            case "$gte":
+                try:
+                    if actual is None or expected is None or not (actual >= expected):
+                        return False
+                except TypeError:
+                    return False
+            case "$lte":
+                try:
+                    if actual is None or expected is None or not (actual <= expected):
+                        return False
+                except TypeError:
+                    return False
+            case "$in":
+                if not isinstance(expected, (list, tuple, set)):
+                    return False
+                if actual not in expected:
+                    return False
+            case "$contains":
+                if isinstance(actual, str) and isinstance(expected, str):
+                    if expected not in actual:
+                        return False
+                elif isinstance(actual, (list, tuple)):
+                    if expected not in actual:
+                        return False
+                else:
+                    return False
+            case "$exists":
+                exists = actual is not None
+                if bool(expected) != exists:
+                    return False
+            case "$regex":
+                if not isinstance(actual, str):
+                    return False
+                try:
+                    if not re.search(expected, actual):
+                        return False
+                except re.error:
+                    return False
+            case _:
+                # Unknown operator: treat as no match rather than raising.
+                return False
+    return True
+
+
+def evaluate_condition(condition: Any, payload: dict[str, Any]) -> bool:
+    """Evaluate an advanced condition against an event payload.
+
+    Supports:
+        - Top-level equality (backward compatible):
+            {"status": "failed"}
+        - MongoDB-style operators on fields:
+            {"amount": {"$gt": 1000}}
+        - Logical operators at top level:
+            {"$or": [{"status": "failed"}, {"severity": {"$gte": 5}}]}
+            {"$and": [{"type": "error"}, {"$not": {"ignored": true}}]}
+        - Dotted nested field paths:
+            {"user.plan": "premium"}
+
+    Returns True if the payload matches the condition.
     """
     if not condition:
         return True
+    if not isinstance(condition, dict):
+        return bool(condition)
+
     for key, expected in condition.items():
-        actual = payload.get(key) if isinstance(payload, dict) else None
-        if actual != expected:
+        if key == "$and":
+            if not isinstance(expected, list):
+                return False
+            return all(evaluate_condition(item, payload) for item in expected)
+        if key == "$or":
+            if not isinstance(expected, list):
+                return False
+            return any(evaluate_condition(item, payload) for item in expected)
+        if key == "$not":
+            return not evaluate_condition(expected, payload)
+
+        actual = _get_path(payload, key)
+        if isinstance(expected, dict) and expected and any(k.startswith("$") for k in expected):
+            if not _operator_matches(actual, expected):
+                return False
+        elif actual != expected:
             return False
+
     return True
+
+
+def _condition_matches(condition: dict[str, Any] | None, payload: dict[str, Any]) -> bool:
+    """Backward-compatible alias for evaluate_condition.
+
+    Condition format supports equality checks and advanced operators:
+        {"status": "failed"}
+        {"amount": {"$gt": 1000}}
+        {"$or": [{"status": "failed"}, {"severity": {"$gte": 5}}]}
+    Returns True if the payload matches the condition.
+    """
+    return evaluate_condition(condition, payload)
 
 
 def _execute_action(rule: dict[str, Any], event: dict[str, Any]) -> dict[str, Any]:

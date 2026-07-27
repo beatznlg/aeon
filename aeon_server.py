@@ -54,7 +54,7 @@ from aeon_governance import GovernanceManager, get_governance
 from aeon_integrations import IntegrationManager, WebhookDelivery, get_integration_catalog
 from aeon_llm import get_llm_provider, list_providers, set_active_provider
 from aeon_llm import test_provider as _test_llm_provider
-from aeon_automations import resolve_approval, start_scheduler, _compute_next_run
+from aeon_automations import evaluate_condition, resolve_approval, start_scheduler, _compute_next_run
 from aeon_notify import broadcast_event
 from aeon_notify import log_activity
 from aeon_notify import notify as _notify
@@ -2367,8 +2367,8 @@ def automations_index():
     cron_expression = (data.get("cron_expression") or "").strip()
     if not name or not event_type or not action_type:
         return jsonify({"ok": False, "error": "name, event_type, and action_type are required"}), 400
-    if action_type not in {"webhook", "swarm", "workflow"}:
-        return jsonify({"ok": False, "error": "action_type must be webhook, swarm, or workflow"}), 400
+    if action_type not in {"webhook", "outbound_webhook", "swarm", "workflow"}:
+        return jsonify({"ok": False, "error": "action_type must be webhook, outbound_webhook, swarm, or workflow"}), 400
     if schedule_type not in {"event", "cron"}:
         return jsonify({"ok": False, "error": "schedule_type must be event or cron"}), 400
     if schedule_type == "cron" and not cron_expression:
@@ -2724,6 +2724,26 @@ def automation_executions(rule_id: str):
 
 
 
+
+
+
+@app.route("/automations/test-condition", methods=["POST"])
+@require_auth
+def automation_test_condition():
+    """Test an automation condition against a sample event payload.
+
+    Accepts: { condition: dict, payload: dict }
+    Returns: { ok: true, matches: bool }
+    """
+    data = request.json or {}
+    condition = data.get("condition", {})
+    payload = data.get("payload", {})
+    try:
+        matches = evaluate_condition(condition, payload)
+        return jsonify({"ok": True, "matches": matches})
+    except Exception as e:
+        logger.warning("Failed to evaluate condition: %s", e)
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 # ── Inbound webhook management (Phase 21) ───────────────────────────────────
 def _generate_inbound_token() -> str:
