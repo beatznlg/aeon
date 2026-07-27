@@ -355,3 +355,87 @@ def test_execute_action_run_if_runs_step_based_on_previous_output(sample_event, 
     assert len(result["steps"]) == 2
     assert "skipped" not in result["steps"][1]
     assert result["steps"][1]["status_code"] == 202
+
+
+def test_execute_action_loop_over_iterates_and_interpolates_item(sample_event, sample_rule):
+    from aeon_automations import _execute_action
+
+    rule = {
+        **sample_rule,
+        "actions": [
+            {
+                "type": "outbound_webhook",
+                "config": {"url": "https://api.test/fetch", "method": "GET"},
+            },
+            {
+                "type": "outbound_webhook",
+                "config": {"url": "https://api.test/send/{{ item.id }}"},
+                "loop_over": "{{ steps.0.data.items }}",
+            },
+        ],
+    }
+    with mock.patch("aeon_automations.execute_action_by_type") as mock_exec:
+        mock_exec.side_effect = [
+            {"ok": True, "status_code": 200, "data": {"items": [{"id": "a"}, {"id": "b"}]}},
+            {"ok": True, "status_code": 201},
+            {"ok": True, "status_code": 202},
+        ]
+        result = _execute_action(rule, sample_event)
+
+    assert result["ok"] is True
+    assert len(result["steps"]) == 2
+    assert "results" in result["steps"][1]
+    assert len(result["steps"][1]["results"]) == 2
+    assert result["steps"][1]["results"][0]["status_code"] == 201
+    assert result["steps"][1]["results"][1]["status_code"] == 202
+    # Verify item context was passed into the looped executions
+    calls = mock_exec.call_args_list
+    # First call is step 0 fetch; subsequent two are loop iterations
+    assert calls[1].args[2]["item"]["id"] == "a"
+    assert calls[2].args[2]["item"]["id"] == "b"
+    assert calls[1].args[2]["loop"]["index"] == 0
+    assert calls[2].args[2]["loop"]["index"] == 1
+
+
+def test_execute_action_loop_over_empty_list(sample_event, sample_rule):
+    from aeon_automations import _execute_action
+
+    rule = {
+        **sample_rule,
+        "actions": [
+            {"type": "outbound_webhook", "config": {"url": "https://api.test/fetch", "method": "GET"}},
+            {
+                "type": "outbound_webhook",
+                "config": {"url": "https://api.test/send"},
+                "loop_over": "{{ steps.0.data.items }}",
+            },
+        ],
+    }
+    with mock.patch("aeon_automations.execute_action_by_type") as mock_exec:
+        mock_exec.return_value = {"ok": True, "status_code": 200, "data": {"items": []}}
+        result = _execute_action(rule, sample_event)
+
+    assert result["ok"] is True
+    assert result["steps"][1]["results"] == []
+
+
+def test_execute_action_loop_over_non_list_fails(sample_event, sample_rule):
+    from aeon_automations import _execute_action
+
+    rule = {
+        **sample_rule,
+        "actions": [
+            {"type": "outbound_webhook", "config": {"url": "https://api.test/fetch", "method": "GET"}},
+            {
+                "type": "outbound_webhook",
+                "config": {"url": "https://api.test/send"},
+                "loop_over": "{{ steps.0.data.items }}",
+            },
+        ],
+    }
+    with mock.patch("aeon_automations.execute_action_by_type") as mock_exec:
+        mock_exec.return_value = {"ok": True, "status_code": 200, "data": {"items": "not-a-list"}}
+        result = _execute_action(rule, sample_event)
+
+    assert result["ok"] is False
+    assert result["failed_step"] == 1

@@ -2381,6 +2381,9 @@ def automations_index():
             run_if = step.get("run_if")
             if run_if is not None and not isinstance(run_if, dict):
                 return jsonify({"ok": False, "error": f"actions[{idx}] run_if must be a condition object or omitted"}), 400
+            loop_over = step.get("loop_over")
+            if loop_over is not None and not isinstance(loop_over, str):
+                return jsonify({"ok": False, "error": f"actions[{idx}] loop_over must be a string path/template or omitted"}), 400
         # Derive legacy action_type/action_config from the first step for compatibility.
         first_step = actions[0]
         action_type = first_step.get("type") or first_step.get("action_type")
@@ -2536,6 +2539,9 @@ def automation_detail(rule_id: str):
             run_if = step.get("run_if")
             if run_if is not None and not isinstance(run_if, dict):
                 return jsonify({"ok": False, "error": f"actions[{idx}] run_if must be a condition object or omitted"}), 400
+            loop_over = step.get("loop_over")
+            if loop_over is not None and not isinstance(loop_over, str):
+                return jsonify({"ok": False, "error": f"actions[{idx}] loop_over must be a string path/template or omitted"}), 400
 
     # Recompute next_run_at when switching to cron or changing the expression
     if ("schedule_type" in data or "cron_expression" in data) and updates.get("schedule_type") == "cron":

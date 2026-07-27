@@ -113,6 +113,7 @@ AEON_ADMIN_NAME=AEON Admin
 | **25** | Automation Rule Cooldown / Throttling — `cooldown_minutes` to prevent runaway rule executions | ✅ |
 | **26** | Sequential Multi-Step Action Chains — ordered `actions` array with per-step context (`{{ steps.0.data.summary }}`) | ✅ |
 | **27** | Conditional Branching in Action Chains — per-step `run_if` conditions using `event`, `steps`, and `rule` context | ✅ |
+| **28** | Action Chain Iterators (For-Each Loops) — process arrays with `loop_over` and `{{ item }}` / `{{ loop.index }}` context | ✅ |
 
 ---
 

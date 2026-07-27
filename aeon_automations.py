@@ -285,6 +285,42 @@ def _execute_action(rule: dict[str, Any], event: dict[str, Any]) -> dict[str, An
             if not evaluate_condition(run_if, condition_context):
                 steps.append({"ok": True, "skipped": True, "condition": run_if})
                 continue
+
+        loop_over = action.get("loop_over")
+        if loop_over:
+            loop_items = _resolve_loop_expression(loop_over, context)
+            if not isinstance(loop_items, (list, tuple)):
+                result = {"ok": False, "error": f"loop_over did not resolve to a list: {loop_over}"}
+                steps.append(result)
+                return {
+                    "ok": False,
+                    "status": "failed",
+                    "steps": steps,
+                    "failed_step": idx,
+                    "error": result.get("error", "loop_over failed"),
+                }
+            iteration_results: list[dict[str, Any]] = []
+            for i, item in enumerate(loop_items):
+                iter_context = {**context, "item": item, "loop": {"index": i, "total": len(loop_items)}}
+                iter_result = execute_action_by_type(action_type, action_config, iter_context)
+                iteration_results.append(iter_result)
+                if not iter_result.get("ok"):
+                    break
+            step_result: dict[str, Any] = {
+                "ok": all(r.get("ok") for r in iteration_results),
+                "results": iteration_results,
+            }
+            steps.append(step_result)
+            if not step_result["ok"]:
+                return {
+                    "ok": False,
+                    "status": "failed",
+                    "steps": steps,
+                    "failed_step": idx,
+                    "error": "one or more loop iterations failed",
+                }
+            continue
+
         result = execute_action_by_type(action_type, action_config, context)
         steps.append(result)
         if not result.get("ok"):
@@ -324,6 +360,22 @@ def _resolve_template_value(path: str, context: dict[str, Any]) -> Any:
         else:
             return ""
     return value
+
+
+def _resolve_loop_expression(expression: str, context: dict[str, Any]) -> Any:
+    """Resolve a ``loop_over`` expression to its actual value.
+
+    Supports either a dotted path (``event.payload.items``) or a template
+    (``{{ event.payload.items }}``). Returns the resolved value, or an empty
+    string if the path cannot be resolved.
+    """
+    stripped = expression.strip()
+    match = re.fullmatch(r"{{\s*([\w.\[\]]+)\s*}}", stripped)
+    if match:
+        path = match.group(1)
+    else:
+        path = stripped
+    return _resolve_template_value(path, context)
 
 
 def _interpolate(value: Any, *args) -> Any:

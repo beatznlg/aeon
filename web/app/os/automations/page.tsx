@@ -10,7 +10,7 @@ interface AutomationRule {
   condition: Record<string, any>;
   action_type?: string;
   action_config?: Record<string, any>;
-  actions?: { type: string; config: Record<string, any>; run_if?: Record<string, any> }[];
+  actions?: { type: string; config: Record<string, any>; run_if?: Record<string, any>; loop_over?: string }[];
   enabled: boolean;
   approval_required?: boolean;
   schedule_type?: "event" | "cron";
@@ -644,6 +644,17 @@ export default function AutomationsPage() {
                         </option>
                       ))}
                     </select>
+                    <input
+                      className="input"
+                      placeholder="Loop over (optional) e.g. {{ event.payload.items }}"
+                      value={act.loop_over || ""}
+                      onChange={(e) => {
+                        const newActions = [...form.actions!];
+                        newActions[idx] = { ...newActions[idx], loop_over: e.target.value || undefined };
+                        setForm({ ...form, actions: newActions });
+                      }}
+                      style={{ marginBottom: 8 }}
+                    />
                     <ActionConfigEditor
                       actionType={act.type}
                       config={act.config}
