@@ -290,7 +290,8 @@ def _execute_action(
         ]
 
     steps: list[dict[str, Any]] = list(initial_steps) if initial_steps else []
-    context = {"event": event, "rule": rule, "steps": steps}
+    state = _fetch_workspace_variables(rule.get("workspace_id"))
+    context = {"event": event, "rule": rule, "steps": steps, "state": state}
 
     for idx, action in enumerate(actions):
         if idx < start_index:
@@ -541,6 +542,14 @@ def execute_action_by_type(
         return _execute_delay(interpolated_config, event)
     if action_type == "wait_for_event":
         return _execute_wait_for_event(interpolated_config, event)
+    if action_type == "set_variable":
+        return _execute_set_variable(interpolated_config, event)
+    if action_type == "get_variable":
+        return _execute_get_variable(interpolated_config, event)
+    if action_type == "delete_variable":
+        return _execute_delete_variable(interpolated_config, event)
+    if action_type == "increment_variable":
+        return _execute_increment_variable(interpolated_config, event)
     return {"ok": False, "error": f"unsupported action_type {action_type}"}
 
 
@@ -607,6 +616,180 @@ def _execute_wait_for_event(action_config: dict[str, Any], event: dict[str, Any]
         "timeout_minutes": timeout,
         "resume_at": resume_at.isoformat(),
     }
+
+
+def _fetch_workspace_variables(workspace_id: str | None) -> dict[str, Any]:
+    """Load all non-expired automation variables for a workspace into a flat dict."""
+    db_url = _get_db_url()
+    headers = _supabase_headers()
+    if not db_url or not headers or not workspace_id:
+        return {}
+
+    try:
+        import requests
+        r = requests.get(
+            f"{db_url}/rest/v1/automation_variables",
+            headers=headers,
+            params={
+                "workspace_id": f"eq.{workspace_id}",
+                "or": "(expires_at.is.null,expires_at.gte.now)",
+            },
+            timeout=10,
+        )
+        r.raise_for_status()
+        rows = r.json() or []
+        return {row["key"]: row["value"] for row in rows}
+    except Exception as exc:
+        logger.warning("Failed to fetch automation variables for workspace %s: %s", workspace_id, exc)
+        return {}
+
+
+def _execute_set_variable(action_config: dict[str, Any], event: dict[str, Any]) -> dict[str, Any]:
+    """Persist a key-value variable for the workspace.
+
+    ``action_config`` must contain:
+        - ``key``: variable name.
+        - ``value``: any JSON-serializable value.
+    Optional:
+        - ``ttl_minutes``: time-to-live in minutes. If omitted, the variable
+          never expires.
+    """
+    workspace_id = event.get("workspace_id")
+    if not workspace_id:
+        return {"ok": False, "error": "set_variable requires workspace_id in event"}
+
+    key = action_config.get("key")
+    if not key:
+        return {"ok": False, "error": "set_variable requires key"}
+    if "value" not in action_config:
+        return {"ok": False, "error": "set_variable requires value"}
+
+    value = action_config["value"]
+    expires_at = None
+    if action_config.get("ttl_minutes"):
+        try:
+            ttl = float(action_config["ttl_minutes"])
+            expires_at = (datetime.now(timezone.utc) + timedelta(minutes=ttl)).isoformat()
+        except (TypeError, ValueError):
+            return {"ok": False, "error": "ttl_minutes must be numeric"}
+
+    db_url = _get_db_url()
+    headers = _supabase_headers()
+    if not db_url or not headers:
+        return {"ok": False, "error": "Supabase not configured"}
+
+    try:
+        import requests
+        payload: dict[str, Any] = {
+            "workspace_id": workspace_id,
+            "key": key,
+            "value": value,
+        }
+        if expires_at:
+            payload["expires_at"] = expires_at
+        requests.post(
+            f"{db_url}/rest/v1/automation_variables",
+            headers={**headers, "Prefer": "resolution=merge-duplicates,return=representation"},
+            json=payload,
+            timeout=10,
+        ).raise_for_status()
+        return {"ok": True, "key": key, "value": value, "expires_at": expires_at}
+    except Exception as exc:
+        logger.warning("Failed to set automation variable %s: %s", key, exc)
+        return {"ok": False, "error": str(exc)}
+
+
+def _execute_get_variable(action_config: dict[str, Any], event: dict[str, Any]) -> dict[str, Any]:
+    """Return a variable value without modifying storage."""
+    workspace_id = event.get("workspace_id")
+    key = action_config.get("key")
+    if not workspace_id:
+        return {"ok": False, "error": "get_variable requires workspace_id in event"}
+    if not key:
+        return {"ok": False, "error": "get_variable requires key"}
+
+    variables = _fetch_workspace_variables(workspace_id)
+    value = variables.get(key)
+    if value is None:
+        return {"ok": False, "error": f"variable {key} not found"}
+    return {"ok": True, "key": key, "value": value}
+
+
+def _execute_delete_variable(action_config: dict[str, Any], event: dict[str, Any]) -> dict[str, Any]:
+    """Delete a variable from storage."""
+    workspace_id = event.get("workspace_id")
+    key = action_config.get("key")
+    if not workspace_id:
+        return {"ok": False, "error": "delete_variable requires workspace_id in event"}
+    if not key:
+        return {"ok": False, "error": "delete_variable requires key"}
+
+    db_url = _get_db_url()
+    headers = _supabase_headers()
+    if not db_url or not headers:
+        return {"ok": False, "error": "Supabase not configured"}
+
+    try:
+        import requests
+        requests.delete(
+            f"{db_url}/rest/v1/automation_variables",
+            headers=headers,
+            params={"workspace_id": f"eq.{workspace_id}", "key": f"eq.{key}"},
+            timeout=10,
+        ).raise_for_status()
+        return {"ok": True, "key": key, "deleted": True}
+    except Exception as exc:
+        logger.warning("Failed to delete automation variable %s: %s", key, exc)
+        return {"ok": False, "error": str(exc)}
+
+
+def _execute_increment_variable(action_config: dict[str, Any], event: dict[str, Any]) -> dict[str, Any]:
+    """Atomically increment a numeric variable by a given amount.
+
+    If the variable does not exist, it is created with the increment value.
+    """
+    workspace_id = event.get("workspace_id")
+    key = action_config.get("key")
+    if not workspace_id:
+        return {"ok": False, "error": "increment_variable requires workspace_id in event"}
+    if not key:
+        return {"ok": False, "error": "increment_variable requires key"}
+
+    try:
+        amount = float(action_config.get("amount", 1))
+    except (TypeError, ValueError):
+        return {"ok": False, "error": "amount must be numeric"}
+
+    db_url = _get_db_url()
+    headers = _supabase_headers()
+    if not db_url or not headers:
+        return {"ok": False, "error": "Supabase not configured"}
+
+    try:
+        import requests
+
+        # Upsert-style: merge into existing value or default to 0 then add amount.
+        current = _fetch_workspace_variables(workspace_id).get(key, 0)
+        try:
+            current = float(current)
+        except (TypeError, ValueError):
+            current = 0
+        new_value = current + amount
+
+        requests.post(
+            f"{db_url}/rest/v1/automation_variables",
+            headers={**headers, "Prefer": "resolution=merge-duplicates,return=representation"},
+            json={
+                "workspace_id": workspace_id,
+                "key": key,
+                "value": new_value,
+            },
+            timeout=10,
+        ).raise_for_status()
+        return {"ok": True, "key": key, "previous_value": current, "value": new_value, "amount": amount}
+    except Exception as exc:
+        logger.warning("Failed to increment automation variable %s: %s", key, exc)
+        return {"ok": False, "error": str(exc)}
 
 
 def _execute_webhook(action_config: dict[str, Any], event: dict[str, Any]) -> dict[str, Any]:

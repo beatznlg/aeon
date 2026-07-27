@@ -117,6 +117,7 @@ AEON_ADMIN_NAME=AEON Admin
 | **29** | Action Chain Error Handling & Fallbacks — per-step `on_error` fallback actions and `continue_on_error` resilience | ✅ |
 | **30** | Automation Time Delays (Wait Steps & Async Resumption) — `delay` actions that sleep and resume via scheduled resumption | ✅ |
 | **31** | Event-Based Async Resumption (Wait for Event) — `wait_for_event` actions that suspend workflows until a matching external event arrives | ✅ |
+| **32** | Persistent Automation State (Key-Value Variables) — `set_variable`, `get_variable`, `delete_variable`, `increment_variable`, and `{{ state.KEY }}` templates | ✅ |
 
 ---
 

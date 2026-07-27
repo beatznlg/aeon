@@ -758,3 +758,68 @@ def test_execute_wait_for_event_requires_correlation():
     result = _execute_wait_for_event({"event_type": "payment.received"}, {})
     assert result["ok"] is False
     assert "correlation" in result["error"]
+
+
+def test_set_variable_and_state_interpolation(sample_event, sample_rule):
+    from aeon_automations import _execute_action, _interpolate
+
+    rule = {
+        **sample_rule,
+        "actions": [
+            {"type": "set_variable", "config": {"key": "alert_count", "value": 3}},
+            {"type": "outbound_webhook", "config": {"url": "https://api.test/count/{{ state.alert_count }}"}},
+        ],
+    }
+    with mock.patch("aeon_automations.execute_action_by_type") as mock_exec:
+        call_results = [
+            {"ok": True, "key": "alert_count", "value": 3},
+        ]
+        # Subsequent calls are for the outbound_webhook; return a successful response.
+        def _side_effect(action_type, action_config, context):
+            if action_type == "set_variable":
+                return call_results.pop(0)
+            return {"ok": True, "status_code": 200}
+        mock_exec.side_effect = _side_effect
+        result = _execute_action(rule, sample_event)
+
+    assert result["ok"] is True
+    assert result["status"] == "completed"
+    assert result["steps"][0]["value"] == 3
+
+
+def test_interpolate_state_context(sample_event, sample_rule):
+    from aeon_automations import _interpolate
+
+    context = {
+        "event": sample_event,
+        "rule": sample_rule,
+        "steps": [],
+        "state": {"alert_count": 5, "last_issue": "timeout"},
+    }
+    assert _interpolate("{{ state.alert_count }}", context) == "5"
+    assert _interpolate("{{ state.last_issue }}", context) == "timeout"
+    assert _interpolate("{{ state.missing }}", context) == ""
+
+
+def test_set_variable_requires_key(sample_event):
+    from aeon_automations import _execute_set_variable
+
+    result = _execute_set_variable({"value": "x"}, sample_event)
+    assert result["ok"] is False
+    assert "key" in result["error"]
+
+
+def test_delete_variable_requires_key(sample_event):
+    from aeon_automations import _execute_delete_variable
+
+    result = _execute_delete_variable({}, sample_event)
+    assert result["ok"] is False
+    assert "key" in result["error"]
+
+
+def test_increment_variable_requires_workspace_id():
+    from aeon_automations import _execute_increment_variable
+
+    result = _execute_increment_variable({"key": "counter", "amount": 1}, {})
+    assert result["ok"] is False
+    assert "workspace_id" in result["error"]

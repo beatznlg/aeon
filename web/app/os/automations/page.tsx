@@ -55,7 +55,18 @@ const EVENT_TYPES = [
   "inbound_webhook",
 ];
 
-const ACTION_TYPES = ["webhook", "outbound_webhook", "swarm", "workflow", "delay", "wait_for_event"];
+const ACTION_TYPES = [
+  "webhook",
+  "outbound_webhook",
+  "swarm",
+  "workflow",
+  "delay",
+  "wait_for_event",
+  "set_variable",
+  "get_variable",
+  "delete_variable",
+  "increment_variable",
+];
 
 function TestConditionButton({ condition }: { condition: Record<string, any> }) {
   const [payload, setPayload] = useState<string>('{"status": "failed", "severity": 5}');
@@ -256,6 +267,64 @@ function ActionConfigEditor({
           />
           <div style={{ fontSize: "0.75rem", color: "var(--fg-mute)" }}>
             Suspend the automation until an event of the specified type arrives with a matching correlation value. Resumes after the timeout if no matching event is received.
+          </div>
+        </>
+      )}
+      {(actionType === "set_variable" || actionType === "get_variable" || actionType === "delete_variable") && (
+        <>
+          <input
+            className="input"
+            placeholder="Variable key"
+            onChange={(e) => updateConfig("key", e.target.value)}
+            style={{ marginBottom: 8 }}
+          />
+          {actionType === "set_variable" && (
+            <>
+              <textarea
+                className="input"
+                rows={3}
+                placeholder="Value (JSON)"
+                onChange={(e) => {
+                  try {
+                    updateConfig("value", e.target.value ? JSON.parse(e.target.value) : null);
+                  } catch {}
+                }}
+                style={{ marginBottom: 8 }}
+              />
+              <input
+                className="input"
+                type="number"
+                min={1}
+                placeholder="TTL (minutes, optional)"
+                onChange={(e) => updateConfig("ttl_minutes", e.target.value ? parseInt(e.target.value, 10) : undefined)}
+                style={{ marginBottom: 8 }}
+              />
+            </>
+          )}
+          <div style={{ fontSize: "0.75rem", color: "var(--fg-mute)" }}>
+            {actionType === "set_variable" && "Store a variable in the workspace state. Reference it later with {{ state.MY_KEY }}."}
+            {actionType === "get_variable" && "Read a workspace variable. The value is available in subsequent steps via {{ steps.N.value }}."}
+            {actionType === "delete_variable" && "Remove a variable from the workspace state."}
+          </div>
+        </>
+      )}
+      {actionType === "increment_variable" && (
+        <>
+          <input
+            className="input"
+            placeholder="Variable key"
+            onChange={(e) => updateConfig("key", e.target.value)}
+            style={{ marginBottom: 8 }}
+          />
+          <input
+            className="input"
+            type="number"
+            placeholder="Amount (default 1)"
+            onChange={(e) => updateConfig("amount", parseFloat(e.target.value || "1"))}
+            style={{ marginBottom: 8 }}
+          />
+          <div style={{ fontSize: "0.75rem", color: "var(--fg-mute)" }}>
+            Atomically increment a numeric variable by the given amount. Creates the variable if it does not exist.
           </div>
         </>
       )}
