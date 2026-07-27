@@ -295,3 +295,63 @@ def test_execute_action_stops_on_failure(sample_event, sample_rule):
     assert result["ok"] is False
     assert result["failed_step"] == 0
     assert len(result["steps"]) == 1
+
+
+def test_evaluate_condition_list_paths():
+    from aeon_automations import evaluate_condition
+
+    payload = {"steps": [{"data": {"score": 75}}, {"data": {"score": 30}}]}
+    assert evaluate_condition({"steps.0.data.score": {"$gte": 70}}, payload) is True
+    assert evaluate_condition({"steps.1.data.score": {"$lt": 50}}, payload) is True
+    assert evaluate_condition({"steps.0.data.score": {"$lt": 70}}, payload) is False
+
+
+def test_execute_action_run_if_skips_step(sample_event, sample_rule):
+    from aeon_automations import _execute_action
+
+    rule = {
+        **sample_rule,
+        "actions": [
+            {"type": "outbound_webhook", "config": {"url": "https://api.test/step1", "method": "POST"}},
+            {
+                "type": "outbound_webhook",
+                "config": {"url": "https://api.test/step2", "method": "POST"},
+                "run_if": {"event.payload.issue": "feature"},
+            },
+        ],
+    }
+    with mock.patch("aeon_automations.execute_action_by_type") as mock_exec:
+        mock_exec.return_value = {"ok": True, "status_code": 200}
+        result = _execute_action(rule, sample_event)
+
+    assert result["ok"] is True
+    assert len(result["steps"]) == 2
+    assert result["steps"][1]["skipped"] is True
+    assert mock_exec.call_count == 1
+
+
+def test_execute_action_run_if_runs_step_based_on_previous_output(sample_event, sample_rule):
+    from aeon_automations import _execute_action
+
+    rule = {
+        **sample_rule,
+        "actions": [
+            {"type": "outbound_webhook", "config": {"url": "https://api.test/step1", "method": "POST"}},
+            {
+                "type": "outbound_webhook",
+                "config": {"url": "https://api.test/step2", "method": "POST"},
+                "run_if": {"steps.0.data.score": {"$gte": 50}},
+            },
+        ],
+    }
+    with mock.patch("aeon_automations.execute_action_by_type") as mock_exec:
+        mock_exec.side_effect = [
+            {"ok": True, "status_code": 200, "data": {"score": 75}},
+            {"ok": True, "status_code": 202},
+        ]
+        result = _execute_action(rule, sample_event)
+
+    assert result["ok"] is True
+    assert len(result["steps"]) == 2
+    assert "skipped" not in result["steps"][1]
+    assert result["steps"][1]["status_code"] == 202

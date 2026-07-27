@@ -10,7 +10,7 @@ interface AutomationRule {
   condition: Record<string, any>;
   action_type?: string;
   action_config?: Record<string, any>;
-  actions?: { type: string; config: Record<string, any> }[];
+  actions?: { type: string; config: Record<string, any>; run_if?: Record<string, any> }[];
   enabled: boolean;
   approval_required?: boolean;
   schedule_type?: "event" | "cron";
@@ -653,6 +653,29 @@ export default function AutomationsPage() {
                         setForm({ ...form, actions: newActions });
                       }}
                     />
+                    <div style={{ marginTop: 12, padding: 10, border: "1px dashed var(--border)", borderRadius: 6 }}>
+                      <label style={{ fontSize: "0.75rem", fontWeight: 600, display: "block", marginBottom: 4 }}>
+                        Run condition (run_if)
+                      </label>
+                      <textarea
+                        className="input"
+                        rows={3}
+                        value={JSON.stringify(act.run_if || {})}
+                        onChange={(e) => {
+                          try {
+                            const runIf = JSON.parse(e.target.value);
+                            const newActions = [...form.actions!];
+                            newActions[idx] = { ...newActions[idx], run_if: runIf };
+                            setForm({ ...form, actions: newActions });
+                          } catch {}
+                        }}
+                        placeholder='{"event.payload.status": "failed"}'
+                        style={{ marginBottom: 4 }}
+                      />
+                      <div style={{ fontSize: "0.7rem", color: "var(--fg-mute)", marginTop: 4 }}>
+                        Leave {"{}"} to always run. Paths: event.payload.x, steps.0.data.y, rule.name.
+                      </div>
+                    </div>
                   </div>
                 ))}
               </div>

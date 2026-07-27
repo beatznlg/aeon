@@ -77,11 +77,16 @@ def _fetch_rules_for_event(event_type: str, workspace_id: str | None = None) -> 
 
 
 def _get_path(payload: Any, path: str) -> Any:
-    """Return the value at a dotted path in a nested dict, or None if absent."""
+    """Return the value at a dotted path in a nested dict/list, or None if absent.
+
+    Supports list indices (e.g. ``steps.0.data``).
+    """
     value = payload
     for part in path.split("."):
         if isinstance(value, dict) and part in value:
             value = value[part]
+        elif isinstance(value, list) and part.isdigit() and 0 <= int(part) < len(value):
+            value = value[int(part)]
         else:
             return None
     return value
@@ -274,6 +279,12 @@ def _execute_action(rule: dict[str, Any], event: dict[str, Any]) -> dict[str, An
     for idx, action in enumerate(actions):
         action_type = action.get("type") or action.get("action_type")
         action_config = action.get("config") or action.get("action_config") or {}
+        run_if = action.get("run_if")
+        if run_if:
+            condition_context = {"event": event, "rule": rule, "steps": steps}
+            if not evaluate_condition(run_if, condition_context):
+                steps.append({"ok": True, "skipped": True, "condition": run_if})
+                continue
         result = execute_action_by_type(action_type, action_config, context)
         steps.append(result)
         if not result.get("ok"):

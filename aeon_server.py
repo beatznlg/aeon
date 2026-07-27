@@ -2378,6 +2378,9 @@ def automations_index():
                 return jsonify({"ok": False, "error": f"actions[{idx}] missing type"}), 400
             if step_type not in {"webhook", "outbound_webhook", "swarm", "workflow"}:
                 return jsonify({"ok": False, "error": f"actions[{idx}] type must be webhook, outbound_webhook, swarm, or workflow"}), 400
+            run_if = step.get("run_if")
+            if run_if is not None and not isinstance(run_if, dict):
+                return jsonify({"ok": False, "error": f"actions[{idx}] run_if must be a condition object or omitted"}), 400
         # Derive legacy action_type/action_config from the first step for compatibility.
         first_step = actions[0]
         action_type = first_step.get("type") or first_step.get("action_type")
@@ -2530,6 +2533,9 @@ def automation_detail(rule_id: str):
                 return jsonify({"ok": False, "error": f"actions[{idx}] missing type"}), 400
             if step_type not in {"webhook", "outbound_webhook", "swarm", "workflow"}:
                 return jsonify({"ok": False, "error": f"actions[{idx}] type must be webhook, outbound_webhook, swarm, or workflow"}), 400
+            run_if = step.get("run_if")
+            if run_if is not None and not isinstance(run_if, dict):
+                return jsonify({"ok": False, "error": f"actions[{idx}] run_if must be a condition object or omitted"}), 400
 
     # Recompute next_run_at when switching to cron or changing the expression
     if ("schedule_type" in data or "cron_expression" in data) and updates.get("schedule_type") == "cron":
