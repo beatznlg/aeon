@@ -2362,13 +2362,35 @@ def automations_index():
     data = request.json or {}
     name = (data.get("name") or "").strip()
     event_type = (data.get("event_type") or "").strip()
+    actions = data.get("actions") or []
     action_type = (data.get("action_type") or "").strip()
     schedule_type = (data.get("schedule_type") or "event").strip()
     cron_expression = (data.get("cron_expression") or "").strip()
-    if not name or not event_type or not action_type:
-        return jsonify({"ok": False, "error": "name, event_type, and action_type are required"}), 400
-    if action_type not in {"webhook", "outbound_webhook", "swarm", "workflow"}:
-        return jsonify({"ok": False, "error": "action_type must be webhook, outbound_webhook, swarm, or workflow"}), 400
+    if not name or not event_type:
+        return jsonify({"ok": False, "error": "name and event_type are required"}), 400
+
+    # Phase 26: support multi-step action chains via `actions` array.
+    # Legacy single-action rules use `action_type`/`action_config`.
+    if actions:
+        for idx, step in enumerate(actions):
+            step_type = step.get("type") or step.get("action_type")
+            if not step_type:
+                return jsonify({"ok": False, "error": f"actions[{idx}] missing type"}), 400
+            if step_type not in {"webhook", "outbound_webhook", "swarm", "workflow"}:
+                return jsonify({"ok": False, "error": f"actions[{idx}] type must be webhook, outbound_webhook, swarm, or workflow"}), 400
+        # Derive legacy action_type/action_config from the first step for compatibility.
+        first_step = actions[0]
+        action_type = first_step.get("type") or first_step.get("action_type")
+        action_config = first_step.get("config") or first_step.get("action_config") or {}
+    elif action_type:
+        action_config = data.get("action_config") or {}
+        if action_type not in {"webhook", "outbound_webhook", "swarm", "workflow"}:
+            return jsonify({"ok": False, "error": "action_type must be webhook, outbound_webhook, swarm, or workflow"}), 400
+        # Build an actions array from the legacy single action.
+        actions = [{"type": action_type, "config": action_config}]
+    else:
+        return jsonify({"ok": False, "error": "Must provide actions array or legacy action_type"}), 400
+
     if schedule_type not in {"event", "cron"}:
         return jsonify({"ok": False, "error": "schedule_type must be event or cron"}), 400
     if schedule_type == "cron" and not cron_expression:
@@ -2394,7 +2416,8 @@ def automations_index():
             "event_type": event_type,
             "condition": data.get("condition", {}),
             "action_type": action_type,
-            "action_config": data.get("action_config", {}),
+            "action_config": action_config,
+            "actions": actions,
             "enabled": data.get("enabled", True),
             "approval_required": data.get("approval_required", False),
             "approver_message": data.get("approver_message", ""),
@@ -2474,6 +2497,7 @@ def automation_detail(rule_id: str):
         "condition",
         "action_type",
         "action_config",
+        "actions",
         "enabled",
         "approval_required",
         "approver_message",
@@ -2492,6 +2516,20 @@ def automation_detail(rule_id: str):
                 raise ValueError
         except (ValueError, TypeError):
             return jsonify({"ok": False, "error": "cooldown_minutes must be a non-negative integer"}), 400
+
+    # Validate actions array when present (Phase 26 action chains)
+    if "actions" in updates:
+        actions = updates["actions"] or []
+        if not isinstance(actions, list):
+            return jsonify({"ok": False, "error": "actions must be an array"}), 400
+        for idx, step in enumerate(actions):
+            if not isinstance(step, dict):
+                return jsonify({"ok": False, "error": f"actions[{idx}] must be an object"}), 400
+            step_type = step.get("type") or step.get("action_type")
+            if not step_type:
+                return jsonify({"ok": False, "error": f"actions[{idx}] missing type"}), 400
+            if step_type not in {"webhook", "outbound_webhook", "swarm", "workflow"}:
+                return jsonify({"ok": False, "error": f"actions[{idx}] type must be webhook, outbound_webhook, swarm, or workflow"}), 400
 
     # Recompute next_run_at when switching to cron or changing the expression
     if ("schedule_type" in data or "cron_expression" in data) and updates.get("schedule_type") == "cron":

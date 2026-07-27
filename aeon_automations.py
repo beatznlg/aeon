@@ -252,79 +252,124 @@ def _update_last_triggered(rule: dict[str, Any]) -> None:
 
 
 def _execute_action(rule: dict[str, Any], event: dict[str, Any]) -> dict[str, Any]:
-    """Execute the action configured for a rule."""
-    action_type = rule.get("action_type")
-    action_config = rule.get("action_config") or {}
-    return execute_action_by_type(action_type, action_config, event, rule)
+    """Execute the action(s) configured for a rule.
+
+    Supports an ordered ``actions`` array of action steps. Each step's output is
+    appended to ``steps`` and made available to subsequent steps via templates
+    like ``{{ steps.0.data.summary }}``. Falls back to the legacy single-action
+    ``action_type``/``action_config`` fields when ``actions`` is absent or empty.
+    """
+    actions = rule.get("actions") or []
+    if not actions:
+        actions = [
+            {
+                "type": rule.get("action_type"),
+                "config": rule.get("action_config") or {},
+            }
+        ]
+
+    steps: list[dict[str, Any]] = []
+    context = {"event": event, "rule": rule, "steps": steps}
+
+    for idx, action in enumerate(actions):
+        action_type = action.get("type") or action.get("action_type")
+        action_config = action.get("config") or action.get("action_config") or {}
+        result = execute_action_by_type(action_type, action_config, context)
+        steps.append(result)
+        if not result.get("ok"):
+            return {
+                "ok": False,
+                "status": "failed",
+                "steps": steps,
+                "failed_step": idx,
+                "error": result.get("error", "step failed"),
+            }
+
+    return {"ok": True, "status": "completed", "steps": steps}
 
 
-def _resolve_template_value(path: str, event: dict[str, Any], rule: dict[str, Any]) -> Any:
-    """Resolve a dotted template path against the event/rule context.
+def _resolve_template_value(path: str, context: dict[str, Any]) -> Any:
+    """Resolve a dotted/indexed template path against the automation context.
 
     Supported paths:
         event.payload.<key>[.<subkey>...]
         event.type, event.user_id, event.workspace_id, event.timestamp
         rule.name, rule.id, rule.workspace_id
+        steps.<index>.<key>  (e.g. steps.0.data.summary)
+        steps[index].<key>   (e.g. steps[0].data.summary)
     """
-    parts = path.split(".")
-    if len(parts) < 2:
+    # Normalize bracket syntax: steps[0].data -> steps.0.data
+    normalized = path.replace("[", ".").replace("]", "")
+    parts = normalized.split(".")
+    if not parts or not path:
         return ""
 
-    root = parts[0]
-    rest = parts[1:]
-
-    if root == "event":
-        if not rest:
+    value = context
+    for part in parts:
+        if isinstance(value, dict) and part in value:
+            value = value[part]
+        elif isinstance(value, list) and part.isdigit() and 0 <= int(part) < len(value):
+            value = value[int(part)]
+        else:
             return ""
-        key = rest[0]
-        if key == "payload":
-            value = event.get("payload") or {}
-            for sub in rest[1:]:
-                if isinstance(value, dict) and sub in value:
-                    value = value[sub]
-                else:
-                    return ""
-            return value
-        return event.get(key)
-    if root == "rule":
-        if not rest:
-            return ""
-        key = rest[0]
-        return rule.get(key) if key in {"name", "id", "workspace_id"} else ""
-
-    return ""
+    return value
 
 
-def _interpolate(value: Any, event: dict[str, Any], rule: dict[str, Any]) -> Any:
-    """Recursively interpolate {{ ... }} templates in strings, dicts, and lists."""
+def _interpolate(value: Any, *args) -> Any:
+    """Recursively interpolate {{ ... }} templates in strings, dicts, and lists.
+
+    Supports two calling conventions for backward compatibility:
+        _interpolate(value, context)
+        _interpolate(value, event, rule)  # legacy
+    """
+    if len(args) == 1:
+        context = args[0]
+    elif len(args) == 2:
+        event, rule = args
+        context = {"event": event, "rule": rule, "steps": []}
+    else:
+        raise TypeError("_interpolate() takes 2 or 3 arguments")
+
     if isinstance(value, str):
-        pattern = re.compile(r"{{\s*([\w.]+)\s*}}")
+        pattern = re.compile(r"{{\s*([\w.\[\]]+)\s*}}")
 
         def _repl(match: re.Match) -> str:
             path = match.group(1)
-            resolved = _resolve_template_value(path, event, rule)
+            resolved = _resolve_template_value(path, context)
             if resolved is None:
                 return ""
             return str(resolved)
 
         return pattern.sub(_repl, value)
     if isinstance(value, dict):
-        return {k: _interpolate(v, event, rule) for k, v in value.items()}
+        return {k: _interpolate(v, *args) for k, v in value.items()}
     if isinstance(value, list):
-        return [_interpolate(v, event, rule) for v in value]
+        return [_interpolate(v, *args) for v in value]
     return value
 
 
 def execute_action_by_type(
     action_type: str | None,
     action_config: dict[str, Any],
-    event: dict[str, Any],
-    rule: dict[str, Any] | None = None,
+    *args,
 ) -> dict[str, Any]:
-    """Execute an action given its type, config, and triggering event."""
+    """Execute an action given its type, config, and automation context.
+
+    Supports two calling conventions for backward compatibility:
+        execute_action_by_type(action_type, action_config, context)
+        execute_action_by_type(action_type, action_config, event, rule)  # legacy
+    """
+    if len(args) == 1:
+        context = args[0]
+    elif len(args) == 2:
+        event, rule = args
+        context = {"event": event, "rule": rule, "steps": []}
+    else:
+        raise TypeError("execute_action_by_type() takes 3 or 4 arguments")
+
+    event = context.get("event") or {}
     event_payload = event.get("payload") or {}
-    rule_ctx = rule or {}
-    interpolated_config = _interpolate(action_config, event, rule_ctx)
+    interpolated_config = _interpolate(action_config, context)
 
     if action_type == "webhook":
         return _execute_webhook(interpolated_config, event)
@@ -724,7 +769,8 @@ def resolve_approval(
             "id": approval.get("rule_id"),
             "workspace_id": approval.get("workspace_id"),
         }
-        result = execute_action_by_type(approval.get("action_type"), action_config, event, approval_rule)
+        approval_context = {"event": event, "rule": approval_rule, "steps": []}
+        result = execute_action_by_type(approval.get("action_type"), action_config, approval_context)
 
         update = {
             "status": "approved",

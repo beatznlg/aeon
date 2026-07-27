@@ -212,3 +212,86 @@ def test_is_in_cooldown_expired():
     last = datetime.now(timezone.utc) - timedelta(minutes=10)
     rule = {"cooldown_minutes": 5, "last_triggered_at": last.isoformat()}
     assert _is_in_cooldown(rule) is False
+
+
+def test_interpolate_steps_context(sample_event, sample_rule):
+    from aeon_automations import _interpolate
+
+    context = {
+        "event": sample_event,
+        "rule": sample_rule,
+        "steps": [
+            {"data": {"summary": "Bug confirmed"}},
+            {"data": {"sent": True}},
+        ],
+    }
+    assert _interpolate("{{ steps.0.data.summary }}", context) == "Bug confirmed"
+    assert _interpolate("{{ steps[1].data.sent }}", context) == "True"
+    assert _interpolate("{{ steps.99.data.summary }}", context) == ""
+
+
+def test_execute_action_legacy_single_action(sample_event, sample_rule):
+    from aeon_automations import _execute_action
+
+    rule = {
+        **sample_rule,
+        "action_type": "webhook",
+        "action_config": {"url": "https://example.com/hook"},
+    }
+    with mock.patch("requests.post") as mock_post:
+        mock_response = mock.Mock()
+        mock_response.status_code = 200
+        mock_response.raise_for_status.return_value = None
+        mock_post.return_value = mock_response
+
+        result = _execute_action(rule, sample_event)
+
+        assert result["ok"] is True
+        assert result["status"] == "completed"
+        assert len(result["steps"]) == 1
+        assert result["steps"][0]["status_code"] == 200
+
+
+def test_execute_action_multi_step_chain(sample_event, sample_rule):
+    from aeon_automations import _execute_action
+
+    rule = {
+        **sample_rule,
+        "actions": [
+            {"type": "outbound_webhook", "config": {"url": "https://api.test/step1", "method": "POST", "body": "first"}},
+            {"type": "outbound_webhook", "config": {"url": "https://api.test/step2", "method": "POST", "body": "{{ steps.0.status_code }}"}},
+        ],
+    }
+    with mock.patch("requests.request") as mock_request:
+        mock_response = mock.Mock()
+        mock_response.status_code = 202
+        mock_response.raise_for_status.return_value = None
+        mock_request.return_value = mock_response
+
+        result = _execute_action(rule, sample_event)
+
+        assert result["ok"] is True
+        assert result["status"] == "completed"
+        assert len(result["steps"]) == 2
+        assert result["steps"][0]["status_code"] == 202
+        assert result["steps"][1]["status_code"] == 202
+        # Second step body should interpolate to the first step's status code
+        second_call = mock_request.call_args_list[1]
+        assert second_call.kwargs["data"] == "202"
+
+
+def test_execute_action_stops_on_failure(sample_event, sample_rule):
+    from aeon_automations import _execute_action
+
+    rule = {
+        **sample_rule,
+        "actions": [
+            {"type": "outbound_webhook", "config": {"url": "", "method": "POST"}},
+            {"type": "outbound_webhook", "config": {"url": "https://api.test/step2", "method": "POST"}},
+        ],
+    }
+    result = _execute_action(rule, sample_event)
+
+    assert result["ok"] is False
+    assert result["failed_step"] == 0
+    assert len(result["steps"]) == 1

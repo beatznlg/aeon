@@ -8,8 +8,9 @@ interface AutomationRule {
   name: string;
   event_type: string;
   condition: Record<string, any>;
-  action_type: string;
-  action_config: Record<string, any>;
+  action_type?: string;
+  action_config?: Record<string, any>;
+  actions?: { type: string; config: Record<string, any> }[];
   enabled: boolean;
   approval_required?: boolean;
   schedule_type?: "event" | "cron";
@@ -112,6 +113,101 @@ function TestConditionButton({ condition }: { condition: Record<string, any> }) 
   );
 }
 
+function ActionConfigEditor({
+  actionType,
+  config,
+  updateConfig,
+}: {
+  actionType: string;
+  config: Record<string, any>;
+  updateConfig: (key: string, value: any) => void;
+}) {
+  return (
+    <>
+      {actionType === "webhook" && (
+        <input
+          className="input"
+          placeholder="Webhook URL"
+          onChange={(e) => updateConfig("url", e.target.value)}
+        />
+      )}
+      {actionType === "outbound_webhook" && (
+        <>
+          <select
+            className="input"
+            value={(config?.method as string) || "POST"}
+            onChange={(e) => updateConfig("method", e.target.value)}
+            style={{ marginBottom: 8 }}
+          >
+            {["GET", "POST", "PUT", "PATCH", "DELETE"].map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
+          <input
+            className="input"
+            placeholder="URL (supports {{ event.payload.key }} templates)"
+            onChange={(e) => updateConfig("url", e.target.value)}
+            style={{ marginBottom: 8 }}
+          />
+          <textarea
+            className="input"
+            rows={3}
+            placeholder="Headers (JSON)"
+            onChange={(e) => {
+              try {
+                updateConfig("headers", e.target.value ? JSON.parse(e.target.value) : {});
+              } catch {}
+            }}
+            style={{ marginBottom: 8 }}
+          />
+          <textarea
+            className="input"
+            rows={3}
+            placeholder="Body (JSON or text)"
+            onChange={(e) => updateConfig("body", e.target.value)}
+          />
+          <div style={{ fontSize: "0.75rem", color: "var(--fg-mute)", marginTop: 4 }}>
+            Use templates like {"{{ event.payload.issue }}"}, {"{{ event.type }}"}, {"{{ rule.name }}"} in URL,
+            headers, and body.
+          </div>
+        </>
+      )}
+      {actionType === "swarm" && (
+        <>
+          <input
+            className="input"
+            placeholder="Prompt"
+            onChange={(e) => updateConfig("prompt", e.target.value)}
+            style={{ marginBottom: 8 }}
+          />
+          <input
+            className="input"
+            placeholder="App IDs (comma separated)"
+            onChange={(e) => updateConfig("app_ids", e.target.value)}
+          />
+        </>
+      )}
+      {actionType === "workflow" && (
+        <>
+          <input
+            className="input"
+            placeholder="Workflow ID"
+            onChange={(e) => updateConfig("workflow_id", e.target.value)}
+            style={{ marginBottom: 8 }}
+          />
+          <input
+            className="input"
+            placeholder="Initial input"
+            onChange={(e) => updateConfig("initial_input", e.target.value)}
+          />
+        </>
+      )}
+    </>
+  );
+}
+
 export default function AutomationsPage() {
   const [rules, setRules] = useState<AutomationRule[]>([]);
   const [loading, setLoading] = useState(true);
@@ -129,6 +225,7 @@ export default function AutomationsPage() {
     condition: {},
     action_type: "webhook",
     action_config: {},
+    actions: [],
     enabled: true,
     approval_required: false,
     schedule_type: "event",
@@ -219,10 +316,15 @@ export default function AutomationsPage() {
   async function createRule(e: React.FormEvent) {
     e.preventDefault();
     try {
+      const payload = { ...form };
+      if (!payload.actions || payload.actions.length === 0) {
+        delete payload.actions;
+      }
+
       const res = await fetch("/api/automations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (data.ok) {
@@ -233,6 +335,7 @@ export default function AutomationsPage() {
           condition: {},
           action_type: "webhook",
           action_config: {},
+          actions: [],
           enabled: true,
           approval_required: false,
           schedule_type: "event",
@@ -354,20 +457,22 @@ export default function AutomationsPage() {
                   ))}
                 </select>
               </div>
-              <div>
-                <label style={{ display: "block", marginBottom: 6, fontSize: "0.8rem", fontWeight: 600 }}>Action Type</label>
-                <select
-                  className="input"
-                  value={form.action_type}
-                  onChange={(e) => setForm({ ...form, action_type: e.target.value, action_config: {} })}
-                >
-                  {ACTION_TYPES.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {(!form.actions || form.actions.length === 0) && (
+                <div>
+                  <label style={{ display: "block", marginBottom: 6, fontSize: "0.8rem", fontWeight: 600 }}>Action Type</label>
+                  <select
+                    className="input"
+                    value={form.action_type}
+                    onChange={(e) => setForm({ ...form, action_type: e.target.value, action_config: {} })}
+                  >
+                    {ACTION_TYPES.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
 
             <div style={{ marginBottom: 16 }}>
@@ -460,93 +565,98 @@ export default function AutomationsPage() {
                 placeholder="0"
               />
               <div style={{ fontSize: "0.75rem", color: "var(--fg-mute)", marginTop: 4 }}>
-                Minimum minutes between executions. 0 = no cooldown.
+                Minimum minutes between execution. 0 = no cooldown.
               </div>
             </div>
 
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ display: "block", marginBottom: 6, fontSize: "0.8rem", fontWeight: 600 }}>Action Config</label>
-              {form.action_type === "webhook" && (
-                <input
-                  className="input"
-                  placeholder="Webhook URL"
-                  onChange={(e) => updateActionConfig("url", e.target.value)}
-                />
-              )}
-              {form.action_type === "outbound_webhook" && (
-                <>
-                  <select
-                    className="input"
-                    value={(form.action_config?.method as string) || "POST"}
-                    onChange={(e) => updateActionConfig("method", e.target.value)}
-                    style={{ marginBottom: 8 }}
+            {(!form.actions || form.actions.length === 0) ? (
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <label style={{ fontSize: "0.8rem", fontWeight: 600 }}>Action Config</label>
+                  <button
+                    type="button"
+                    className="btn btn-sm"
+                    onClick={() =>
+                      setForm({
+                        ...form,
+                        actions: [
+                          { type: form.action_type || "webhook", config: form.action_config || {} },
+                          { type: "webhook", config: {} },
+                        ],
+                      })
+                    }
                   >
-                    {["GET", "POST", "PUT", "PATCH", "DELETE"].map((m) => (
-                      <option key={m} value={m}>
-                        {m}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    className="input"
-                    placeholder="URL (supports {{ event.payload.key }} templates)"
-                    onChange={(e) => updateActionConfig("url", e.target.value)}
-                    style={{ marginBottom: 8 }}
-                  />
-                  <textarea
-                    className="input"
-                    rows={3}
-                    placeholder="Headers (JSON)"
-                    onChange={(e) => {
-                      try {
-                        updateActionConfig("headers", e.target.value ? JSON.parse(e.target.value) : {});
-                      } catch {}
-                    }}
-                    style={{ marginBottom: 8 }}
-                  />
-                  <textarea
-                    className="input"
-                    rows={3}
-                    placeholder="Body (JSON or text)"
-                    onChange={(e) => updateActionConfig("body", e.target.value)}
-                  />
-                  <div style={{ fontSize: "0.75rem", color: "var(--fg-mute)", marginTop: 4 }}>
-                    Use templates like {"{{ event.payload.issue }}"}, {"{{ event.type }}"}, {"{{ rule.name }}"} in URL,
-                    headers, and body.
+                    + Add Step (Chain)
+                  </button>
+                </div>
+                <ActionConfigEditor
+                  actionType={form.action_type || "webhook"}
+                  config={form.action_config || {}}
+                  updateConfig={updateActionConfig}
+                />
+              </div>
+            ) : (
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <label style={{ fontSize: "0.8rem", fontWeight: 600 }}>Action Steps</label>
+                  <button
+                    type="button"
+                    className="btn btn-sm"
+                    onClick={() =>
+                      setForm({
+                        ...form,
+                        actions: [...form.actions!, { type: "webhook", config: {} }],
+                      })
+                    }
+                  >
+                    + Add Step
+                  </button>
+                </div>
+                {form.actions.map((act, idx) => (
+                  <div key={idx} style={{ border: "1px solid var(--border)", padding: 12, borderRadius: 8, marginBottom: 8 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                      <span style={{ fontWeight: 600, fontSize: "0.85rem" }}>Step {idx + 1}</span>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-danger"
+                        onClick={() => {
+                          const newActions = [...form.actions!];
+                          newActions.splice(idx, 1);
+                          setForm({ ...form, actions: newActions });
+                        }}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                    <select
+                      className="input"
+                      value={act.type}
+                      onChange={(e) => {
+                        const newActions = [...form.actions!];
+                        newActions[idx] = { ...newActions[idx], type: e.target.value, config: {} };
+                        setForm({ ...form, actions: newActions });
+                      }}
+                      style={{ marginBottom: 8 }}
+                    >
+                      {ACTION_TYPES.map((t) => (
+                        <option key={t} value={t}>
+                          {t}
+                        </option>
+                      ))}
+                    </select>
+                    <ActionConfigEditor
+                      actionType={act.type}
+                      config={act.config}
+                      updateConfig={(k, v) => {
+                        const newActions = [...form.actions!];
+                        newActions[idx] = { ...newActions[idx], config: { ...newActions[idx].config, [k]: v } };
+                        setForm({ ...form, actions: newActions });
+                      }}
+                    />
                   </div>
-                </>
-              )}
-              {form.action_type === "swarm" && (
-                <>
-                  <input
-                    className="input"
-                    placeholder="Prompt"
-                    onChange={(e) => updateActionConfig("prompt", e.target.value)}
-                    style={{ marginBottom: 8 }}
-                  />
-                  <input
-                    className="input"
-                    placeholder="App IDs (comma separated)"
-                    onChange={(e) => updateActionConfig("app_ids", e.target.value)}
-                  />
-                </>
-              )}
-              {form.action_type === "workflow" && (
-                <>
-                  <input
-                    className="input"
-                    placeholder="Workflow ID"
-                    onChange={(e) => updateActionConfig("workflow_id", e.target.value)}
-                    style={{ marginBottom: 8 }}
-                  />
-                  <input
-                    className="input"
-                    placeholder="Initial input"
-                    onChange={(e) => updateActionConfig("initial_input", e.target.value)}
-                  />
-                </>
-              )}
-            </div>
+                ))}
+              </div>
+            )}
 
             <div style={{ display: "flex", gap: 12 }}>
               <button type="submit" className="btn btn-primary">
@@ -594,7 +704,10 @@ export default function AutomationsPage() {
                     <div>
                       <div style={{ fontWeight: 600 }}>{rule.name}</div>
                       <div style={{ fontSize: "0.78rem", color: "var(--fg-mute)" }}>
-                        {rule.schedule_type === "cron" ? `⏰ ${rule.cron_expression}` : rule.event_type} → {rule.action_type}
+                        {rule.schedule_type === "cron" ? `⏰ ${rule.cron_expression}` : rule.event_type} →{" "}
+                        {rule.actions && rule.actions.length > 0
+                          ? `${rule.actions[0].type} (${rule.actions.length} steps)`
+                          : rule.action_type}
                       </div>
                       {rule.schedule_type === "cron" && (
                         <div style={{ fontSize: "0.72rem", color: "var(--fg-mute)" }}>
