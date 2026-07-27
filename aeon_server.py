@@ -2374,6 +2374,14 @@ def automations_index():
     if schedule_type == "cron" and not cron_expression:
         return jsonify({"ok": False, "error": "cron_expression is required for scheduled rules"}), 400
 
+    cooldown_minutes = data.get("cooldown_minutes", 0)
+    try:
+        cooldown_minutes = int(cooldown_minutes)
+        if cooldown_minutes < 0:
+            raise ValueError
+    except (ValueError, TypeError):
+        return jsonify({"ok": False, "error": "cooldown_minutes must be a non-negative integer"}), 400
+
     next_run_at = None
     if schedule_type == "cron":
         next_run_at = _compute_next_run(cron_expression)
@@ -2393,6 +2401,7 @@ def automations_index():
             "schedule_type": schedule_type,
             "cron_expression": cron_expression if schedule_type == "cron" else None,
             "next_run_at": next_run_at.isoformat() if next_run_at else None,
+            "cooldown_minutes": cooldown_minutes,
             "workspace_id": workspace_id,
         }
         r = requests.post(
@@ -2470,9 +2479,19 @@ def automation_detail(rule_id: str):
         "approver_message",
         "schedule_type",
         "cron_expression",
+        "cooldown_minutes",
     ):
         if field in data:
             updates[field] = data[field]
+
+    # Validate cooldown_minutes when present
+    if "cooldown_minutes" in updates:
+        try:
+            updates["cooldown_minutes"] = int(updates["cooldown_minutes"])
+            if updates["cooldown_minutes"] < 0:
+                raise ValueError
+        except (ValueError, TypeError):
+            return jsonify({"ok": False, "error": "cooldown_minutes must be a non-negative integer"}), 400
 
     # Recompute next_run_at when switching to cron or changing the expression
     if ("schedule_type" in data or "cron_expression" in data) and updates.get("schedule_type") == "cron":

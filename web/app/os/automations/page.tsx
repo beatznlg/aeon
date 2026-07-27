@@ -16,6 +16,8 @@ interface AutomationRule {
   cron_expression?: string;
   last_run_at?: string;
   next_run_at?: string;
+  cooldown_minutes?: number;
+  last_triggered_at?: string;
   created_at: string;
 }
 
@@ -131,6 +133,7 @@ export default function AutomationsPage() {
     approval_required: false,
     schedule_type: "event",
     cron_expression: "",
+    cooldown_minutes: 0,
   });
 
   useEffect(() => {
@@ -234,6 +237,7 @@ export default function AutomationsPage() {
           approval_required: false,
           schedule_type: "event",
           cron_expression: "",
+          cooldown_minutes: 0,
         });
         await loadRules();
       } else {
@@ -442,6 +446,23 @@ export default function AutomationsPage() {
                 </div>
               </div>
             )}
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: "block", marginBottom: 6, fontSize: "0.8rem", fontWeight: 600 }}>
+                Cooldown (minutes)
+              </label>
+              <input
+                className="input"
+                type="number"
+                min={0}
+                value={form.cooldown_minutes ?? 0}
+                onChange={(e) => setForm({ ...form, cooldown_minutes: parseInt(e.target.value || "0", 10) })}
+                placeholder="0"
+              />
+              <div style={{ fontSize: "0.75rem", color: "var(--fg-mute)", marginTop: 4 }}>
+                Minimum minutes between executions. 0 = no cooldown.
+              </div>
+            </div>
 
             <div style={{ marginBottom: 16 }}>
               <label style={{ display: "block", marginBottom: 6, fontSize: "0.8rem", fontWeight: 600 }}>Action Config</label>

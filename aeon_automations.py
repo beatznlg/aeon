@@ -212,6 +212,45 @@ def _condition_matches(condition: dict[str, Any] | None, payload: dict[str, Any]
     return evaluate_condition(condition, payload)
 
 
+def _is_in_cooldown(rule: dict[str, Any]) -> bool:
+    """Return True if the rule is still within its configured cooldown window."""
+    cooldown = rule.get("cooldown_minutes") or 0
+    if not cooldown:
+        return False
+    last_triggered = rule.get("last_triggered_at")
+    if not last_triggered:
+        return False
+    try:
+        if isinstance(last_triggered, str):
+            last = datetime.fromisoformat(last_triggered.replace("Z", "+00:00"))
+        elif isinstance(last_triggered, datetime):
+            last = last_triggered
+        else:
+            return False
+        return datetime.now(timezone.utc) - last < timedelta(minutes=int(cooldown))
+    except Exception:
+        return False
+
+
+def _update_last_triggered(rule: dict[str, Any]) -> None:
+    """Persist the current time as the rule's last triggered timestamp."""
+    db_url = _get_db_url()
+    headers = _supabase_headers()
+    if not db_url or not headers:
+        return
+    try:
+        import requests
+
+        requests.patch(
+            f"{db_url}/rest/v1/automation_rules?id=eq.{rule.get('id')}",
+            headers=headers,
+            json={"last_triggered_at": "now"},
+            timeout=10,
+        )
+    except Exception as exc:
+        logger.warning("Failed to update last_triggered_at for rule %s: %s", rule.get("id"), exc)
+
+
 def _execute_action(rule: dict[str, Any], event: dict[str, Any]) -> dict[str, Any]:
     """Execute the action configured for a rule."""
     action_type = rule.get("action_type")
@@ -744,6 +783,25 @@ def evaluate_automations(
         if not _condition_matches(condition, payload):
             continue
 
+        # Phase 25: cooldown / throttling
+        if _is_in_cooldown(rule):
+            _log_execution_with_status(
+                rule,
+                event,
+                "throttled",
+                {"reason": "cooldown active"},
+            )
+            results.append({
+                "rule_id": rule.get("id"),
+                "rule_name": rule.get("name"),
+                "result": {
+                    "ok": True,
+                    "status": "throttled",
+                    "reason": "cooldown active",
+                },
+            })
+            continue
+
         # Phase 19: HITL approval checkpoint
         if rule.get("approval_required"):
             approval_result = _create_approval_request(rule, event)
@@ -770,6 +828,7 @@ def evaluate_automations(
                 continue
 
         result = _execute_action(rule, event)
+        _update_last_triggered(rule)
         _log_execution(rule, event, result)
         results.append({
             "rule_id": rule.get("id"),

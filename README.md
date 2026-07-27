@@ -110,6 +110,7 @@ AEON_ADMIN_NAME=AEON Admin
 | **22** | Automation Execution History & Observability — dashboard for automation runs, statuses, errors, and retries | ✅ |
 | **23** | Dynamic Context Mapping & Outbound Webhooks — `{{ event.payload }}` templating and bidirectional HTTP actions | ✅ |
 | **24** | Advanced Condition Engine — MongoDB-style operators (`$gt`, `$in`, `$contains`, `$regex`, `$and`/`$or`/`$not`) and nested dot-path conditions | ✅ |
+| **25** | Automation Rule Cooldown / Throttling — `cooldown_minutes` to prevent runaway rule executions | ✅ |
 
 ---
 

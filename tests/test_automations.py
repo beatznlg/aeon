@@ -180,3 +180,35 @@ def test_evaluate_condition_regex():
     assert evaluate_condition({"message": {"$regex": "RateLimit"}}, payload) is True
     assert evaluate_condition({"message": {"$regex": "^RateLimit"}}, payload) is True
     assert evaluate_condition({"message": {"$regex": "timeout"}}, payload) is False
+
+
+def test_is_in_cooldown_no_cooldown():
+    from aeon_automations import _is_in_cooldown
+
+    assert _is_in_cooldown({"cooldown_minutes": 0}) is False
+    assert _is_in_cooldown({"cooldown_minutes": None}) is False
+    assert _is_in_cooldown({}) is False
+
+
+def test_is_in_cooldown_within_window():
+    from datetime import datetime, timezone, timedelta
+    from aeon_automations import _is_in_cooldown
+
+    last = datetime.now(timezone.utc) - timedelta(minutes=3)
+    rule = {"cooldown_minutes": 5, "last_triggered_at": last.isoformat()}
+    assert _is_in_cooldown(rule) is True
+
+    # String timestamps with trailing Z should also parse (use a recent time)
+    recent_z = (datetime.now(timezone.utc) - timedelta(minutes=2)).isoformat()
+    recent_z = recent_z.replace("+00:00", "Z")
+    rule_z = {"cooldown_minutes": 5, "last_triggered_at": recent_z}
+    assert _is_in_cooldown(rule_z) is True
+
+
+def test_is_in_cooldown_expired():
+    from datetime import datetime, timezone, timedelta
+    from aeon_automations import _is_in_cooldown
+
+    last = datetime.now(timezone.utc) - timedelta(minutes=10)
+    rule = {"cooldown_minutes": 5, "last_triggered_at": last.isoformat()}
+    assert _is_in_cooldown(rule) is False
