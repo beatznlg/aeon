@@ -2384,6 +2384,17 @@ def automations_index():
             loop_over = step.get("loop_over")
             if loop_over is not None and not isinstance(loop_over, str):
                 return jsonify({"ok": False, "error": f"actions[{idx}] loop_over must be a string path/template or omitted"}), 400
+            on_error = step.get("on_error")
+            if on_error is not None:
+                if not isinstance(on_error, dict):
+                    return jsonify({"ok": False, "error": f"actions[{idx}] on_error must be an action object or omitted"}), 400
+                if not (on_error.get("type") or on_error.get("action_type")):
+                    return jsonify({"ok": False, "error": f"actions[{idx}] on_error must have a type"}), 400
+                if (on_error.get("type") or on_error.get("action_type")) not in {"webhook", "outbound_webhook", "swarm", "workflow"}:
+                    return jsonify({"ok": False, "error": f"actions[{idx}] on_error type must be webhook, outbound_webhook, swarm, or workflow"}), 400
+            continue_on_error = step.get("continue_on_error")
+            if continue_on_error is not None and not isinstance(continue_on_error, bool):
+                return jsonify({"ok": False, "error": f"actions[{idx}] continue_on_error must be a boolean or omitted"}), 400
         # Derive legacy action_type/action_config from the first step for compatibility.
         first_step = actions[0]
         action_type = first_step.get("type") or first_step.get("action_type")
@@ -2542,6 +2553,17 @@ def automation_detail(rule_id: str):
             loop_over = step.get("loop_over")
             if loop_over is not None and not isinstance(loop_over, str):
                 return jsonify({"ok": False, "error": f"actions[{idx}] loop_over must be a string path/template or omitted"}), 400
+            on_error = step.get("on_error")
+            if on_error is not None:
+                if not isinstance(on_error, dict):
+                    return jsonify({"ok": False, "error": f"actions[{idx}] on_error must be an action object or omitted"}), 400
+                if not (on_error.get("type") or on_error.get("action_type")):
+                    return jsonify({"ok": False, "error": f"actions[{idx}] on_error must have a type"}), 400
+                if (on_error.get("type") or on_error.get("action_type")) not in {"webhook", "outbound_webhook", "swarm", "workflow"}:
+                    return jsonify({"ok": False, "error": f"actions[{idx}] on_error type must be webhook, outbound_webhook, swarm, or workflow"}), 400
+            continue_on_error = step.get("continue_on_error")
+            if continue_on_error is not None and not isinstance(continue_on_error, bool):
+                return jsonify({"ok": False, "error": f"actions[{idx}] continue_on_error must be a boolean or omitted"}), 400
 
     # Recompute next_run_at when switching to cron or changing the expression
     if ("schedule_type" in data or "cron_expression" in data) and updates.get("schedule_type") == "cron":

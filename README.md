@@ -114,6 +114,7 @@ AEON_ADMIN_NAME=AEON Admin
 | **26** | Sequential Multi-Step Action Chains — ordered `actions` array with per-step context (`{{ steps.0.data.summary }}`) | ✅ |
 | **27** | Conditional Branching in Action Chains — per-step `run_if` conditions using `event`, `steps`, and `rule` context | ✅ |
 | **28** | Action Chain Iterators (For-Each Loops) — process arrays with `loop_over` and `{{ item }}` / `{{ loop.index }}` context | ✅ |
+| **29** | Action Chain Error Handling & Fallbacks — per-step `on_error` fallback actions and `continue_on_error` resilience | ✅ |
 
 ---
 

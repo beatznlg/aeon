@@ -439,3 +439,91 @@ def test_execute_action_loop_over_non_list_fails(sample_event, sample_rule):
 
     assert result["ok"] is False
     assert result["failed_step"] == 1
+
+
+def test_execute_action_on_error_fallback_runs_and_halt(sample_event, sample_rule):
+    from aeon_automations import _execute_action
+
+    rule = {
+        **sample_rule,
+        "actions": [
+            {
+                "type": "outbound_webhook",
+                "config": {"url": "", "method": "POST"},
+                "on_error": {"type": "outbound_webhook", "config": {"url": "https://api.test/fallback"}},
+            },
+            {"type": "outbound_webhook", "config": {"url": "https://api.test/step2", "method": "POST"}},
+        ],
+    }
+    with mock.patch("requests.request") as mock_request:
+        mock_response = mock.Mock()
+        mock_response.status_code = 200
+        mock_response.raise_for_status.return_value = None
+        mock_request.return_value = mock_response
+
+        result = _execute_action(rule, sample_event)
+
+    assert result["ok"] is False
+    assert result["failed_step"] == 0
+    assert result["steps"][0]["on_error_result"]["status_code"] == 200
+    assert len(result["steps"]) == 1
+
+
+def test_execute_action_on_error_fallback_runs_and_continue(sample_event, sample_rule):
+    from aeon_automations import _execute_action
+
+    rule = {
+        **sample_rule,
+        "actions": [
+            {
+                "type": "outbound_webhook",
+                "config": {"url": "", "method": "POST"},
+                "on_error": {"type": "outbound_webhook", "config": {"url": "https://api.test/fallback"}},
+                "continue_on_error": True,
+            },
+            {"type": "outbound_webhook", "config": {"url": "https://api.test/step2", "method": "POST"}},
+        ],
+    }
+    with mock.patch("requests.request") as mock_request:
+        mock_response = mock.Mock()
+        mock_response.status_code = 200
+        mock_response.raise_for_status.return_value = None
+        mock_request.return_value = mock_response
+
+        result = _execute_action(rule, sample_event)
+
+    assert result["ok"] is True
+    assert result["status"] == "completed"
+    assert result["steps"][0]["on_error_result"]["status_code"] == 200
+    assert len(result["steps"]) == 2
+
+
+def test_execute_action_on_error_interpolates_error_context(sample_event, sample_rule):
+    from aeon_automations import _execute_action
+
+    rule = {
+        **sample_rule,
+        "actions": [
+            {
+                "type": "outbound_webhook",
+                "config": {"url": "", "method": "POST"},
+                "on_error": {
+                    "type": "outbound_webhook",
+                    "config": {"url": "https://api.test/alert?message={{ error.message }}"},
+                },
+                "continue_on_error": True,
+            },
+        ],
+    }
+    with mock.patch("requests.request") as mock_request:
+        mock_response = mock.Mock()
+        mock_response.status_code = 200
+        mock_response.raise_for_status.return_value = None
+        mock_request.return_value = mock_response
+
+        result = _execute_action(rule, sample_event)
+
+    assert result["ok"] is True
+    called_url = mock_request.call_args.args[1]
+    assert "URL missing" in called_url
+    assert "error.message" not in called_url

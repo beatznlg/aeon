@@ -263,6 +263,11 @@ def _execute_action(rule: dict[str, Any], event: dict[str, Any]) -> dict[str, An
     appended to ``steps`` and made available to subsequent steps via templates
     like ``{{ steps.0.data.summary }}``. Falls back to the legacy single-action
     ``action_type``/``action_config`` fields when ``actions`` is absent or empty.
+
+    Phase 29: each step may define ``on_error`` (a fallback action) and
+    ``continue_on_error`` (bool). When a step fails, the fallback action runs
+    with ``{{ error.message }}`` and ``{{ error.step }}`` available in context.
+    If ``continue_on_error`` is true, execution proceeds to the next step.
     """
     actions = rule.get("actions") or []
     if not actions:
@@ -286,12 +291,20 @@ def _execute_action(rule: dict[str, Any], event: dict[str, Any]) -> dict[str, An
                 steps.append({"ok": True, "skipped": True, "condition": run_if})
                 continue
 
+        on_error = action.get("on_error")
+        continue_on_error = bool(action.get("continue_on_error"))
+
         loop_over = action.get("loop_over")
         if loop_over:
             loop_items = _resolve_loop_expression(loop_over, context)
             if not isinstance(loop_items, (list, tuple)):
                 result = {"ok": False, "error": f"loop_over did not resolve to a list: {loop_over}"}
                 steps.append(result)
+                fallback = _execute_on_error(action, on_error, idx, result["error"], context)
+                if fallback:
+                    result["on_error_result"] = fallback
+                if continue_on_error and (fallback or fallback is None):
+                    continue
                 return {
                     "ok": False,
                     "status": "failed",
@@ -312,27 +325,65 @@ def _execute_action(rule: dict[str, Any], event: dict[str, Any]) -> dict[str, An
             }
             steps.append(step_result)
             if not step_result["ok"]:
+                error_message = "one or more loop iterations failed"
+                fallback = _execute_on_error(action, on_error, idx, error_message, context)
+                if fallback:
+                    step_result["on_error_result"] = fallback
+                if continue_on_error and (fallback or fallback is None):
+                    continue
                 return {
                     "ok": False,
                     "status": "failed",
                     "steps": steps,
                     "failed_step": idx,
-                    "error": "one or more loop iterations failed",
+                    "error": error_message,
                 }
             continue
 
         result = execute_action_by_type(action_type, action_config, context)
         steps.append(result)
         if not result.get("ok"):
+            error_message = result.get("error") or "step failed"
+            fallback = _execute_on_error(action, on_error, idx, error_message, context)
+            if fallback:
+                result["on_error_result"] = fallback
+            if continue_on_error and (fallback or fallback is None):
+                continue
             return {
                 "ok": False,
                 "status": "failed",
                 "steps": steps,
                 "failed_step": idx,
-                "error": result.get("error", "step failed"),
+                "error": error_message,
             }
 
     return {"ok": True, "status": "completed", "steps": steps}
+
+
+def _execute_on_error(
+    action: dict[str, Any],
+    on_error: Any,
+    step_index: int,
+    error_message: str,
+    context: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Execute a step's on_error fallback action, if provided.
+
+    Returns the fallback result dict, or None if no on_error action is defined.
+    The fallback context includes ``error.message`` and ``error.step`` so the
+    fallback action can report or route the failure.
+    """
+    if not on_error or not isinstance(on_error, dict):
+        return None
+    fallback_type = on_error.get("type") or on_error.get("action_type")
+    fallback_config = on_error.get("config") or on_error.get("action_config") or {}
+    if not fallback_type:
+        return None
+    error_context = {
+        **context,
+        "error": {"message": str(error_message), "step": step_index},
+    }
+    return execute_action_by_type(fallback_type, fallback_config, error_context)
 
 
 def _resolve_template_value(path: str, context: dict[str, Any]) -> Any:

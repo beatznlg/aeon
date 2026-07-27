@@ -10,7 +10,14 @@ interface AutomationRule {
   condition: Record<string, any>;
   action_type?: string;
   action_config?: Record<string, any>;
-  actions?: { type: string; config: Record<string, any>; run_if?: Record<string, any>; loop_over?: string }[];
+  actions?: {
+    type: string;
+    config: Record<string, any>;
+    run_if?: Record<string, any>;
+    loop_over?: string;
+    on_error?: { type: string; config: Record<string, any> };
+    continue_on_error?: boolean;
+  }[];
   enabled: boolean;
   approval_required?: boolean;
   schedule_type?: "event" | "cron";
@@ -685,6 +692,70 @@ export default function AutomationsPage() {
                       />
                       <div style={{ fontSize: "0.7rem", color: "var(--fg-mute)", marginTop: 4 }}>
                         Leave {"{}"} to always run. Paths: event.payload.x, steps.0.data.y, rule.name.
+                      </div>
+                    </div>
+
+                    <div style={{ marginTop: 12, padding: 10, border: "1px dashed var(--border)", borderRadius: 6 }}>
+                      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "0.85rem", fontWeight: 600 }}>
+                        <input
+                          type="checkbox"
+                          checked={!!act.continue_on_error}
+                          onChange={(e) => {
+                            const newActions = [...form.actions!];
+                            newActions[idx] = { ...newActions[idx], continue_on_error: e.target.checked };
+                            setForm({ ...form, actions: newActions });
+                          }}
+                        />
+                        Continue to next step if this step fails
+                      </label>
+                      <div style={{ fontSize: "0.7rem", color: "var(--fg-mute)", marginTop: 4 }}>
+                        When enabled, a failure here will not stop the chain; the on_error fallback (if any) still
+                        runs first.
+                      </div>
+                    </div>
+
+                    <div style={{ marginTop: 12, padding: 10, border: "1px dashed var(--border)", borderRadius: 6 }}>
+                      <label style={{ fontSize: "0.75rem", fontWeight: 600, display: "block", marginBottom: 4 }}>
+                        On-error fallback (on_error)
+                      </label>
+                      <select
+                        className="input"
+                        value={act.on_error?.type || ""}
+                        onChange={(e) => {
+                          const type = e.target.value || undefined;
+                          const newActions = [...form.actions!];
+                          newActions[idx] = {
+                            ...newActions[idx],
+                            on_error: type ? { type, config: act.on_error?.config || {} } : undefined,
+                          };
+                          setForm({ ...form, actions: newActions });
+                        }}
+                        style={{ marginBottom: 8 }}
+                      >
+                        <option value="">None</option>
+                        {ACTION_TYPES.map((t) => (
+                          <option key={t} value={t}>
+                            {t}
+                          </option>
+                        ))}
+                      </select>
+                      {act.on_error?.type && (
+                        <ActionConfigEditor
+                          actionType={act.on_error.type}
+                          config={act.on_error.config}
+                          updateConfig={(k, v) => {
+                            const newActions = [...form.actions!];
+                            newActions[idx] = {
+                              ...newActions[idx],
+                              on_error: { ...newActions[idx].on_error!, config: { ...newActions[idx].on_error!.config, [k]: v } },
+                            };
+                            setForm({ ...form, actions: newActions });
+                          }}
+                        />
+                      )}
+                      <div style={{ fontSize: "0.7rem", color: "var(--fg-mute)", marginTop: 4 }}>
+                        Runs when this step fails. Templates: {"{{ error.message }}"}, {"{{ error.step }}"}, event,
+                        rule, steps.
                       </div>
                     </div>
                   </div>
