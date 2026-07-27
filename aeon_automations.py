@@ -12,6 +12,7 @@ after an event is persisted/broadcast.
 import json
 import logging
 import os
+import re
 import threading
 from datetime import datetime, timezone, timedelta
 from typing import Any
@@ -95,23 +96,85 @@ def _execute_action(rule: dict[str, Any], event: dict[str, Any]) -> dict[str, An
     """Execute the action configured for a rule."""
     action_type = rule.get("action_type")
     action_config = rule.get("action_config") or {}
-    return execute_action_by_type(action_type, action_config, event)
+    return execute_action_by_type(action_type, action_config, event, rule)
+
+
+def _resolve_template_value(path: str, event: dict[str, Any], rule: dict[str, Any]) -> Any:
+    """Resolve a dotted template path against the event/rule context.
+
+    Supported paths:
+        event.payload.<key>[.<subkey>...]
+        event.type, event.user_id, event.workspace_id, event.timestamp
+        rule.name, rule.id, rule.workspace_id
+    """
+    parts = path.split(".")
+    if len(parts) < 2:
+        return ""
+
+    root = parts[0]
+    rest = parts[1:]
+
+    if root == "event":
+        if not rest:
+            return ""
+        key = rest[0]
+        if key == "payload":
+            value = event.get("payload") or {}
+            for sub in rest[1:]:
+                if isinstance(value, dict) and sub in value:
+                    value = value[sub]
+                else:
+                    return ""
+            return value
+        return event.get(key)
+    if root == "rule":
+        if not rest:
+            return ""
+        key = rest[0]
+        return rule.get(key) if key in {"name", "id", "workspace_id"} else ""
+
+    return ""
+
+
+def _interpolate(value: Any, event: dict[str, Any], rule: dict[str, Any]) -> Any:
+    """Recursively interpolate {{ ... }} templates in strings, dicts, and lists."""
+    if isinstance(value, str):
+        pattern = re.compile(r"{{\s*([\w.]+)\s*}}")
+
+        def _repl(match: re.Match) -> str:
+            path = match.group(1)
+            resolved = _resolve_template_value(path, event, rule)
+            if resolved is None:
+                return ""
+            return str(resolved)
+
+        return pattern.sub(_repl, value)
+    if isinstance(value, dict):
+        return {k: _interpolate(v, event, rule) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_interpolate(v, event, rule) for v in value]
+    return value
 
 
 def execute_action_by_type(
     action_type: str | None,
     action_config: dict[str, Any],
     event: dict[str, Any],
+    rule: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Execute an action given its type, config, and triggering event."""
     event_payload = event.get("payload") or {}
+    rule_ctx = rule or {}
+    interpolated_config = _interpolate(action_config, event, rule_ctx)
 
     if action_type == "webhook":
-        return _execute_webhook(action_config, event)
+        return _execute_webhook(interpolated_config, event)
+    if action_type == "outbound_webhook":
+        return _execute_outbound_webhook(interpolated_config, event)
     if action_type == "swarm":
-        return _execute_swarm(action_config, event_payload)
+        return _execute_swarm(interpolated_config, event_payload)
     if action_type == "workflow":
-        return _execute_workflow(action_config, event_payload)
+        return _execute_workflow(interpolated_config, event_payload)
     return {"ok": False, "error": f"unsupported action_type {action_type}"}
 
 
@@ -139,6 +202,41 @@ def _execute_webhook(action_config: dict[str, Any], event: dict[str, Any]) -> di
         return {"ok": True, "status_code": r.status_code}
     except Exception as exc:
         logger.warning("Webhook action failed for %s: %s", url, exc)
+        return {"ok": False, "error": str(exc)}
+
+
+def _execute_outbound_webhook(action_config: dict[str, Any], event: dict[str, Any]) -> dict[str, Any]:
+    """Send an outbound HTTP request with a custom method, headers, and body.
+
+    Supports template interpolation in url, headers, and body so automations can
+    forward event data to external systems like Zapier, Make, or custom APIs.
+    """
+    url = action_config.get("url")
+    if not url:
+        return {"ok": False, "error": "outbound_webhook URL missing"}
+
+    method = str(action_config.get("method", "POST")).upper()
+    if method not in {"GET", "POST", "PUT", "PATCH", "DELETE"}:
+        return {"ok": False, "error": f"unsupported HTTP method {method}"}
+
+    headers = action_config.get("headers") or {"Content-Type": "application/json"}
+    body = action_config.get("body")
+
+    try:
+        import requests
+
+        kwargs: dict[str, Any] = {"headers": headers, "timeout": 10}
+        if method != "GET" and body is not None:
+            if isinstance(body, dict):
+                kwargs["json"] = body
+            else:
+                kwargs["data"] = body
+
+        r = requests.request(method, url, **kwargs)
+        r.raise_for_status()
+        return {"ok": True, "status_code": r.status_code, "method": method, "url": url}
+    except Exception as exc:
+        logger.warning("Outbound webhook action failed for %s: %s", url, exc)
         return {"ok": False, "error": str(exc)}
 
 
@@ -463,7 +561,11 @@ def resolve_approval(
             "timestamp": None,
         }
         action_config = json.loads(approval.get("action_config") or "{}")
-        result = execute_action_by_type(approval.get("action_type"), action_config, event)
+        approval_rule = {
+            "id": approval.get("rule_id"),
+            "workspace_id": approval.get("workspace_id"),
+        }
+        result = execute_action_by_type(approval.get("action_type"), action_config, event, approval_rule)
 
         update = {
             "status": "approved",

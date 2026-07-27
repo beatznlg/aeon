@@ -45,7 +45,7 @@ const EVENT_TYPES = [
   "inbound_webhook",
 ];
 
-const ACTION_TYPES = ["webhook", "swarm", "workflow"];
+const ACTION_TYPES = ["webhook", "outbound_webhook", "swarm", "workflow"];
 
 export default function AutomationsPage() {
   const [rules, setRules] = useState<AutomationRule[]>([]);
@@ -384,6 +384,49 @@ export default function AutomationsPage() {
                   placeholder="Webhook URL"
                   onChange={(e) => updateActionConfig("url", e.target.value)}
                 />
+              )}
+              {form.action_type === "outbound_webhook" && (
+                <>
+                  <select
+                    className="input"
+                    value={(form.action_config?.method as string) || "POST"}
+                    onChange={(e) => updateActionConfig("method", e.target.value)}
+                    style={{ marginBottom: 8 }}
+                  >
+                    {["GET", "POST", "PUT", "PATCH", "DELETE"].map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    className="input"
+                    placeholder="URL (supports {{ event.payload.key }} templates)"
+                    onChange={(e) => updateActionConfig("url", e.target.value)}
+                    style={{ marginBottom: 8 }}
+                  />
+                  <textarea
+                    className="input"
+                    rows={3}
+                    placeholder="Headers (JSON)"
+                    onChange={(e) => {
+                      try {
+                        updateActionConfig("headers", e.target.value ? JSON.parse(e.target.value) : {});
+                      } catch {}
+                    }}
+                    style={{ marginBottom: 8 }}
+                  />
+                  <textarea
+                    className="input"
+                    rows={3}
+                    placeholder="Body (JSON or text)"
+                    onChange={(e) => updateActionConfig("body", e.target.value)}
+                  />
+                  <div style={{ fontSize: "0.75rem", color: "var(--fg-mute)", marginTop: 4 }}>
+                    Use templates like {"{{ event.payload.issue }}"}, {"{{ event.type }}"}, {"{{ rule.name }}"} in URL,
+                    headers, and body.
+                  </div>
+                </>
               )}
               {form.action_type === "swarm" && (
                 <>
