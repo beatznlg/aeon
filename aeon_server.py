@@ -2376,7 +2376,7 @@ def automations_index():
             step_type = step.get("type") or step.get("action_type")
             if not step_type:
                 return jsonify({"ok": False, "error": f"actions[{idx}] missing type"}), 400
-            if step_type not in {"webhook", "outbound_webhook", "swarm", "workflow", "delay"}:
+            if step_type not in {"webhook", "outbound_webhook", "swarm", "workflow", "delay", "wait_for_event"}:
                 return jsonify({"ok": False, "error": f"actions[{idx}] type must be webhook, outbound_webhook, swarm, or workflow"}), 400
             run_if = step.get("run_if")
             if run_if is not None and not isinstance(run_if, dict):
@@ -2390,7 +2390,7 @@ def automations_index():
                     return jsonify({"ok": False, "error": f"actions[{idx}] on_error must be an action object or omitted"}), 400
                 if not (on_error.get("type") or on_error.get("action_type")):
                     return jsonify({"ok": False, "error": f"actions[{idx}] on_error must have a type"}), 400
-                if (on_error.get("type") or on_error.get("action_type")) not in {"webhook", "outbound_webhook", "swarm", "workflow", "delay"}:
+                if (on_error.get("type") or on_error.get("action_type")) not in {"webhook", "outbound_webhook", "swarm", "workflow", "delay", "wait_for_event"}:
                     return jsonify({"ok": False, "error": f"actions[{idx}] on_error type must be webhook, outbound_webhook, swarm, or workflow"}), 400
             continue_on_error = step.get("continue_on_error")
             if continue_on_error is not None and not isinstance(continue_on_error, bool):
@@ -2401,7 +2401,7 @@ def automations_index():
         action_config = first_step.get("config") or first_step.get("action_config") or {}
     elif action_type:
         action_config = data.get("action_config") or {}
-        if action_type not in {"webhook", "outbound_webhook", "swarm", "workflow", "delay"}:
+        if action_type not in {"webhook", "outbound_webhook", "swarm", "workflow", "delay", "wait_for_event"}:
             return jsonify({"ok": False, "error": "action_type must be webhook, outbound_webhook, swarm, or workflow"}), 400
         # Build an actions array from the legacy single action.
         actions = [{"type": action_type, "config": action_config}]
@@ -2545,7 +2545,7 @@ def automation_detail(rule_id: str):
             step_type = step.get("type") or step.get("action_type")
             if not step_type:
                 return jsonify({"ok": False, "error": f"actions[{idx}] missing type"}), 400
-            if step_type not in {"webhook", "outbound_webhook", "swarm", "workflow", "delay"}:
+            if step_type not in {"webhook", "outbound_webhook", "swarm", "workflow", "delay", "wait_for_event"}:
                 return jsonify({"ok": False, "error": f"actions[{idx}] type must be webhook, outbound_webhook, swarm, or workflow"}), 400
             run_if = step.get("run_if")
             if run_if is not None and not isinstance(run_if, dict):
@@ -2559,7 +2559,7 @@ def automation_detail(rule_id: str):
                     return jsonify({"ok": False, "error": f"actions[{idx}] on_error must be an action object or omitted"}), 400
                 if not (on_error.get("type") or on_error.get("action_type")):
                     return jsonify({"ok": False, "error": f"actions[{idx}] on_error must have a type"}), 400
-                if (on_error.get("type") or on_error.get("action_type")) not in {"webhook", "outbound_webhook", "swarm", "workflow", "delay"}:
+                if (on_error.get("type") or on_error.get("action_type")) not in {"webhook", "outbound_webhook", "swarm", "workflow", "delay", "wait_for_event"}:
                     return jsonify({"ok": False, "error": f"actions[{idx}] on_error type must be webhook, outbound_webhook, swarm, or workflow"}), 400
             continue_on_error = step.get("continue_on_error")
             if continue_on_error is not None and not isinstance(continue_on_error, bool):

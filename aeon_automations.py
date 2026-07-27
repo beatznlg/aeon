@@ -308,9 +308,24 @@ def _execute_action(
         on_error = action.get("on_error")
         continue_on_error = bool(action.get("continue_on_error"))
 
-        # Phase 30: delay steps are handled before loops because they don't
+            # Phase 30: delay steps are handled before loops because they don't
         # perform real work; they just schedule a resume time.
         if action_type == "delay":
+            result = execute_action_by_type(action_type, action_config, context)
+            steps.append(result)
+            if result.get("status") == "sleeping":
+                return {
+                    "ok": True,
+                    "status": "sleeping",
+                    "steps": steps,
+                    "pending_step_index": idx + 1,
+                    "resume_at": result.get("resume_at"),
+                }
+            continue
+
+        # Phase 31: wait_for_event steps suspend the chain until a matching
+        # external event arrives (or a timeout expires).
+        if action_type == "wait_for_event":
             result = execute_action_by_type(action_type, action_config, context)
             steps.append(result)
             if result.get("status") == "sleeping":
@@ -524,6 +539,8 @@ def execute_action_by_type(
         return _execute_workflow(interpolated_config, event_payload)
     if action_type == "delay":
         return _execute_delay(interpolated_config, event)
+    if action_type == "wait_for_event":
+        return _execute_wait_for_event(interpolated_config, event)
     return {"ok": False, "error": f"unsupported action_type {action_type}"}
 
 
@@ -547,6 +564,47 @@ def _execute_delay(action_config: dict[str, Any], event: dict[str, Any]) -> dict
         "status": "sleeping",
         "delayed": True,
         "duration_minutes": duration,
+        "resume_at": resume_at.isoformat(),
+    }
+
+
+def _execute_wait_for_event(action_config: dict[str, Any], event: dict[str, Any]) -> dict[str, Any]:
+    """Return a sleeping result that waits for a matching external event.
+
+    ``action_config`` must contain:
+        - ``event_type``: the event type to wait for.
+        - ``correlation_key``: dotted path in the incoming event payload to match.
+        - ``correlation_value``: value (or template) to match against.
+        - ``timeout_minutes``: optional timeout; defaults to 1440 (24 hours).
+
+    The result includes the ``waiting_for_event`` type, the expected
+    ``correlation_key`` and ``correlation_value``, and a ``resume_at`` timestamp
+    derived from the timeout.
+    """
+    wait_event_type = action_config.get("event_type")
+    if not wait_event_type:
+        return {"ok": False, "error": "wait_for_event action requires event_type"}
+
+    correlation_key = action_config.get("correlation_key")
+    correlation_value = action_config.get("correlation_value")
+    if correlation_key is None or correlation_value is None:
+        return {"ok": False, "error": "wait_for_event action requires correlation_key and correlation_value"}
+
+    try:
+        timeout = float(action_config.get("timeout_minutes") or 1440)
+    except (TypeError, ValueError):
+        return {"ok": False, "error": "timeout_minutes must be numeric"}
+    if timeout <= 0:
+        return {"ok": False, "error": "timeout_minutes must be positive"}
+
+    resume_at = datetime.now(timezone.utc) + timedelta(minutes=timeout)
+    return {
+        "ok": True,
+        "status": "sleeping",
+        "waiting_for_event": wait_event_type,
+        "correlation_key": correlation_key,
+        "correlation_value": correlation_value,
+        "timeout_minutes": timeout,
         "resume_at": resume_at.isoformat(),
     }
 
@@ -985,6 +1043,74 @@ def resolve_approval(
         return {"ok": False, "error": str(exc)}
 
 
+def _try_resume_waiting_executions(event: dict[str, Any]) -> list[dict[str, Any]]:
+    """Resume any sleeping executions waiting for this event.
+
+    Queries ``automation_executions`` for rows with ``status = 'sleeping'`` whose
+    saved state indicates they are waiting for ``event_type``. For each, checks
+    whether the incoming event payload matches the saved correlation value at
+    the configured correlation key. Matching executions are resumed with the
+    waking event attached to the wait step.
+    """
+    db_url = _get_db_url()
+    headers = _supabase_headers()
+    if not db_url or not headers:
+        return []
+
+    event_type = event.get("type")
+    payload = event.get("payload") or {}
+
+    try:
+        import requests
+        r = requests.get(
+            f"{db_url}/rest/v1/automation_executions",
+            headers=headers,
+            params={
+                "status": "eq.sleeping",
+                "order": "created_at.asc",
+            },
+            timeout=10,
+        )
+        r.raise_for_status()
+        executions = r.json() or []
+    except Exception as exc:
+        logger.warning("Failed to fetch sleeping executions for event resumption: %s", exc)
+        return []
+
+    resumed: list[dict[str, Any]] = []
+    for execution in executions:
+        try:
+            state = execution.get("state") or {}
+            if isinstance(state, str):
+                try:
+                    state = json.loads(state)
+                except Exception:
+                    continue
+            wait_step = (state.get("steps") or [])[-1] if state.get("steps") else None
+            if not wait_step or wait_step.get("waiting_for_event") != event_type:
+                continue
+            correlation_key = wait_step.get("correlation_key")
+            expected_value = wait_step.get("correlation_value")
+            if correlation_key is None or expected_value is None:
+                continue
+            actual_value = _get_path(payload, correlation_key)
+            if actual_value != expected_value:
+                continue
+            # Mark as running to prevent duplicate resumptions
+            requests.patch(
+                f"{db_url}/rest/v1/automation_executions?id=eq.{execution.get('id')}",
+                headers=headers,
+                json={"status": "triggered"},
+                timeout=10,
+            ).raise_for_status()
+            result = resume_execution(execution, waking_event=event)
+            resumed.append(result)
+        except Exception as exc:
+            logger.warning("Failed to resume waiting execution %s: %s", execution.get("id"), exc)
+
+    return resumed
+
+
 def evaluate_automations(
     event_type: str,
     payload: dict[str, Any],
@@ -1002,6 +1128,10 @@ def evaluate_automations(
         "workspace_id": workspace_id,
         "timestamp": None,
     }
+
+    # Phase 31: before triggering new rules, resume any sleeping executions
+    # that are waiting for this event.
+    _try_resume_waiting_executions(event)
 
     rules = _fetch_rules_for_event(event_type, workspace_id)
     results: list[dict[str, Any]] = []
@@ -1123,8 +1253,14 @@ def resume_sleeping_executions() -> list[dict[str, Any]]:
     return results
 
 
-def resume_execution(execution: dict[str, Any]) -> dict[str, Any]:
-    """Resume a single sleeping execution from where it left off."""
+def resume_execution(execution: dict[str, Any], waking_event: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Resume a single sleeping execution from where it left off.
+
+    If ``waking_event`` is provided (e.g. an external event that matched a
+    ``wait_for_event`` correlation), the last step in the saved state is
+    annotated with the waking event payload so subsequent steps can reference
+    it via ``steps.<idx>.waking_event_payload``.
+    """
     db_url = _get_db_url()
     headers = _supabase_headers()
 
@@ -1138,6 +1274,11 @@ def resume_execution(execution: dict[str, Any]) -> dict[str, Any]:
 
     pending_step_index = int(state.get("pending_step_index", 0) or 0)
     initial_steps = state.get("steps") or []
+    if waking_event and initial_steps:
+        # Annotate the last step (the wait_for_event step) with the waking
+        # event payload so the remainder of the chain can use it.
+        initial_steps[-1]["waking_event_payload"] = waking_event.get("payload")
+        initial_steps[-1]["status"] = "completed"
     event_payload = execution.get("event_payload")
     if isinstance(event_payload, str):
         try:

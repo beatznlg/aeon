@@ -598,3 +598,163 @@ def test_execute_action_on_error_interpolates_error_context(sample_event, sample
     called_url = mock_request.call_args.args[1]
     assert "URL missing" in called_url
     assert "error.message" not in called_url
+
+
+def test_execute_action_wait_for_event_returns_sleeping(sample_event, sample_rule):
+    from aeon_automations import _execute_action
+
+    rule = {
+        **sample_rule,
+        "actions": [
+            {"type": "outbound_webhook", "config": {"url": "https://api.test/step1", "method": "POST"}},
+            {
+                "type": "wait_for_event",
+                "config": {
+                    "event_type": "payment.received",
+                    "correlation_key": "invoice_id",
+                    "correlation_value": "inv-123",
+                    "timeout_minutes": 60,
+                },
+            },
+            {"type": "outbound_webhook", "config": {"url": "https://api.test/step2", "method": "POST"}},
+        ],
+    }
+    def _exec_side_effect(action_type, action_config, context):
+        if action_type == "wait_for_event":
+            return {
+                "ok": True,
+                "status": "sleeping",
+                "waiting_for_event": action_config.get("event_type"),
+                "correlation_key": action_config.get("correlation_key"),
+                "correlation_value": action_config.get("correlation_value"),
+                "resume_at": "2025-01-01T00:00:00+00:00",
+            }
+        return {"ok": True, "status_code": 200}
+
+    with mock.patch("aeon_automations.execute_action_by_type") as mock_exec:
+        mock_exec.side_effect = _exec_side_effect
+        result = _execute_action(rule, sample_event)
+
+    assert result["ok"] is True
+    assert result["status"] == "sleeping"
+    assert result["pending_step_index"] == 2
+    assert len(result["steps"]) == 2
+    wait_step = result["steps"][1]
+    assert wait_step.get("waiting_for_event") == "payment.received"
+    assert wait_step.get("correlation_key") == "invoice_id"
+    assert wait_step.get("correlation_value") == "inv-123"
+    assert wait_step.get("status") == "sleeping"
+    assert "resume_at" in wait_step
+
+
+def test_wait_for_event_resumes_on_matching_event(sample_event, sample_rule):
+    from aeon_automations import _try_resume_waiting_executions, resume_execution
+
+    # Simulate a sleeping execution waiting for payment.received with invoice_id=inv-123
+    execution = {
+        "id": "exec-1",
+        "rule_id": sample_rule["id"],
+        "event_type": sample_event["type"],
+        "event_payload": sample_event.get("payload"),
+        "workspace_id": sample_rule.get("workspace_id"),
+        "user_id": sample_event.get("user_id"),
+        "status": "sleeping",
+        "state": {
+            "pending_step_index": 2,
+            "steps": [
+                {"ok": True, "status_code": 200},
+                {
+                    "ok": True,
+                    "status": "sleeping",
+                    "waiting_for_event": "payment.received",
+                    "correlation_key": "invoice_id",
+                    "correlation_value": "inv-123",
+                },
+            ],
+        },
+    }
+
+    waking_event = {
+        "type": "payment.received",
+        "payload": {"invoice_id": "inv-123", "amount": 100},
+        "user_id": sample_event.get("user_id"),
+        "workspace_id": sample_rule.get("workspace_id"),
+    }
+
+    with mock.patch("aeon_automations._supabase_headers", return_value={"Authorization": "Bearer test"}):
+        with mock.patch("aeon_automations._get_db_url", return_value="http://test.supabase"):
+            with mock.patch("requests.get") as mock_get, mock.patch("requests.patch") as mock_patch:
+                mock_get.return_value.json.return_value = [execution]
+                mock_get.return_value.raise_for_status.return_value = None
+                mock_patch.return_value.raise_for_status.return_value = None
+
+                with mock.patch("aeon_automations.resume_execution") as mock_resume:
+                    mock_resume.return_value = {"ok": True, "execution_id": "exec-1", "status": "completed"}
+                    resumed = _try_resume_waiting_executions(waking_event)
+
+    assert len(resumed) == 1
+    mock_resume.assert_called_once()
+    call_args = mock_resume.call_args
+    assert call_args.kwargs.get("waking_event") == waking_event
+
+
+def test_wait_for_event_does_not_resume_on_mismatched_correlation(sample_event, sample_rule):
+    from aeon_automations import _try_resume_waiting_executions
+
+    execution = {
+        "id": "exec-1",
+        "rule_id": sample_rule["id"],
+        "event_type": sample_event["type"],
+        "event_payload": sample_event.get("payload"),
+        "workspace_id": sample_rule.get("workspace_id"),
+        "user_id": sample_event.get("user_id"),
+        "status": "sleeping",
+        "state": {
+            "pending_step_index": 2,
+            "steps": [
+                {"ok": True, "status_code": 200},
+                {
+                    "ok": True,
+                    "status": "sleeping",
+                    "waiting_for_event": "payment.received",
+                    "correlation_key": "invoice_id",
+                    "correlation_value": "inv-123",
+                },
+            ],
+        },
+    }
+
+    waking_event = {
+        "type": "payment.received",
+        "payload": {"invoice_id": "inv-999", "amount": 100},
+        "user_id": sample_event.get("user_id"),
+        "workspace_id": sample_rule.get("workspace_id"),
+    }
+
+    with mock.patch("aeon_automations._supabase_headers", return_value={"Authorization": "Bearer test"}):
+        with mock.patch("aeon_automations._get_db_url", return_value="http://test.supabase"):
+            with mock.patch("requests.get") as mock_get:
+                mock_get.return_value.json.return_value = [execution]
+                mock_get.return_value.raise_for_status.return_value = None
+
+                with mock.patch("aeon_automations.resume_execution") as mock_resume:
+                    resumed = _try_resume_waiting_executions(waking_event)
+
+    assert len(resumed) == 0
+    mock_resume.assert_not_called()
+
+
+def test_execute_wait_for_event_requires_event_type():
+    from aeon_automations import _execute_wait_for_event
+
+    result = _execute_wait_for_event({"correlation_key": "id", "correlation_value": "x"}, {})
+    assert result["ok"] is False
+    assert "event_type" in result["error"]
+
+
+def test_execute_wait_for_event_requires_correlation():
+    from aeon_automations import _execute_wait_for_event
+
+    result = _execute_wait_for_event({"event_type": "payment.received"}, {})
+    assert result["ok"] is False
+    assert "correlation" in result["error"]

@@ -55,7 +55,7 @@ const EVENT_TYPES = [
   "inbound_webhook",
 ];
 
-const ACTION_TYPES = ["webhook", "outbound_webhook", "swarm", "workflow", "delay"];
+const ACTION_TYPES = ["webhook", "outbound_webhook", "swarm", "workflow", "delay", "wait_for_event"];
 
 function TestConditionButton({ condition }: { condition: Record<string, any> }) {
   const [payload, setPayload] = useState<string>('{"status": "failed", "severity": 5}');
@@ -223,6 +223,39 @@ function ActionConfigEditor({
           />
           <div style={{ fontSize: "0.75rem", color: "var(--fg-mute)" }}>
             Pause the automation chain for this many minutes, then resume from the next step.
+          </div>
+        </>
+      )}
+      {actionType === "wait_for_event" && (
+        <>
+          <input
+            className="input"
+            placeholder="Event type to wait for (e.g. stripe.invoice.paid)"
+            onChange={(e) => updateConfig("event_type", e.target.value)}
+            style={{ marginBottom: 8 }}
+          />
+          <input
+            className="input"
+            placeholder="Correlation key path (e.g. data.id)"
+            onChange={(e) => updateConfig("correlation_key", e.target.value)}
+            style={{ marginBottom: 8 }}
+          />
+          <input
+            className="input"
+            placeholder="Expected correlation value (supports {{ event.payload.x }} templates)"
+            onChange={(e) => updateConfig("correlation_value", e.target.value)}
+            style={{ marginBottom: 8 }}
+          />
+          <input
+            className="input"
+            type="number"
+            min={1}
+            placeholder="Timeout (minutes)"
+            onChange={(e) => updateConfig("timeout_minutes", parseInt(e.target.value || "1440", 10))}
+            style={{ marginBottom: 8 }}
+          />
+          <div style={{ fontSize: "0.75rem", color: "var(--fg-mute)" }}>
+            Suspend the automation until an event of the specified type arrives with a matching correlation value. Resumes after the timeout if no matching event is received.
           </div>
         </>
       )}
