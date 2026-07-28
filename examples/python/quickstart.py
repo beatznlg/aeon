@@ -8,6 +8,7 @@ Run with:
 """
 
 import os
+
 from aeon_sdk import AeonClient
 
 BASE_URL = os.environ.get("AEON_PYTHON_URL", "http://localhost:5000")

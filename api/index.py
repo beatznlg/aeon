@@ -28,6 +28,5 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 # Import the Flask application.  Vercel's WSGI adapter will use this ``app``.
-from aeon_server import app  # noqa: E402
 
 # ``app`` is intentionally exposed at module scope for the Vercel runtime.

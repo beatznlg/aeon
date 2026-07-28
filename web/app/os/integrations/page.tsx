@@ -400,7 +400,7 @@ export default function IntegrationsPage() {
       {activeTab === "marketplace" && (
         <section>
           <p style={{ marginBottom: 16, color: "var(--fg-soft)" }}>
-            Browse available integration types. Click "Add" to create a new connector pre-configured for that type.
+            Browse available integration types. Click &quot;Add&quot; to create a new connector pre-configured for that type.
           </p>
           <div className="integration-marketplace">
             {catalog.map((item) => (

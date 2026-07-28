@@ -9,7 +9,7 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const workspaceId = searchParams.get("workspace_id") || ((session?.user as any)?.workspaceId as string) || "default";
   const action = searchParams.get("action") || undefined;
-  const module = searchParams.get("module") || undefined;
+  const moduleName = searchParams.get("module") || undefined;
   const limit = Math.min(1000, Math.max(1, Number(searchParams.get("limit") || 100)));
   const offset = Math.max(0, Number(searchParams.get("offset") || 0));
 
@@ -24,7 +24,7 @@ export async function GET(req: Request) {
     offset: String(offset),
   });
   if (action) query.set("action", action);
-  if (module) query.set("module", module);
+  if (moduleName) query.set("module", moduleName);
 
   try {
     const res = await fetch(`${url}/governance/audit?${query.toString()}`, { cache: "no-store" });

@@ -17,6 +17,7 @@ const NAV_ITEMS = [
       { href: "/", label: "Dashboard", icon: "◈" },
       { href: "/chat", label: "Chat", icon: "💬" },
       { href: "/os", label: "OS Modules", icon: "⊞" },
+      { href: "/os/automations/metrics", label: "Automations", icon: "🤖" },
       { href: "/swarms", label: "Swarms", icon: "🐝" },
       { href: "/llm", label: "LLM Brain", icon: "⚡" },
       { href: "/os/api-keys", label: "API Keys", icon: "🔑" },

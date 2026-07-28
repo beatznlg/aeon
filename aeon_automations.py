@@ -15,7 +15,7 @@ import os
 import re
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 logger = logging.getLogger("aeon_automations")
@@ -140,10 +140,7 @@ def _operator_matches(actual: Any, operator_spec: dict[str, Any]) -> bool:
                 if actual not in expected:
                     return False
             case "$contains":
-                if isinstance(actual, str) and isinstance(expected, str):
-                    if expected not in actual:
-                        return False
-                elif isinstance(actual, (list, tuple)):
+                if isinstance(actual, str) and isinstance(expected, str) or isinstance(actual, (list, tuple)):
                     if expected not in actual:
                         return False
                 else:
@@ -760,10 +757,7 @@ def _resolve_loop_expression(expression: str, context: dict[str, Any]) -> Any:
     """
     stripped = expression.strip()
     match = re.fullmatch(r"{{\s*([\w.\[\]]+)\s*}}", stripped)
-    if match:
-        path = match.group(1)
-    else:
-        path = stripped
+    path = match.group(1) if match else stripped
     return _resolve_template_value(path, context)
 
 
@@ -1438,7 +1432,6 @@ def _notify_approval_required(rule: dict[str, Any], approval_id: str, event: dic
 
 def _notify_slack_approval(rule: dict[str, Any], approval_id: str, event: dict[str, Any]) -> None:
     """Send an interactive Slack Block Kit message for an approval request."""
-    import urllib.parse
 
     bot_token = os.environ.get("SLACK_BOT_TOKEN")
     if not bot_token:

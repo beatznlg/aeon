@@ -24,7 +24,7 @@ import os
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from functools import wraps
 from pathlib import Path
 from typing import Any
@@ -51,11 +51,11 @@ from aeon_auth import (
     require_workspace_access,
     require_workspace_role,
 )
+from aeon_automations import _compute_next_run, _execute_action, evaluate_condition, resolve_approval, start_scheduler
 from aeon_governance import GovernanceManager, get_governance
 from aeon_integrations import IntegrationManager, WebhookDelivery, get_integration_catalog
 from aeon_llm import get_llm_provider, list_providers, set_active_provider
 from aeon_llm import test_provider as _test_llm_provider
-from aeon_automations import evaluate_condition, resolve_approval, start_scheduler, _compute_next_run, _execute_action
 
 # Supported automation action types (kept in sync with aeon_automations.py)
 _AUTOMATION_ACTION_TYPES = frozenset({
@@ -142,7 +142,6 @@ def _validate_automation_payload(data: dict) -> tuple[bool, str | None]:
     return True, None
 
 
-from aeon_notify import broadcast_event
 from aeon_notify import log_activity
 from aeon_notify import notify as _notify
 from aeon_os import AeonOS
@@ -150,6 +149,172 @@ from aeon_stripe import get_stripe_client, init_stripe
 from aeon_usage import BillingCalculator, HealthCollector, UsageMeter
 
 app = Flask(__name__)
+
+# ── Automation metrics (Phase 39) ───────────────────────────────────────────
+
+_SUCCESS_STATUSES = {"triggered", "completed"}
+
+
+def _aggregate_automation_metrics(executions: list[dict[str, Any]]) -> dict[str, Any]:
+    """Aggregate raw execution rows into totals, rates, and daily trends."""
+    total_runs = len(executions)
+    completed_count = 0
+    failed_count = 0
+    throttled_count = 0
+    pending_count = 0
+    runtime_sum = 0.0
+    runtime_samples = 0
+    daily: dict[str, dict[str, int]] = {}
+
+    for execution in executions:
+        status = execution.get("status") or "triggered"
+        if status == "completed":
+            completed_count += 1
+        elif status == "failed":
+            failed_count += 1
+        elif status == "throttled":
+            throttled_count += 1
+        elif status == "pending_approval":
+            pending_count += 1
+
+        result = execution.get("result") or {}
+        runtime = result.get("runtime_ms") if isinstance(result, dict) else None
+        if runtime is not None:
+            try:
+                runtime_sum += float(runtime)
+                runtime_samples += 1
+            except (TypeError, ValueError):
+                pass
+
+        created = execution.get("created_at", "") or ""
+        day = created[:10] if len(created) >= 10 else "unknown"
+        bucket = daily.setdefault(day, {"runs": 0, "completed": 0, "failed": 0})
+        bucket["runs"] += 1
+        if status in _SUCCESS_STATUSES:
+            bucket["completed"] += 1
+        elif status == "failed":
+            bucket["failed"] += 1
+
+    successful = sum(1 for e in executions if e.get("status") in _SUCCESS_STATUSES)
+    success_rate = round((successful / total_runs) * 100, 2) if total_runs else 0.0
+    failure_rate = round((failed_count / total_runs) * 100, 2) if total_runs else 0.0
+
+    return {
+        "total_runs": total_runs,
+        "completed_count": completed_count,
+        "failed_count": failed_count,
+        "throttled_count": throttled_count,
+        "pending_count": pending_count,
+        "success_rate": success_rate,
+        "failure_rate": failure_rate,
+        "average_runtime_ms": round(runtime_sum / runtime_samples, 2) if runtime_samples else 0.0,
+        "daily_counts": [
+            {"date": day, **bucket} for day, bucket in sorted(daily.items())
+        ],
+    }
+
+
+@app.route("/automations/metrics", methods=["GET"])
+@require_auth
+@require_workspace_role("VIEWER")
+def automation_metrics_workspace():
+    """Return aggregated execution metrics for the current workspace."""
+    ctx = _governance_context()
+    workspace_id = ctx.get("workspace_id")
+
+    supabase_url = os.environ.get("SUPABASE_URL")
+    service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+    if not supabase_url or not service_key:
+        return jsonify({"ok": False, "error": "Supabase not configured"}), 503
+
+    days = min(90, max(1, request.args.get("days", 30, type=int)))
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+
+    try:
+        r = requests.get(
+            f"{supabase_url}/rest/v1/automation_executions",
+            headers={
+                "apikey": service_key,
+                "Authorization": f"Bearer {service_key}",
+            },
+            params={
+                "workspace_id": f"eq.{workspace_id}",
+                "created_at": f"gte.{since}",
+                "order": "created_at.desc",
+                "limit": 1000,
+            },
+            timeout=10,
+        )
+        r.raise_for_status()
+        executions = r.json() or []
+        metrics = _aggregate_automation_metrics(executions)
+
+        # Per-rule breakdown
+        rule_counts: dict[str, int] = {}
+        for execution in executions:
+            rid = execution.get("rule_id")
+            if rid:
+                rule_counts[rid] = rule_counts.get(rid, 0) + 1
+        top_rules = sorted(rule_counts.items(), key=lambda item: item[1], reverse=True)[:10]
+
+        return jsonify({
+            "ok": True,
+            "workspace_id": workspace_id,
+            "days": days,
+            **metrics,
+            "top_rules": [{"rule_id": rid, "runs": count} for rid, count in top_rules],
+        })
+    except Exception as e:
+        logger.warning("Failed to fetch automation metrics: %s", e)
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/automations/<rule_id>/metrics", methods=["GET"])
+@require_auth
+@require_workspace_role("VIEWER")
+def automation_metrics_rule(rule_id: str):
+    """Return aggregated execution metrics for a single automation rule."""
+    ctx = _governance_context()
+    workspace_id = ctx.get("workspace_id")
+
+    supabase_url = os.environ.get("SUPABASE_URL")
+    service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+    if not supabase_url or not service_key:
+        return jsonify({"ok": False, "error": "Supabase not configured"}), 503
+
+    days = min(90, max(1, request.args.get("days", 30, type=int)))
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+
+    try:
+        r = requests.get(
+            f"{supabase_url}/rest/v1/automation_executions",
+            headers={
+                "apikey": service_key,
+                "Authorization": f"Bearer {service_key}",
+            },
+            params={
+                "rule_id": f"eq.{rule_id}",
+                "workspace_id": f"eq.{workspace_id}",
+                "created_at": f"gte.{since}",
+                "order": "created_at.desc",
+                "limit": 1000,
+            },
+            timeout=10,
+        )
+        r.raise_for_status()
+        executions = r.json() or []
+        metrics = _aggregate_automation_metrics(executions)
+
+        return jsonify({
+            "ok": True,
+            "rule_id": rule_id,
+            "workspace_id": workspace_id,
+            "days": days,
+            **metrics,
+        })
+    except Exception as e:
+        logger.warning("Failed to fetch automation metrics: %s", e)
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 # Start background scheduler for cron-based automations unless disabled.
 if os.environ.get("AEON_DISABLE_SCHEDULER") != "1":
@@ -310,7 +475,8 @@ class RateLimiter:
 
 
 _rate_limit_max = int(os.environ.get("AEON_RATE_LIMIT", "60"))
-rate_limiter = RateLimiter(max_requests=_rate_limit_max, window_seconds=60)
+_rate_limit_window = int(os.environ.get("AEON_RATE_LIMIT_WINDOW_SECONDS", "60"))
+rate_limiter = RateLimiter(max_requests=_rate_limit_max, window_seconds=_rate_limit_window)
 
 
 # ── Prometheus/OpenMetrics metrics ──────────────────────────────────────────
@@ -2411,6 +2577,45 @@ def rag_chat():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+def _create_rule_snapshot(supabase_url: str, service_key: str, rule: dict, ctx: dict) -> dict | None:
+    """Persist a snapshot of an automation rule. Returns the snapshot row or None."""
+    try:
+        payload = {
+            "rule_id": rule.get("id"),
+            "workspace_id": rule.get("workspace_id") or ctx.get("workspace_id"),
+            "name": rule.get("name"),
+            "event_type": rule.get("event_type"),
+            "condition": rule.get("condition") or {},
+            "action_type": rule.get("action_type"),
+            "action_config": rule.get("action_config") or {},
+            "actions": rule.get("actions") or [],
+            "enabled": rule.get("enabled", True),
+            "approval_required": rule.get("approval_required", False),
+            "approver_message": rule.get("approver_message", ""),
+            "schedule_type": rule.get("schedule_type", "event"),
+            "cron_expression": rule.get("cron_expression"),
+            "cooldown_minutes": rule.get("cooldown_minutes", 0),
+            "created_by": ctx.get("user_id"),
+        }
+        r = requests.post(
+            f"{supabase_url}/rest/v1/automation_rule_snapshots",
+            headers={
+                "apikey": service_key,
+                "Authorization": f"Bearer {service_key}",
+                "Content-Type": "application/json",
+                "Prefer": "return=representation",
+            },
+            json=payload,
+            timeout=10,
+        )
+        r.raise_for_status()
+        rows = r.json()
+        return rows[0] if rows else None
+    except Exception as e:
+        logger.warning("Failed to create rule snapshot: %s", e)
+        return None
+
+
 # ── Automation rule endpoints ───────────────────────────────────────────────
 @app.route("/automations", methods=["GET", "POST"])
 @require_auth
@@ -2666,6 +2871,9 @@ def automation_detail(rule_id: str):
         updates["next_run_at"] = None
     if not updates:
         return jsonify({"ok": False, "error": "no fields to update"}), 400
+
+    # Phase 38: snapshot the current rule before mutating it.
+    _create_rule_snapshot(supabase_url, service_key, rows[0], ctx)
 
     r = requests.patch(
         f"{supabase_url}/rest/v1/automation_rules",
@@ -3178,6 +3386,184 @@ def automations_blueprints():
     return jsonify({"ok": True, "blueprints": blueprints})
 
 
+
+# ── Automation rule snapshots & rollback (Phase 38) ───────────────────────────
+
+@app.route("/automations/<rule_id>/snapshots", methods=["GET", "POST"])
+@require_auth
+@require_workspace_role("VIEWER")
+def automation_snapshots(rule_id: str):
+    """List or create snapshots for an automation rule."""
+    ctx = _governance_context()
+    workspace_id = ctx.get("workspace_id")
+
+    supabase_url = os.environ.get("SUPABASE_URL")
+    service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+    if not supabase_url or not service_key:
+        return jsonify({"ok": False, "error": "Supabase not configured"}), 503
+
+    # Verify the rule exists and belongs to the workspace
+    try:
+        r = requests.get(
+            f"{supabase_url}/rest/v1/automation_rules",
+            headers={
+                "apikey": service_key,
+                "Authorization": f"Bearer {service_key}",
+            },
+            params={"id": f"eq.{rule_id}", "workspace_id": f"eq.{workspace_id}"},
+            timeout=10,
+        )
+        r.raise_for_status()
+        rows = r.json()
+        if not rows:
+            return jsonify({"ok": False, "error": "rule not found"}), 404
+        rule = rows[0]
+    except Exception as e:
+        logger.warning("Failed to fetch automation rule for snapshots: %s", e)
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+    if request.method == "POST":
+        snapshot = _create_rule_snapshot(supabase_url, service_key, rule, ctx)
+        if snapshot is None:
+            return jsonify({"ok": False, "error": "failed to create snapshot"}), 500
+        return jsonify({"ok": True, "snapshot": snapshot}), 201
+
+    # GET
+    try:
+        r = requests.get(
+            f"{supabase_url}/rest/v1/automation_rule_snapshots",
+            headers={
+                "apikey": service_key,
+                "Authorization": f"Bearer {service_key}",
+            },
+            params={
+                "rule_id": f"eq.{rule_id}",
+                "workspace_id": f"eq.{workspace_id}",
+                "order": "created_at.desc",
+                "limit": 100,
+            },
+            timeout=10,
+        )
+        r.raise_for_status()
+        return jsonify({"ok": True, "snapshots": r.json()})
+    except Exception as e:
+        logger.warning("Failed to list automation rule snapshots: %s", e)
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/automations/<rule_id>/rollback/<snapshot_id>", methods=["POST"])
+@require_auth
+@require_workspace_role("OPERATOR")
+def automation_rollback(rule_id: str, snapshot_id: str):
+    """Restore an automation rule from a previous snapshot.
+
+    The current rule state is snapshotted first, then the chosen snapshot is
+    applied back to the rule.
+    """
+    ctx = _governance_context()
+    workspace_id = ctx.get("workspace_id")
+
+    supabase_url = os.environ.get("SUPABASE_URL")
+    service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+    if not supabase_url or not service_key:
+        return jsonify({"ok": False, "error": "Supabase not configured"}), 503
+
+    # Fetch the current rule
+    try:
+        r = requests.get(
+            f"{supabase_url}/rest/v1/automation_rules",
+            headers={
+                "apikey": service_key,
+                "Authorization": f"Bearer {service_key}",
+            },
+            params={"id": f"eq.{rule_id}", "workspace_id": f"eq.{workspace_id}"},
+            timeout=10,
+        )
+        r.raise_for_status()
+        rows = r.json()
+        if not rows:
+            return jsonify({"ok": False, "error": "rule not found"}), 404
+        rule = rows[0]
+    except Exception as e:
+        logger.warning("Failed to fetch automation rule for rollback: %s", e)
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+    # Fetch the snapshot
+    try:
+        r = requests.get(
+            f"{supabase_url}/rest/v1/automation_rule_snapshots",
+            headers={
+                "apikey": service_key,
+                "Authorization": f"Bearer {service_key}",
+            },
+            params={
+                "id": f"eq.{snapshot_id}",
+                "rule_id": f"eq.{rule_id}",
+                "workspace_id": f"eq.{workspace_id}",
+            },
+            timeout=10,
+        )
+        r.raise_for_status()
+        snapshots = r.json()
+        if not snapshots:
+            return jsonify({"ok": False, "error": "snapshot not found"}), 404
+        snapshot = snapshots[0]
+    except Exception as e:
+        logger.warning("Failed to fetch automation rule snapshot: %s", e)
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+    # Snapshot current state before rolling back
+    _create_rule_snapshot(supabase_url, service_key, rule, ctx)
+
+    # Restore snapshot fields
+    restore_fields = (
+        "name",
+        "event_type",
+        "condition",
+        "action_type",
+        "action_config",
+        "actions",
+        "enabled",
+        "approval_required",
+        "approver_message",
+        "schedule_type",
+        "cron_expression",
+        "cooldown_minutes",
+    )
+    updates = {field: snapshot.get(field) for field in restore_fields}
+
+    # Preserve next_run_at based on restored cron expression
+    if updates.get("schedule_type") == "cron" and updates.get("cron_expression"):
+        next_run_at = _compute_next_run(updates["cron_expression"])
+        if next_run_at:
+            updates["next_run_at"] = next_run_at.isoformat()
+        else:
+            updates["next_run_at"] = None
+    else:
+        updates["next_run_at"] = None
+
+    try:
+        r = requests.patch(
+            f"{supabase_url}/rest/v1/automation_rules",
+            headers={
+                "apikey": service_key,
+                "Authorization": f"Bearer {service_key}",
+                "Content-Type": "application/json",
+                "Prefer": "return=representation",
+            },
+            json=updates,
+            params={"id": f"eq.{rule_id}", "workspace_id": f"eq.{workspace_id}"},
+            timeout=10,
+        )
+        r.raise_for_status()
+        rows = r.json()
+        if not rows:
+            return jsonify({"ok": False, "error": "rule not found"}), 404
+        return jsonify({"ok": True, "rule": rows[0]})
+    except Exception as e:
+        logger.warning("Failed to rollback automation rule: %s", e)
+        return jsonify({"ok": False, "error": str(e)}), 500
+
 def _generate_inbound_token() -> str:
     import secrets
     return secrets.token_urlsafe(32)
@@ -3453,12 +3839,12 @@ def _verify_slack_signature(raw_body: bytes, timestamp: str, signature: str) -> 
     secret = os.environ.get("SLACK_SIGNING_SECRET")
     if not secret:
         return False
-    import hmac
     import hashlib
+    import hmac
     sig_prefix = "v0="
     expected = hmac.new(
         key=secret.encode("utf-8"),
-        msg=f"v0:{timestamp}:{raw_body.decode('utf-8')}".encode("utf-8"),
+        msg=f"v0:{timestamp}:{raw_body.decode('utf-8')}".encode(),
         digestmod=hashlib.sha256,
     ).hexdigest()
     return hmac.compare_digest(f"{sig_prefix}{expected}", signature)

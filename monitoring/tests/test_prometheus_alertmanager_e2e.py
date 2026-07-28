@@ -106,32 +106,32 @@ class PrometheusAlertmanagerE2ETest(unittest.TestCase):
     @classmethod
     def _start_native(cls) -> None:
         am_config = prepare_alertmanager_config()
-        cls._am_log = Path("/tmp/alertmanager_e2e.log").open("w")
-        cls._am_process = subprocess.Popen(
-            [
-                str(cls._am_binary),
-                f"--config.file={am_config}",
-                "--storage.path=/tmp/alertmanager_e2e_data",
-                f"--web.listen-address=127.0.0.1:{cls.am_port}",
-                f"--web.external-url={cls.am_url}",
-            ],
-            stdout=cls._am_log,
-            stderr=subprocess.STDOUT,
-        )
+        with Path("/tmp/alertmanager_e2e.log").open("w") as am_log:
+            cls._am_process = subprocess.Popen(
+                [
+                    str(cls._am_binary),
+                    f"--config.file={am_config}",
+                    "--storage.path=/tmp/alertmanager_e2e_data",
+                    f"--web.listen-address=127.0.0.1:{cls.am_port}",
+                    f"--web.external-url={cls.am_url}",
+                ],
+                stdout=am_log,
+                stderr=subprocess.STDOUT,
+            )
 
         prom_config = cls._write_prometheus_config()
-        cls._prom_log = Path("/tmp/prometheus_e2e.log").open("w")
-        cls._prom_process = subprocess.Popen(
-            [
-                str(cls._prom_binary),
-                f"--config.file={prom_config}",
-                "--storage.tsdb.path=/tmp/prometheus_e2e_data",
-                f"--web.listen-address=127.0.0.1:{cls.prom_port}",
-                f"--web.external-url={cls.prom_url}",
-            ],
-            stdout=cls._prom_log,
-            stderr=subprocess.STDOUT,
-        )
+        with Path("/tmp/prometheus_e2e.log").open("w") as prom_log:
+            cls._prom_process = subprocess.Popen(
+                [
+                    str(cls._prom_binary),
+                    f"--config.file={prom_config}",
+                    "--storage.tsdb.path=/tmp/prometheus_e2e_data",
+                    f"--web.listen-address=127.0.0.1:{cls.prom_port}",
+                    f"--web.external-url={cls.prom_url}",
+                ],
+                stdout=prom_log,
+                stderr=subprocess.STDOUT,
+            )
 
     @classmethod
     def _start_docker(cls) -> None:
@@ -176,8 +176,8 @@ class PrometheusAlertmanagerE2ETest(unittest.TestCase):
                 "-v",
                 f"{prom_config}:/etc/prometheus/prometheus.yml:ro",
                 PROMETHEUS_IMAGE,
-                f"--config.file=/etc/prometheus/prometheus.yml",
-                f"--storage.tsdb.path=/prometheus",
+                "--config.file=/etc/prometheus/prometheus.yml",
+                "--storage.tsdb.path=/prometheus",
                 f"--web.external-url={cls.prom_url}",
             ],
             check=True,

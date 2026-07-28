@@ -944,6 +944,9 @@ export default function AutomationsPage() {
           <p className="dashboard-subtitle">Event-driven rules that trigger webhooks, swarms, or workflows.</p>
         </div>
         <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+          <Link href="/os/automations/metrics" className="btn btn-sm">
+            📊 Metrics
+          </Link>
           <button className="btn" onClick={() => setShowImportModal(true)}>
             Import JSON
           </button>

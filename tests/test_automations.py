@@ -192,7 +192,8 @@ def test_is_in_cooldown_no_cooldown():
 
 
 def test_is_in_cooldown_within_window():
-    from datetime import datetime, timezone, timedelta
+    from datetime import datetime, timedelta, timezone
+
     from aeon_automations import _is_in_cooldown
 
     last = datetime.now(timezone.utc) - timedelta(minutes=3)
@@ -207,7 +208,8 @@ def test_is_in_cooldown_within_window():
 
 
 def test_is_in_cooldown_expired():
-    from datetime import datetime, timezone, timedelta
+    from datetime import datetime, timedelta, timezone
+
     from aeon_automations import _is_in_cooldown
 
     last = datetime.now(timezone.utc) - timedelta(minutes=10)
@@ -443,8 +445,9 @@ def test_execute_action_loop_over_non_list_fails(sample_event, sample_rule):
 
 
 def test_execute_action_delay_returns_sleeping(sample_event, sample_rule):
+    from datetime import datetime, timedelta, timezone
+
     from aeon_automations import _execute_action
-    from datetime import datetime, timezone, timedelta
 
     rule = {
         **sample_rule,
@@ -649,7 +652,7 @@ def test_execute_action_wait_for_event_returns_sleeping(sample_event, sample_rul
 
 
 def test_wait_for_event_resumes_on_matching_event(sample_event, sample_rule):
-    from aeon_automations import _try_resume_waiting_executions, resume_execution
+    from aeon_automations import _try_resume_waiting_executions
 
     # Simulate a sleeping execution waiting for payment.received with invoice_id=inv-123
     execution = {
@@ -682,16 +685,18 @@ def test_wait_for_event_resumes_on_matching_event(sample_event, sample_rule):
         "workspace_id": sample_rule.get("workspace_id"),
     }
 
-    with mock.patch("aeon_automations._supabase_headers", return_value={"Authorization": "Bearer test"}):
-        with mock.patch("aeon_automations._get_db_url", return_value="http://test.supabase"):
-            with mock.patch("requests.get") as mock_get, mock.patch("requests.patch") as mock_patch:
-                mock_get.return_value.json.return_value = [execution]
-                mock_get.return_value.raise_for_status.return_value = None
-                mock_patch.return_value.raise_for_status.return_value = None
-
-                with mock.patch("aeon_automations.resume_execution") as mock_resume:
-                    mock_resume.return_value = {"ok": True, "execution_id": "exec-1", "status": "completed"}
-                    resumed = _try_resume_waiting_executions(waking_event)
+    with (
+        mock.patch("aeon_automations._supabase_headers", return_value={"Authorization": "Bearer test"}),
+        mock.patch("aeon_automations._get_db_url", return_value="http://test.supabase"),
+        mock.patch("requests.get") as mock_get,
+        mock.patch("requests.patch") as mock_patch,
+        mock.patch("aeon_automations.resume_execution") as mock_resume,
+    ):
+        mock_get.return_value.json.return_value = [execution]
+        mock_get.return_value.raise_for_status.return_value = None
+        mock_patch.return_value.raise_for_status.return_value = None
+        mock_resume.return_value = {"ok": True, "execution_id": "exec-1", "status": "completed"}
+        resumed = _try_resume_waiting_executions(waking_event)
 
     assert len(resumed) == 1
     mock_resume.assert_called_once()
@@ -732,14 +737,15 @@ def test_wait_for_event_does_not_resume_on_mismatched_correlation(sample_event, 
         "workspace_id": sample_rule.get("workspace_id"),
     }
 
-    with mock.patch("aeon_automations._supabase_headers", return_value={"Authorization": "Bearer test"}):
-        with mock.patch("aeon_automations._get_db_url", return_value="http://test.supabase"):
-            with mock.patch("requests.get") as mock_get:
-                mock_get.return_value.json.return_value = [execution]
-                mock_get.return_value.raise_for_status.return_value = None
-
-                with mock.patch("aeon_automations.resume_execution") as mock_resume:
-                    resumed = _try_resume_waiting_executions(waking_event)
+    with (
+        mock.patch("aeon_automations._supabase_headers", return_value={"Authorization": "Bearer test"}),
+        mock.patch("aeon_automations._get_db_url", return_value="http://test.supabase"),
+        mock.patch("requests.get") as mock_get,
+        mock.patch("aeon_automations.resume_execution") as mock_resume,
+    ):
+        mock_get.return_value.json.return_value = [execution]
+        mock_get.return_value.raise_for_status.return_value = None
+        resumed = _try_resume_waiting_executions(waking_event)
 
     assert len(resumed) == 0
     mock_resume.assert_not_called()
@@ -762,7 +768,7 @@ def test_execute_wait_for_event_requires_correlation():
 
 
 def test_set_variable_and_state_interpolation(sample_event, sample_rule):
-    from aeon_automations import _execute_action, _interpolate
+    from aeon_automations import _execute_action
 
     rule = {
         **sample_rule,
@@ -857,10 +863,12 @@ def test_call_rule_executes_sub_rule(sample_event, sample_rule):
         ],
     }
 
-    with mock.patch("aeon_automations._fetch_rule_by_id", return_value=child_rule):
-        with mock.patch("aeon_automations._execute_set_variable") as mock_set:
-            mock_set.return_value = {"ok": True, "key": "sub_key", "value": "sub_value"}
-            result = _execute_action(parent_rule, sample_event)
+    with (
+        mock.patch("aeon_automations._fetch_rule_by_id", return_value=child_rule),
+        mock.patch("aeon_automations._execute_set_variable") as mock_set,
+    ):
+        mock_set.return_value = {"ok": True, "key": "sub_key", "value": "sub_value"}
+        result = _execute_action(parent_rule, sample_event)
 
     assert result["ok"] is True
     assert result["status"] == "completed"
@@ -869,7 +877,7 @@ def test_call_rule_executes_sub_rule(sample_event, sample_rule):
 
 
 def test_call_rule_depth_guard(sample_event, sample_rule):
-    from aeon_automations import _execute_action, MAX_CALL_DEPTH
+    from aeon_automations import _execute_action
 
     # A rule that calls itself; the depth guard should stop the recursion.
     recursive_rule = {
@@ -1092,8 +1100,9 @@ def test_execute_parallel_invalid_config(sample_event, sample_rule):
 # Phase 36: Dry-run / simulation mode
 
 def test_dry_run_simulates_webhook_without_http_request(sample_event, sample_rule):
-    from aeon_automations import _execute_action
     from unittest import mock
+
+    from aeon_automations import _execute_action
 
     rule = {
         **sample_rule,
@@ -1111,8 +1120,9 @@ def test_dry_run_simulates_webhook_without_http_request(sample_event, sample_rul
 
 
 def test_dry_run_simulates_variable_set_and_get(sample_event, sample_rule):
-    from aeon_automations import _execute_action
     from unittest import mock
+
+    from aeon_automations import _execute_action
 
     rule = {
         **sample_rule,
@@ -1154,8 +1164,9 @@ def test_dry_run_allows_transform_and_delay_to_continue(sample_event, sample_rul
 
 
 def test_dry_run_simulates_call_rule_sub_automation(sample_event, sample_rule):
-    from aeon_automations import _execute_action
     from unittest import mock
+
+    from aeon_automations import _execute_action
 
     sub_rule = {
         **sample_rule,
@@ -1185,8 +1196,9 @@ def test_dry_run_simulates_call_rule_sub_automation(sample_event, sample_rule):
 
 
 def test_normal_run_still_executes_webhook(sample_event, sample_rule):
-    from aeon_automations import _execute_action
     from unittest import mock
+
+    from aeon_automations import _execute_action
 
     rule = {
         **sample_rule,
@@ -1236,8 +1248,9 @@ def test_automation_blueprints(client, operator_token):
 
 
 def test_automation_export(client, operator_token, monkeypatch):
-    import requests as _requests
     from unittest import mock
+
+    import requests as _requests
 
     monkeypatch.setenv("SUPABASE_URL", "https://test.supabase.co")
     monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "test-key")
@@ -1273,8 +1286,9 @@ def test_automation_export(client, operator_token, monkeypatch):
 
 
 def test_automation_import(client, operator_token, monkeypatch):
-    import requests as _requests
     from unittest import mock
+
+    import requests as _requests
 
     monkeypatch.setenv("SUPABASE_URL", "https://test.supabase.co")
     monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "test-key")
@@ -1312,8 +1326,6 @@ def test_automation_import(client, operator_token, monkeypatch):
 
 
 def test_automation_import_rejects_invalid_action_type(client, operator_token, monkeypatch):
-    import requests as _requests
-    from unittest import mock
 
     monkeypatch.setenv("SUPABASE_URL", "https://test.supabase.co")
     monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "test-key")
@@ -1335,3 +1347,338 @@ def test_automation_import_rejects_invalid_action_type(client, operator_token, m
     data = json.loads(resp.data)
     assert data["ok"] is False
     assert len(data["errors"]) == 1
+
+
+# Phase 38: Automation Versioning & Rollback
+
+
+def _make_fake_rule(rule_id="rule-123", name="Test Rule", workspace_id="ws-123"):
+    return {
+        "id": rule_id,
+        "name": name,
+        "workspace_id": workspace_id,
+        "event_type": "workflow_status",
+        "condition": {},
+        "action_type": "webhook",
+        "action_config": {"url": "https://example.com"},
+        "actions": [{"type": "webhook", "config": {"url": "https://example.com"}}],
+        "enabled": True,
+        "approval_required": False,
+        "approver_message": "",
+        "schedule_type": "event",
+        "cron_expression": None,
+        "cooldown_minutes": 0,
+    }
+
+
+def test_automation_snapshots_list(client, operator_token, monkeypatch):
+    from unittest import mock
+
+    import requests as _requests
+
+    monkeypatch.setenv("SUPABASE_URL", "https://test.supabase.co")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "test-key")
+
+    fake_rule = _make_fake_rule()
+    fake_snapshots = [
+        {"id": "snap-1", "rule_id": "rule-123", "name": "Test Rule", "workspace_id": "ws-123"},
+        {"id": "snap-2", "rule_id": "rule-123", "name": "Test Rule v2", "workspace_id": "ws-123"},
+    ]
+
+    def fake_get(url, **kwargs):
+        resp = mock.Mock()
+        resp.raise_for_status.return_value = None
+        if "automation_rules" in url:
+            resp.json.return_value = [fake_rule]
+        elif "automation_rule_snapshots" in url:
+            resp.json.return_value = fake_snapshots
+        else:
+            resp.json.return_value = []
+        return resp
+
+    with mock.patch.object(_requests, "get", side_effect=fake_get):
+        resp = client.get(
+            "/automations/rule-123/snapshots",
+            headers={"Authorization": f"Bearer {operator_token}"},
+        )
+    assert resp.status_code == 200
+    data = json.loads(resp.data)
+    assert data["ok"] is True
+    assert len(data["snapshots"]) == 2
+    assert data["snapshots"][0]["id"] == "snap-1"
+
+
+def test_automation_snapshots_create(client, operator_token, monkeypatch):
+    from unittest import mock
+
+    import requests as _requests
+
+    monkeypatch.setenv("SUPABASE_URL", "https://test.supabase.co")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "test-key")
+
+    fake_rule = _make_fake_rule()
+    created_snapshots = []
+
+    def fake_get(url, **kwargs):
+        resp = mock.Mock()
+        resp.raise_for_status.return_value = None
+        resp.json.return_value = [fake_rule]
+        return resp
+
+    def fake_post(url, **kwargs):
+        resp = mock.Mock()
+        resp.raise_for_status.return_value = None
+        payload = kwargs.get("json") or {}
+        snapshot = {"id": "snap-new", **payload}
+        created_snapshots.append(snapshot)
+        resp.json.return_value = [snapshot]
+        return resp
+
+    with mock.patch.object(_requests, "get", side_effect=fake_get), mock.patch.object(_requests, "post", side_effect=fake_post):
+        resp = client.post(
+            "/automations/rule-123/snapshots",
+            headers={"Authorization": f"Bearer {operator_token}"},
+        )
+    assert resp.status_code == 201
+    data = json.loads(resp.data)
+    assert data["ok"] is True
+    assert data["snapshot"]["id"] == "snap-new"
+    assert data["snapshot"]["rule_id"] == "rule-123"
+    assert created_snapshots[0]["name"] == "Test Rule"
+
+
+def test_automation_rollback_restores_rule(client, operator_token, monkeypatch):
+    from unittest import mock
+
+    import requests as _requests
+
+    monkeypatch.setenv("SUPABASE_URL", "https://test.supabase.co")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "test-key")
+
+    current_rule = _make_fake_rule(name="Test Rule v3")
+    snapshot = {
+        "id": "snap-1",
+        "rule_id": "rule-123",
+        "workspace_id": "ws-123",
+        "name": "Test Rule v1",
+        "event_type": "workflow_status",
+        "condition": {"status": "failed"},
+        "action_type": "outbound_webhook",
+        "action_config": {"url": "https://old.example.com"},
+        "actions": [{"type": "outbound_webhook", "config": {"url": "https://old.example.com"}}],
+        "enabled": False,
+        "approval_required": True,
+        "approver_message": "Please approve",
+        "schedule_type": "event",
+        "cron_expression": None,
+        "cooldown_minutes": 5,
+    }
+    patched_rule = {**current_rule, **{k: snapshot[k] for k in snapshot if k not in ("id", "rule_id", "workspace_id", "created_by", "created_at")}}
+    patched_rule["id"] = "rule-123"
+
+    def fake_get(url, **kwargs):
+        resp = mock.Mock()
+        resp.raise_for_status.return_value = None
+        if "automation_rules" in url:
+            resp.json.return_value = [current_rule]
+        elif "automation_rule_snapshots" in url:
+            resp.json.return_value = [snapshot]
+        else:
+            resp.json.return_value = []
+        return resp
+
+    def fake_post(url, **kwargs):
+        resp = mock.Mock()
+        resp.raise_for_status.return_value = None
+        resp.json.return_value = [{"id": "pre-rollback-snapshot"}]
+        return resp
+
+    def fake_patch(url, **kwargs):
+        resp = mock.Mock()
+        resp.raise_for_status.return_value = None
+        resp.json.return_value = [patched_rule]
+        return resp
+
+    with mock.patch.object(_requests, "get", side_effect=fake_get), mock.patch.object(_requests, "post", side_effect=fake_post), mock.patch.object(_requests, "patch", side_effect=fake_patch):
+        resp = client.post(
+            "/automations/rule-123/rollback/snap-1",
+            headers={"Authorization": f"Bearer {operator_token}"},
+        )
+    assert resp.status_code == 200
+    data = json.loads(resp.data)
+    assert data["ok"] is True
+    assert data["rule"]["name"] == "Test Rule v1"
+    assert data["rule"]["enabled"] is False
+    assert data["rule"]["approval_required"] is True
+    assert data["rule"]["cooldown_minutes"] == 5
+
+
+def test_automation_snapshots_404_for_missing_rule(client, operator_token, monkeypatch):
+    from unittest import mock
+
+    import requests as _requests
+
+    monkeypatch.setenv("SUPABASE_URL", "https://test.supabase.co")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "test-key")
+
+    def fake_get(url, **kwargs):
+        resp = mock.Mock()
+        resp.raise_for_status.return_value = None
+        resp.json.return_value = []
+        return resp
+
+    with mock.patch.object(_requests, "get", side_effect=fake_get):
+        resp = client.get(
+            "/automations/missing-rule/snapshots",
+            headers={"Authorization": f"Bearer {operator_token}"},
+        )
+    assert resp.status_code == 404
+    data = json.loads(resp.data)
+    assert data["ok"] is False
+
+
+def test_automation_rollback_404_for_missing_snapshot(client, operator_token, monkeypatch):
+    from unittest import mock
+
+    import requests as _requests
+
+    monkeypatch.setenv("SUPABASE_URL", "https://test.supabase.co")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "test-key")
+
+    fake_rule = _make_fake_rule()
+
+    def fake_get(url, **kwargs):
+        resp = mock.Mock()
+        resp.raise_for_status.return_value = None
+        if "automation_rules" in url:
+            resp.json.return_value = [fake_rule]
+        else:
+            resp.json.return_value = []
+        return resp
+
+    with mock.patch.object(_requests, "get", side_effect=fake_get):
+        resp = client.post(
+            "/automations/rule-123/rollback/missing-snap",
+            headers={"Authorization": f"Bearer {operator_token}"},
+        )
+    assert resp.status_code == 404
+    data = json.loads(resp.data)
+    assert data["ok"] is False
+
+
+# Phase 39: Automation Analytics & Observability
+
+
+def _make_fake_executions():
+    return [
+        {
+            "id": "exec-1",
+            "rule_id": "rule-123",
+            "workspace_id": "ws-123",
+            "status": "triggered",
+            "created_at": "2024-01-15T10:00:00Z",
+            "result": {"runtime_ms": 120},
+        },
+        {
+            "id": "exec-2",
+            "rule_id": "rule-123",
+            "workspace_id": "ws-123",
+            "status": "completed",
+            "created_at": "2024-01-16T10:00:00Z",
+            "result": {"runtime_ms": 80},
+        },
+        {
+            "id": "exec-3",
+            "rule_id": "rule-123",
+            "workspace_id": "ws-123",
+            "status": "failed",
+            "created_at": "2024-01-16T11:00:00Z",
+            "result": {"error": "boom"},
+        },
+        {
+            "id": "exec-4",
+            "rule_id": "rule-456",
+            "workspace_id": "ws-123",
+            "status": "triggered",
+            "created_at": "2024-01-17T10:00:00Z",
+            "result": {},
+        },
+    ]
+
+
+def test_automation_metrics_workspace(client, operator_token, monkeypatch):
+    from unittest import mock
+
+    import requests as _requests
+
+    monkeypatch.setenv("SUPABASE_URL", "https://test.supabase.co")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "test-key")
+
+    fake_executions = _make_fake_executions()
+
+    def fake_get(url, **kwargs):
+        resp = mock.Mock()
+        resp.raise_for_status.return_value = None
+        resp.json.return_value = fake_executions
+        return resp
+
+    with mock.patch.object(_requests, "get", side_effect=fake_get):
+        resp = client.get(
+            "/automations/metrics?days=30",
+            headers={"Authorization": f"Bearer {operator_token}"},
+        )
+    assert resp.status_code == 200
+    data = json.loads(resp.data)
+    assert data["ok"] is True
+    assert data["total_runs"] == 4
+    assert data["completed_count"] == 1
+    assert data["failed_count"] == 1
+    assert data["success_rate"] == 75.0
+    assert data["failure_rate"] == 25.0
+    assert data["average_runtime_ms"] == 100.0
+    assert len(data["daily_counts"]) == 3
+    assert len(data["top_rules"]) == 2
+    assert data["top_rules"][0]["rule_id"] == "rule-123"
+
+
+def test_automation_metrics_rule(client, operator_token, monkeypatch):
+    from unittest import mock
+
+    import requests as _requests
+
+    monkeypatch.setenv("SUPABASE_URL", "https://test.supabase.co")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "test-key")
+
+    fake_executions = _make_fake_executions()
+
+    def fake_get(url, **kwargs):
+        resp = mock.Mock()
+        resp.raise_for_status.return_value = None
+        # Simulate Supabase filtering by rule_id
+        params = kwargs.get("params") or {}
+        if params.get("rule_id") == "eq.rule-123":
+            resp.json.return_value = [e for e in fake_executions if e["rule_id"] == "rule-123"]
+        else:
+            resp.json.return_value = fake_executions
+        return resp
+
+    with mock.patch.object(_requests, "get", side_effect=fake_get):
+        resp = client.get(
+            "/automations/rule-123/metrics?days=30",
+            headers={"Authorization": f"Bearer {operator_token}"},
+        )
+    assert resp.status_code == 200
+    data = json.loads(resp.data)
+    assert data["ok"] is True
+    assert data["rule_id"] == "rule-123"
+    assert data["total_runs"] == 3
+    assert data["failed_count"] == 1
+    assert data["success_rate"] == 66.67
+
+
+def test_automation_metrics_unauthorized(client, monkeypatch):
+    monkeypatch.setenv("SUPABASE_URL", "https://test.supabase.co")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "test-key")
+
+    resp = client.get("/automations/metrics")
+    assert resp.status_code == 401

@@ -123,6 +123,8 @@ AEON_ADMIN_NAME=AEON Admin
 | **35** | Parallel Action Branches (Scatter-Gather / Fan-Out-Fan-In) — `parallel` steps that run multiple action branches concurrently and aggregate results | ✅ |
 | **36** | Automation Testing & Dry Run (Simulation Mode) — `dry_run` flag for `/automations/<id>/run` that simulates side-effect actions while still evaluating transforms, conditions, and sub-automations | ✅ |
 | **37** | Automation Blueprints & Import/Export (JSON) — portable JSON serialization for rules, workspace-scoped import/export endpoints, and reusable blueprint templates | ✅ |
+| **38** | Automation Versioning & Rollback — automatic snapshots on rule updates, list/restore previous versions of an automation rule | ✅ |
+| **39** | Automation Analytics & Observability — execution metrics (totals, success/failure rates, daily trends) for workspace and per-rule automation health | ✅ |
 
 ---
 

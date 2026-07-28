@@ -134,6 +134,28 @@ export default function OSPage() {
               </div>
             );
           })}
+
+          <div
+            className="os-card active"
+            style={{ borderTopColor: "#6366f1" }}
+          >
+            <div className="os-card-header">
+              <span className="os-icon" style={{ background: "#6366f120" }}>
+                📊
+              </span>
+              <span className="os-status-pill active">active</span>
+            </div>
+            <h3>Automation Metrics</h3>
+            <p className="os-category">Observability</p>
+            <p className="os-desc">
+              Execution health, success rates, and daily trends for automation rules.
+            </p>
+            <div className="os-card-actions">
+              <Link href="/os/automations/metrics" className="btn btn-sm btn-primary">
+                Open
+              </Link>
+            </div>
+          </div>
         </section>
       )}
     </div>

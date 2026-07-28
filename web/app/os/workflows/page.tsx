@@ -168,6 +168,7 @@ export default function WorkflowBuilderPage() {
   };
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     const onKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
       const tag = target?.tagName?.toLowerCase();

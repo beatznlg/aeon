@@ -73,18 +73,18 @@ class AlertmanagerSmokeTest(unittest.TestCase):
         if cls._binary:
             config = prepare_alertmanager_config()
             log_path = Path("/tmp/alertmanager_smoke.log")
-            cls._log_file = log_path.open("w")
-            cls._process = subprocess.Popen(
-                [
-                    str(cls._binary),
-                    f"--config.file={config}",
-                    "--storage.path=/tmp/alertmanager_smoke_data",
-                    f"--web.listen-address=127.0.0.1:{cls.port}",
-                    f"--web.external-url=http://127.0.0.1:{cls.port}",
-                ],
-                stdout=cls._log_file,
-                stderr=subprocess.STDOUT,
-            )
+            with log_path.open("w") as log_file:
+                cls._process = subprocess.Popen(
+                    [
+                        str(cls._binary),
+                        f"--config.file={config}",
+                        "--storage.path=/tmp/alertmanager_smoke_data",
+                        f"--web.listen-address=127.0.0.1:{cls.port}",
+                        f"--web.external-url=http://127.0.0.1:{cls.port}",
+                    ],
+                    stdout=log_file,
+                    stderr=subprocess.STDOUT,
+                )
         elif docker_available():
             cls._docker_used = True
             subprocess.run(
@@ -109,8 +109,7 @@ class AlertmanagerSmokeTest(unittest.TestCase):
                     f"--web.external-url=http://127.0.0.1:{cls.port}",
                 ],
                 check=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                capture_output=True,
                 text=True,
             )
         else:

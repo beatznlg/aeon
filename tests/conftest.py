@@ -19,6 +19,7 @@ os.environ.setdefault("NEXTAUTH_SECRET", "test-secret-do-not-use-in-production")
 os.environ.setdefault("AEON_ENV", "test")
 os.environ.setdefault("ADMIN_EMAIL", "admin@test.local")
 os.environ.setdefault("ADMIN_PASSWORD_HASH", generate_password_hash("adminpass"))
+os.environ.setdefault("AEON_RATE_LIMIT_WINDOW_SECONDS", "0")
 
 
 # ── Lightweight stubs for heavy AEON modules ────────────────────────────────
