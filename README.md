@@ -121,6 +121,7 @@ AEON_ADMIN_NAME=AEON Admin
 | **33** | Sub-Automations (Rule Chaining) — `call_rule` actions to compose reusable workflows with payload passing and circular-loop mitigation | ✅ |
 | **34** | Data Transformation & Formatting Actions — `transform` steps for math, `date_format`, `regex_extract`, `json_parse`, and `json_stringify` with `{{ steps.N.result }}` references | ✅ |
 | **35** | Parallel Action Branches (Scatter-Gather / Fan-Out-Fan-In) — `parallel` steps that run multiple action branches concurrently and aggregate results | ✅ |
+| **36** | Automation Testing & Dry Run (Simulation Mode) — `dry_run` flag for `/automations/<id>/run` that simulates side-effect actions while still evaluating transforms, conditions, and sub-automations | ✅ |
 
 ---
 

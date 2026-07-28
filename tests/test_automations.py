@@ -453,7 +453,7 @@ def test_execute_action_delay_returns_sleeping(sample_event, sample_rule):
             {"type": "outbound_webhook", "config": {"url": "https://api.test/step2", "method": "POST"}},
         ],
     }
-    def _exec_side_effect(action_type, action_config, context):
+    def _exec_side_effect(action_type, action_config, context, dry_run=False):
         if action_type == "delay":
             from datetime import timezone as _tz
             return {
@@ -619,7 +619,7 @@ def test_execute_action_wait_for_event_returns_sleeping(sample_event, sample_rul
             {"type": "outbound_webhook", "config": {"url": "https://api.test/step2", "method": "POST"}},
         ],
     }
-    def _exec_side_effect(action_type, action_config, context):
+    def _exec_side_effect(action_type, action_config, context, dry_run=False):
         if action_type == "wait_for_event":
             return {
                 "ok": True,
@@ -775,7 +775,7 @@ def test_set_variable_and_state_interpolation(sample_event, sample_rule):
             {"ok": True, "key": "alert_count", "value": 3},
         ]
         # Subsequent calls are for the outbound_webhook; return a successful response.
-        def _side_effect(action_type, action_config, context):
+        def _side_effect(action_type, action_config, context, dry_run=False):
             if action_type == "set_variable":
                 return call_results.pop(0)
             return {"ok": True, "status_code": 200}
@@ -1086,3 +1086,119 @@ def test_execute_parallel_invalid_config(sample_event, sample_rule):
     result = _execute_action(rule, sample_event)
     assert result["ok"] is False
     assert "branches" in result["error"].lower()
+
+
+# Phase 36: Dry-run / simulation mode
+
+def test_dry_run_simulates_webhook_without_http_request(sample_event, sample_rule):
+    from aeon_automations import _execute_action
+    from unittest import mock
+
+    rule = {
+        **sample_rule,
+        "actions": [
+            {"type": "webhook", "config": {"url": "https://example.com/webhook"}}
+        ],
+    }
+    with mock.patch("requests.post") as mock_post:
+        result = _execute_action(rule, sample_event, dry_run=True)
+        mock_post.assert_not_called()
+    assert result["ok"] is True
+    assert result["dry_run"] is True
+    assert result["steps"][0]["simulated"] is True
+    assert result["steps"][0]["status_code"] == 200
+
+
+def test_dry_run_simulates_variable_set_and_get(sample_event, sample_rule):
+    from aeon_automations import _execute_action
+    from unittest import mock
+
+    rule = {
+        **sample_rule,
+        "actions": [
+            {"type": "set_variable", "config": {"key": "counter", "value": 5}},
+            {"type": "get_variable", "config": {"key": "counter"}},
+        ],
+    }
+    with mock.patch("requests.post") as mock_post, mock.patch("requests.get") as mock_get:
+        result = _execute_action(rule, sample_event, dry_run=True)
+        mock_post.assert_not_called()
+        mock_get.assert_not_called()
+    assert result["ok"] is True
+    assert result["dry_run"] is True
+    assert result["steps"][0]["key"] == "counter"
+    assert result["steps"][0]["value"] == 5
+    assert result["steps"][1]["value"] == 5
+
+
+def test_dry_run_allows_transform_and_delay_to_continue(sample_event, sample_rule):
+    from aeon_automations import _execute_action
+
+    rule = {
+        **sample_rule,
+        "actions": [
+            {"type": "transform", "config": {"operation": "math", "operator": "+", "left": 2, "right": 3}},
+            {"type": "delay", "config": {"duration_minutes": 10}},
+            {"type": "transform", "config": {"operation": "math", "operator": "*", "left": 5, "right": 2}},
+        ],
+    }
+    result = _execute_action(rule, sample_event, dry_run=True)
+    assert result["ok"] is True
+    assert result["dry_run"] is True
+    assert result["status"] == "completed"
+    assert len(result["steps"]) == 3
+    assert result["steps"][0]["result"] == 5
+    assert result["steps"][1]["simulated"] is True
+    assert result["steps"][2]["result"] == 10
+
+
+def test_dry_run_simulates_call_rule_sub_automation(sample_event, sample_rule):
+    from aeon_automations import _execute_action
+    from unittest import mock
+
+    sub_rule = {
+        **sample_rule,
+        "id": "sub-rule-1",
+        "actions": [
+            {"type": "transform", "config": {"operation": "math", "operator": "+", "left": 1, "right": 1}}
+        ],
+    }
+    parent_rule = {
+        **sample_rule,
+        "actions": [
+            {
+                "type": "call_rule",
+                "config": {"rule_id": "sub-rule-1", "payload": {"value": 10}, "event_type": "sub_request"},
+            }
+        ],
+    }
+    with mock.patch("aeon_automations._fetch_rule_by_id", return_value=sub_rule) as mock_fetch:
+        result = _execute_action(parent_rule, sample_event, dry_run=True)
+        mock_fetch.assert_called_once_with("sub-rule-1", "ws-123")
+    assert result["ok"] is True
+    assert result["dry_run"] is True
+    sub_result = result["steps"][0]["sub_result"]
+    assert sub_result["ok"] is True
+    assert sub_result["dry_run"] is True
+    assert sub_result["steps"][0]["result"] == 2
+
+
+def test_normal_run_still_executes_webhook(sample_event, sample_rule):
+    from aeon_automations import _execute_action
+    from unittest import mock
+
+    rule = {
+        **sample_rule,
+        "actions": [
+            {"type": "webhook", "config": {"url": "https://example.com/webhook"}}
+        ],
+    }
+    with mock.patch("requests.post") as mock_post:
+        mock_response = mock.Mock()
+        mock_response.status_code = 200
+        mock_response.raise_for_status.return_value = None
+        mock_post.return_value = mock_response
+        result = _execute_action(rule, sample_event, dry_run=False)
+        mock_post.assert_called_once()
+    assert result["ok"] is True
+    assert "dry_run" not in result or result.get("dry_run") is False

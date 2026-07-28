@@ -399,6 +399,7 @@ def _execute_parallel(
     action_config: dict[str, Any],
     event: dict[str, Any],
     context: dict[str, Any],
+    dry_run: bool = False,
 ) -> dict[str, Any]:
     """Execute multiple action branches concurrently (scatter-gather / fan-out).
 
@@ -433,7 +434,7 @@ def _execute_parallel(
             "workspace_id": workspace_id,
         }
         try:
-            result = _execute_action(branch_rule, event, call_depth=call_depth)
+            result = _execute_action(branch_rule, event, call_depth=call_depth, dry_run=dry_run)
         except Exception as exc:
             logger.warning("Parallel branch %s failed: %s", name, exc)
             return {"name": name, "ok": False, "error": str(exc)}
@@ -462,6 +463,7 @@ def _execute_parallel(
 
     return {
         "ok": True,
+        "dry_run": dry_run,
         "branches": branch_results,
         "failed_branches": failed,
     }
@@ -471,6 +473,7 @@ def _execute_call_rule(
     action_config: dict[str, Any],
     event: dict[str, Any],
     context: dict[str, Any],
+    dry_run: bool = False,
 ) -> dict[str, Any]:
     """Execute a sub-automation (rule chaining / composition).
 
@@ -514,14 +517,15 @@ def _execute_call_rule(
     if not wait_for_completion:
         # Fire-and-forget: run synchronously for simplicity, but the parent
         # chain does not wait on the result.
-        _execute_action(target_rule, sub_event, call_depth=current_depth + 1)
-        return {"ok": True, "rule_id": rule_id, "wait_for_completion": False}
+        _execute_action(target_rule, sub_event, call_depth=current_depth + 1, dry_run=dry_run)
+        return {"ok": True, "rule_id": rule_id, "wait_for_completion": False, "dry_run": dry_run}
 
-    sub_result = _execute_action(target_rule, sub_event, call_depth=current_depth + 1)
+    sub_result = _execute_action(target_rule, sub_event, call_depth=current_depth + 1, dry_run=dry_run)
     return {
         "ok": sub_result.get("ok", False),
         "rule_id": rule_id,
         "wait_for_completion": True,
+        "dry_run": dry_run,
         "sub_result": sub_result,
     }
 
@@ -533,6 +537,7 @@ def _execute_action(
     start_index: int = 0,
     initial_steps: list[dict[str, Any]] | None = None,
     call_depth: int = 0,
+    dry_run: bool = False,
 ) -> dict[str, Any]:
     """Execute the action(s) configured for a rule.
 
@@ -583,12 +588,13 @@ def _execute_action(
             # Phase 30: delay steps are handled before loops because they don't
         # perform real work; they just schedule a resume time.
         if action_type == "delay":
-            result = execute_action_by_type(action_type, action_config, context)
+            result = execute_action_by_type(action_type, action_config, context, dry_run=dry_run)
             steps.append(result)
             if result.get("status") == "sleeping":
                 return {
                     "ok": True,
                     "status": "sleeping",
+                    "dry_run": dry_run,
                     "steps": steps,
                     "pending_step_index": idx + 1,
                     "resume_at": result.get("resume_at"),
@@ -598,12 +604,13 @@ def _execute_action(
         # Phase 31: wait_for_event steps suspend the chain until a matching
         # external event arrives (or a timeout expires).
         if action_type == "wait_for_event":
-            result = execute_action_by_type(action_type, action_config, context)
+            result = execute_action_by_type(action_type, action_config, context, dry_run=dry_run)
             steps.append(result)
             if result.get("status") == "sleeping":
                 return {
                     "ok": True,
                     "status": "sleeping",
+                    "dry_run": dry_run,
                     "steps": steps,
                     "pending_step_index": idx + 1,
                     "resume_at": result.get("resume_at"),
@@ -616,7 +623,7 @@ def _execute_action(
             if not isinstance(loop_items, (list, tuple)):
                 result = {"ok": False, "error": f"loop_over did not resolve to a list: {loop_over}"}
                 steps.append(result)
-                fallback = _execute_on_error(action, on_error, idx, result["error"], context)
+                fallback = _execute_on_error(action, on_error, idx, result["error"], context, dry_run=dry_run)
                 if fallback:
                     result["on_error_result"] = fallback
                 if continue_on_error and (fallback or fallback is None):
@@ -624,6 +631,7 @@ def _execute_action(
                 return {
                     "ok": False,
                     "status": "failed",
+                    "dry_run": dry_run,
                     "steps": steps,
                     "failed_step": idx,
                     "error": result.get("error", "loop_over failed"),
@@ -631,7 +639,7 @@ def _execute_action(
             iteration_results: list[dict[str, Any]] = []
             for i, item in enumerate(loop_items):
                 iter_context = {**context, "item": item, "loop": {"index": i, "total": len(loop_items)}}
-                iter_result = execute_action_by_type(action_type, action_config, iter_context)
+                iter_result = execute_action_by_type(action_type, action_config, iter_context, dry_run=dry_run)
                 iteration_results.append(iter_result)
                 if not iter_result.get("ok"):
                     break
@@ -642,7 +650,7 @@ def _execute_action(
             steps.append(step_result)
             if not step_result["ok"]:
                 error_message = "one or more loop iterations failed"
-                fallback = _execute_on_error(action, on_error, idx, error_message, context)
+                fallback = _execute_on_error(action, on_error, idx, error_message, context, dry_run=dry_run)
                 if fallback:
                     step_result["on_error_result"] = fallback
                 if continue_on_error and (fallback or fallback is None):
@@ -650,17 +658,29 @@ def _execute_action(
                 return {
                     "ok": False,
                     "status": "failed",
+                    "dry_run": dry_run,
                     "steps": steps,
                     "failed_step": idx,
                     "error": error_message,
                 }
             continue
 
-        result = execute_action_by_type(action_type, action_config, context)
+        result = execute_action_by_type(action_type, action_config, context, dry_run=dry_run)
         steps.append(result)
+
+        # In dry-run mode, keep the local state dict in sync with simulated
+        # variable mutations so later get_variable steps see the updated value.
+        if dry_run and action_type in ("set_variable", "increment_variable", "delete_variable") and result.get("ok"):
+            key = result.get("key")
+            if key is not None:
+                if action_type == "delete_variable":
+                    context["state"].pop(key, None)
+                else:
+                    context["state"][key] = result.get("value")
+
         if not result.get("ok"):
             error_message = result.get("error") or "step failed"
-            fallback = _execute_on_error(action, on_error, idx, error_message, context)
+            fallback = _execute_on_error(action, on_error, idx, error_message, context, dry_run=dry_run)
             if fallback:
                 result["on_error_result"] = fallback
             if continue_on_error and (fallback or fallback is None):
@@ -668,12 +688,13 @@ def _execute_action(
             return {
                 "ok": False,
                 "status": "failed",
+                "dry_run": dry_run,
                 "steps": steps,
                 "failed_step": idx,
                 "error": error_message,
             }
 
-    return {"ok": True, "status": "completed", "steps": steps}
+    return {"ok": True, "status": "completed", "dry_run": dry_run, "steps": steps}
 
 
 def _execute_on_error(
@@ -682,6 +703,7 @@ def _execute_on_error(
     step_index: int,
     error_message: str,
     context: dict[str, Any],
+    dry_run: bool = False,
 ) -> dict[str, Any] | None:
     """Execute a step's on_error fallback action, if provided.
 
@@ -699,7 +721,7 @@ def _execute_on_error(
         **context,
         "error": {"message": str(error_message), "step": step_index},
     }
-    return execute_action_by_type(fallback_type, fallback_config, error_context)
+    return execute_action_by_type(fallback_type, fallback_config, error_context, dry_run=dry_run)
 
 
 def _resolve_template_value(path: str, context: dict[str, Any]) -> Any:
@@ -778,16 +800,110 @@ def _interpolate(value: Any, *args) -> Any:
     return value
 
 
+# Actions whose side effects should be simulated when running in dry-run mode.
+_SIMULATED_SIDE_EFFECTS = frozenset({
+    "webhook",
+    "outbound_webhook",
+    "swarm",
+    "workflow",
+    "set_variable",
+    "delete_variable",
+    "increment_variable",
+})
+
+
+def _simulate_action(
+    action_type: str,
+    action_config: dict[str, Any],
+    event: dict[str, Any],
+) -> dict[str, Any]:
+    """Return a simulated result for a side-effect action without executing it.
+
+    Used by dry-run mode so users can preview what a rule would do without
+    actually calling external services or mutating workspace state.
+    """
+    if action_type in ("webhook", "outbound_webhook"):
+        url = action_config.get("url")
+        if not url:
+            return {"ok": False, "error": "webhook URL missing", "dry_run": True}
+        method = str(action_config.get("method", "POST")).upper() if action_type == "outbound_webhook" else "POST"
+        return {
+            "ok": True,
+            "dry_run": True,
+            "simulated": True,
+            "action_type": action_type,
+            "method": method,
+            "url": url,
+            "status_code": 200,
+        }
+    if action_type in ("swarm", "workflow"):
+        return {
+            "ok": True,
+            "dry_run": True,
+            "simulated": True,
+            "action_type": action_type,
+            "status_code": 200,
+            "data": {"simulated": True},
+        }
+    if action_type == "set_variable":
+        key = action_config.get("key")
+        if not key:
+            return {"ok": False, "error": "set_variable requires key", "dry_run": True}
+        return {
+            "ok": True,
+            "dry_run": True,
+            "simulated": True,
+            "action_type": "set_variable",
+            "key": key,
+            "value": action_config.get("value"),
+        }
+    if action_type == "delete_variable":
+        key = action_config.get("key")
+        if not key:
+            return {"ok": False, "error": "delete_variable requires key", "dry_run": True}
+        return {
+            "ok": True,
+            "dry_run": True,
+            "simulated": True,
+            "action_type": "delete_variable",
+            "key": key,
+            "deleted": True,
+        }
+    if action_type == "increment_variable":
+        key = action_config.get("key")
+        if not key:
+            return {"ok": False, "error": "increment_variable requires key", "dry_run": True}
+        return {
+            "ok": True,
+            "dry_run": True,
+            "simulated": True,
+            "action_type": "increment_variable",
+            "key": key,
+            "amount": action_config.get("amount", 1),
+            "previous_value": 0,
+            "value": action_config.get("amount", 1),
+        }
+    # Fallback for any other side-effect action.
+    return {"ok": True, "dry_run": True, "simulated": True, "action_type": action_type}
+
+
 def execute_action_by_type(
     action_type: str | None,
     action_config: dict[str, Any],
     *args,
+    dry_run: bool = False,
 ) -> dict[str, Any]:
     """Execute an action given its type, config, and automation context.
 
     Supports two calling conventions for backward compatibility:
         execute_action_by_type(action_type, action_config, context)
         execute_action_by_type(action_type, action_config, event, rule)  # legacy
+
+    When ``dry_run`` is true, side-effect actions are simulated instead of
+    executed. Non-side-effect actions (``transform``, ``get_variable``,
+    ``delay``, ``wait_for_event``) still run normally so the preview remains
+    accurate. Sub-automations and parallel branches are executed recursively
+    in dry-run mode.
     """
     if len(args) == 1:
         context = args[0]
@@ -800,6 +916,21 @@ def execute_action_by_type(
     event = context.get("event") or {}
     event_payload = event.get("payload") or {}
     interpolated_config = _interpolate(action_config, context)
+
+    if dry_run and action_type in _SIMULATED_SIDE_EFFECTS:
+        return _simulate_action(str(action_type), interpolated_config, event)
+
+    # In dry-run mode, delay and wait_for_event should not suspend execution,
+    # otherwise the preview would stop at the first pause. Return a normal
+    # simulated result so the rest of the chain can be previewed.
+    if dry_run and action_type in ("delay", "wait_for_event"):
+        return {"ok": True, "dry_run": True, "simulated": True, "action_type": action_type}
+
+    if action_type == "get_variable":
+        key = interpolated_config.get("key")
+        if dry_run and key is not None and key in (context.get("state") or {}):
+            return {"ok": True, "key": key, "value": context["state"][key]}
+        return _execute_get_variable(interpolated_config, event)
 
     if action_type == "webhook":
         return _execute_webhook(interpolated_config, event)
@@ -815,18 +946,16 @@ def execute_action_by_type(
         return _execute_wait_for_event(interpolated_config, event)
     if action_type == "set_variable":
         return _execute_set_variable(interpolated_config, event)
-    if action_type == "get_variable":
-        return _execute_get_variable(interpolated_config, event)
     if action_type == "delete_variable":
         return _execute_delete_variable(interpolated_config, event)
     if action_type == "increment_variable":
         return _execute_increment_variable(interpolated_config, event)
     if action_type == "call_rule":
-        return _execute_call_rule(interpolated_config, event, context)
+        return _execute_call_rule(interpolated_config, event, context, dry_run=dry_run)
     if action_type == "transform":
         return _execute_transform(interpolated_config, event)
     if action_type == "parallel":
-        return _execute_parallel(interpolated_config, event, context)
+        return _execute_parallel(interpolated_config, event, context, dry_run=dry_run)
     return {"ok": False, "error": f"unsupported action_type {action_type}"}
 
 

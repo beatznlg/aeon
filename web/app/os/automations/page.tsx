@@ -640,6 +640,7 @@ export default function AutomationsPage() {
   const [webhooks, setWebhooks] = useState<InboundWebhook[]>([]);
   const [webhookName, setWebhookName] = useState("");
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
+  const [runResult, setRunResult] = useState<{ dry_run?: boolean; result?: any } | null>(null);
 
   const [form, setForm] = useState<Partial<AutomationRule>>({
     name: "",
@@ -796,12 +797,20 @@ export default function AutomationsPage() {
     } catch {}
   }
 
-  async function runRuleNow(id: string) {
+  async function runRuleNow(id: string, dryRun = false) {
     try {
-      const res = await fetch(`/api/automations/${id}/run`, { method: "POST" });
+      const res = await fetch(`/api/automations/${id}/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dry_run: dryRun }),
+      });
       const data = await res.json();
       if (data.ok) {
-        alert("Rule executed successfully");
+        if (dryRun) {
+          setRunResult(data);
+        } else {
+          alert("Rule executed successfully");
+        }
       } else {
         setError(data.error || "Failed to run rule");
       }
@@ -1282,6 +1291,16 @@ export default function AutomationsPage() {
                         Run Now
                       </button>
                       <button
+                        className="btn btn-sm"
+                        style={{ background: "var(--accent)", color: "#fff" }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          runRuleNow(rule.id, true);
+                        }}
+                      >
+                        Dry Run
+                      </button>
+                      <button
                         className="btn btn-sm btn-danger"
                         onClick={(e) => {
                           e.stopPropagation();
@@ -1412,6 +1431,55 @@ export default function AutomationsPage() {
           </ul>
         )}
       </section>
+
+      {runResult && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.6)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+            padding: 24,
+          }}
+          onClick={() => setRunResult(null)}
+        >
+          <div
+            style={{
+              background: "var(--bg)",
+              border: "1px solid var(--border)",
+              borderRadius: 12,
+              maxWidth: 720,
+              width: "100%",
+              maxHeight: "80vh",
+              overflow: "auto",
+              padding: 24,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <h3 style={{ margin: 0 }}>{runResult.dry_run ? "Dry Run Result" : "Run Result"}</h3>
+              <button className="btn btn-sm" onClick={() => setRunResult(null)}>
+                Close
+              </button>
+            </div>
+            <pre
+              style={{
+                background: "var(--bg-elevated)",
+                border: "1px solid var(--border)",
+                borderRadius: 8,
+                padding: 12,
+                fontSize: "0.8rem",
+                overflow: "auto",
+              }}
+            >
+              {JSON.stringify(runResult.result, null, 2)}
+            </pre>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

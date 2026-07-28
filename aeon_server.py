@@ -54,7 +54,7 @@ from aeon_governance import GovernanceManager, get_governance
 from aeon_integrations import IntegrationManager, WebhookDelivery, get_integration_catalog
 from aeon_llm import get_llm_provider, list_providers, set_active_provider
 from aeon_llm import test_provider as _test_llm_provider
-from aeon_automations import evaluate_condition, resolve_approval, start_scheduler, _compute_next_run
+from aeon_automations import evaluate_condition, resolve_approval, start_scheduler, _compute_next_run, _execute_action
 from aeon_notify import broadcast_event
 from aeon_notify import log_activity
 from aeon_notify import notify as _notify
@@ -2630,7 +2630,9 @@ def automation_run_now(rule_id: str):
             return jsonify({"ok": False, "error": "rule not found"}), 404
         rule = rows[0]
 
-        from aeon_automations import execute_action_by_type
+        body = request.get_json(silent=True) or {}
+        dry_run = bool(body.get("dry_run"))
+
         event = {
             "type": rule.get("event_type") or "system",
             "payload": {"manual": True, "rule_id": rule_id},
@@ -2638,8 +2640,8 @@ def automation_run_now(rule_id: str):
             "workspace_id": workspace_id,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
-        result = execute_action_by_type(rule.get("action_type"), rule.get("action_config") or {}, event)
-        return jsonify({"ok": result.get("ok"), "result": result})
+        result = _execute_action(rule, event, dry_run=dry_run)
+        return jsonify({"ok": result.get("ok"), "dry_run": dry_run, "result": result})
     except Exception as e:
         logger.warning("Failed to run automation rule manually: %s", e)
         return jsonify({"ok": False, "error": str(e)}), 500
