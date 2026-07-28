@@ -641,6 +641,12 @@ export default function AutomationsPage() {
   const [webhookName, setWebhookName] = useState("");
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
   const [runResult, setRunResult] = useState<{ dry_run?: boolean; result?: any } | null>(null);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [showBlueprintsModal, setShowBlueprintsModal] = useState(false);
+  const [blueprints, setBlueprints] = useState<any[]>([]);
+  const [importText, setImportText] = useState("");
+  const [importLoading, setImportLoading] = useState(false);
+  const [importResult, setImportResult] = useState<{ ok?: boolean; imported?: number; error?: string } | null>(null);
 
   const [form, setForm] = useState<Partial<AutomationRule>>({
     name: "",
@@ -659,6 +665,7 @@ export default function AutomationsPage() {
   useEffect(() => {
     loadRules();
     loadWebhooks();
+    loadBlueprints();
   }, []);
 
   async function loadRules() {
@@ -819,6 +826,107 @@ export default function AutomationsPage() {
     }
   }
 
+  async function exportAllRules() {
+    try {
+      const res = await fetch("/api/automations/export");
+      const data = await res.json();
+      if (data.ok) {
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `aeon-automations-${new Date().toISOString()}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+      } else {
+        setError(data.error || "Failed to export rules");
+      }
+    } catch (e: any) {
+      setError(e.message || "Failed to export rules");
+    }
+  }
+
+  async function exportRule(rule: AutomationRule) {
+    try {
+      const res = await fetch(`/api/automations/export?rule_id=${rule.id}`);
+      const data = await res.json();
+      if (data.ok) {
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `aeon-automation-${rule.name.replace(/\s+/g, "_")}-${rule.id}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+      } else {
+        setError(data.error || "Failed to export rule");
+      }
+    } catch (e: any) {
+      setError(e.message || "Failed to export rule");
+    }
+  }
+
+  async function loadBlueprints() {
+    try {
+      const res = await fetch("/api/automations/blueprints");
+      const data = await res.json();
+      if (data.ok && Array.isArray(data.blueprints)) {
+        setBlueprints(data.blueprints);
+      }
+    } catch {}
+  }
+
+  async function importRules() {
+    setImportLoading(true);
+    setImportResult(null);
+    try {
+      let payload: any;
+      try {
+        payload = JSON.parse(importText);
+      } catch {
+        setImportResult({ ok: false, error: "Invalid JSON" });
+        setImportLoading(false);
+        return;
+      }
+      const res = await fetch("/api/automations/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setImportResult({ ok: true, imported: data.imported });
+        setImportText("");
+        await loadRules();
+        setTimeout(() => setShowImportModal(false), 1500);
+      } else {
+        setImportResult({ ok: false, error: data.error || "Import failed" });
+      }
+    } catch (e: any) {
+      setImportResult({ ok: false, error: e.message || "Import failed" });
+    } finally {
+      setImportLoading(false);
+    }
+  }
+
+  function applyBlueprint(blueprint: any) {
+    setForm({
+      name: blueprint.name || "",
+      event_type: blueprint.event_type || "workflow_status",
+      condition: blueprint.condition || {},
+      action_type: undefined,
+      action_config: {},
+      actions: (blueprint.actions || []).map((a: any) => ({ ...a })),
+      enabled: blueprint.enabled ?? true,
+      approval_required: false,
+      schedule_type: blueprint.schedule_type || "event",
+      cron_expression: blueprint.cron_expression || "",
+      cooldown_minutes: blueprint.cooldown_minutes ?? 0,
+    });
+    setShowBlueprintsModal(false);
+    setShowForm(true);
+  }
+
   function updateActionConfig(key: string, value: string) {
     setForm((prev) => ({
       ...prev,
@@ -835,8 +943,14 @@ export default function AutomationsPage() {
           </h1>
           <p className="dashboard-subtitle">Event-driven rules that trigger webhooks, swarms, or workflows.</p>
         </div>
-        <div style={{ display: "flex", gap: 12 }}>
-          <button className="btn btn-primary" onClick={() => setShowForm(true)}>
+        <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+          <button className="btn" onClick={() => setShowImportModal(true)}>
+            Import JSON
+          </button>
+          <button className="btn" onClick={exportAllRules}>
+            Export All
+          </button>
+          <button className="btn btn-primary" onClick={() => setShowBlueprintsModal(true)}>
             + New Rule
           </button>
           <Link href="/os" className="btn btn-sm">
@@ -1301,6 +1415,15 @@ export default function AutomationsPage() {
                         Dry Run
                       </button>
                       <button
+                        className="btn btn-sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          exportRule(rule);
+                        }}
+                      >
+                        Export
+                      </button>
+                      <button
                         className="btn btn-sm btn-danger"
                         onClick={(e) => {
                           e.stopPropagation();
@@ -1477,6 +1600,152 @@ export default function AutomationsPage() {
             >
               {JSON.stringify(runResult.result, null, 2)}
             </pre>
+          </div>
+        </div>
+      )}
+
+      {showImportModal && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.6)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+            padding: 24,
+          }}
+          onClick={() => setShowImportModal(false)}
+        >
+          <div
+            style={{
+              background: "var(--bg)",
+              border: "1px solid var(--border)",
+              borderRadius: 12,
+              maxWidth: 640,
+              width: "100%",
+              maxHeight: "80vh",
+              overflow: "auto",
+              padding: 24,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <h3 style={{ margin: 0 }}>Import Automation Rules</h3>
+              <button className="btn btn-sm" onClick={() => setShowImportModal(false)}>
+                Close
+              </button>
+            </div>
+            <p style={{ color: "var(--fg-mute)", fontSize: "0.85rem" }}>
+              Paste the exported JSON below. You can import a single rule, an array of rules, or an object with a{" "}
+              <code>rules</code> property.
+            </p>
+            <textarea
+              className="input"
+              rows={10}
+              value={importText}
+              onChange={(e) => setImportText(e.target.value)}
+              placeholder='{"rules": [{"name": "..."}]}'
+              style={{ marginBottom: 12, fontFamily: "monospace", fontSize: "0.8rem" }}
+            />
+            {importResult && (
+              <div
+                style={{
+                  padding: 12,
+                  borderRadius: 8,
+                  marginBottom: 12,
+                  background: importResult.ok ? "#22c55e20" : "#ef444420",
+                  color: importResult.ok ? "#22c55e" : "#ef4444",
+                  fontSize: "0.85rem",
+                }}
+              >
+                {importResult.ok
+                  ? `Imported ${importResult.imported} rule(s) successfully`
+                  : importResult.error}
+              </div>
+            )}
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 12 }}>
+              <button className="btn" onClick={() => setShowImportModal(false)}>
+                Cancel
+              </button>
+              <button className="btn btn-primary" onClick={importRules} disabled={importLoading}>
+                {importLoading ? "Importing…" : "Import Rules"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showBlueprintsModal && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.6)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+            padding: 24,
+          }}
+          onClick={() => setShowBlueprintsModal(false)}
+        >
+          <div
+            style={{
+              background: "var(--bg)",
+              border: "1px solid var(--border)",
+              borderRadius: 12,
+              maxWidth: 800,
+              width: "100%",
+              maxHeight: "80vh",
+              overflow: "auto",
+              padding: 24,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <h3 style={{ margin: 0 }}>Create Automation</h3>
+              <button className="btn btn-sm" onClick={() => setShowBlueprintsModal(false)}>
+                Close
+              </button>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
+              <button
+                onClick={() => {
+                  setShowBlueprintsModal(false);
+                  setShowForm(true);
+                }}
+                style={{
+                  padding: 16,
+                  border: "1px dashed var(--border)",
+                  borderRadius: 12,
+                  background: "var(--bg-elevated)",
+                  textAlign: "left",
+                  cursor: "pointer",
+                }}
+              >
+                <div style={{ fontWeight: 600, marginBottom: 4 }}>Blank Automation</div>
+                <div style={{ fontSize: "0.78rem", color: "var(--fg-mute)" }}>Start from scratch with a custom rule.</div>
+              </button>
+              {blueprints.map((bp) => (
+                <button
+                  key={bp.id}
+                  onClick={() => applyBlueprint(bp)}
+                  style={{
+                    padding: 16,
+                    border: "1px solid var(--border)",
+                    borderRadius: 12,
+                    background: "var(--bg-elevated)",
+                    textAlign: "left",
+                    cursor: "pointer",
+                  }}
+                >
+                  <div style={{ fontWeight: 600, marginBottom: 4 }}>{bp.name}</div>
+                  <div style={{ fontSize: "0.78rem", color: "var(--fg-mute)" }}>{bp.description}</div>
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       )}

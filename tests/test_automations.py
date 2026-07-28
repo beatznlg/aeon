@@ -1,5 +1,6 @@
 """Tests for AEON automations — Phase 23 dynamic context mapping & outbound webhooks."""
 
+import json
 from unittest import mock
 
 import pytest
@@ -1202,3 +1203,135 @@ def test_normal_run_still_executes_webhook(sample_event, sample_rule):
         mock_post.assert_called_once()
     assert result["ok"] is True
     assert "dry_run" not in result or result.get("dry_run") is False
+
+
+# Phase 37: Automation Blueprints & Import/Export
+
+import uuid as _uuid
+
+
+@pytest.fixture
+def operator_token(client):
+    """Register a user and return an auth token for automation endpoint tests."""
+    email = f"automation-{_uuid.uuid4().hex[:8]}@test.local"
+    resp = client.post(
+        "/auth/register",
+        json={"email": email, "password": "secure123", "name": "Automation Tester"},
+    )
+    data = json.loads(resp.data)
+    assert "token" in data, f"register failed: {resp.status_code} {data}"
+    return data["token"]
+
+
+def test_automation_blueprints(client, operator_token):
+    resp = client.get(
+        "/automations/blueprints",
+        headers={"Authorization": f"Bearer {operator_token}"},
+    )
+    assert resp.status_code == 200
+    data = json.loads(resp.data)
+    assert data["ok"] is True
+    assert len(data["blueprints"]) > 0
+    assert all("id" in bp and "actions" in bp for bp in data["blueprints"])
+
+
+def test_automation_export(client, operator_token, monkeypatch):
+    import requests as _requests
+    from unittest import mock
+
+    monkeypatch.setenv("SUPABASE_URL", "https://test.supabase.co")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "test-key")
+
+    fake_rule = {
+        "id": "rule-123",
+        "name": "Test Rule",
+        "workspace_id": "ws-123",
+        "created_at": "2024-01-01T00:00:00Z",
+        "event_type": "workflow_status",
+        "actions": [{"type": "webhook", "config": {"url": "https://example.com"}}],
+    }
+
+    with mock.patch.object(_requests, "get") as mock_get:
+        mock_resp = mock.Mock()
+        mock_resp.json.return_value = [fake_rule]
+        mock_resp.raise_for_status.return_value = None
+        mock_get.return_value = mock_resp
+
+        resp = client.get(
+            "/automations/export",
+            headers={"Authorization": f"Bearer {operator_token}"},
+        )
+        assert resp.status_code == 200
+        data = json.loads(resp.data)
+        assert data["ok"] is True
+        assert data["count"] == 1
+        exported = data["rules"][0]
+        assert "id" not in exported
+        assert "workspace_id" not in exported
+        assert "created_at" not in exported
+        assert exported["name"] == "Test Rule"
+
+
+def test_automation_import(client, operator_token, monkeypatch):
+    import requests as _requests
+    from unittest import mock
+
+    monkeypatch.setenv("SUPABASE_URL", "https://test.supabase.co")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "test-key")
+
+    imported = []
+
+    def fake_post(url, **kwargs):
+        resp = mock.Mock()
+        resp.raise_for_status.return_value = None
+        payload = kwargs.get("json") or {}
+        rule = {"id": "imported-1", **payload}
+        imported.append(rule)
+        resp.json.return_value = [rule]
+        return resp
+
+    with mock.patch.object(_requests, "post", side_effect=fake_post):
+        resp = client.post(
+            "/automations/import",
+            headers={"Authorization": f"Bearer {operator_token}"},
+            json={
+                "rules": [
+                    {
+                        "name": "Imported Rule",
+                        "event_type": "workflow_status",
+                        "actions": [{"type": "webhook", "config": {"url": "https://example.com"}}],
+                    }
+                ]
+            },
+        )
+    assert resp.status_code == 200
+    data = json.loads(resp.data)
+    assert data["ok"] is True
+    assert data["imported"] == 1
+    assert imported[0]["workspace_id"] is not None
+
+
+def test_automation_import_rejects_invalid_action_type(client, operator_token, monkeypatch):
+    import requests as _requests
+    from unittest import mock
+
+    monkeypatch.setenv("SUPABASE_URL", "https://test.supabase.co")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "test-key")
+
+    resp = client.post(
+        "/automations/import",
+        headers={"Authorization": f"Bearer {operator_token}"},
+        json={
+            "rules": [
+                {
+                    "name": "Bad Rule",
+                    "event_type": "workflow_status",
+                    "actions": [{"type": "invalid_action", "config": {}}],
+                }
+            ]
+        },
+    )
+    assert resp.status_code == 207
+    data = json.loads(resp.data)
+    assert data["ok"] is False
+    assert len(data["errors"]) == 1
