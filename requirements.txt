@@ -45,3 +45,8 @@ redis>=5.0
 
 # --- scheduled automations ---
 croniter>=1.4
+
+# --- distributed tasks / production scalability ---
+celery[redis]>=5.3
+boto3>=1.28
+alembic>=1.12

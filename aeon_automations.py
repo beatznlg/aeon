@@ -1696,13 +1696,122 @@ def _try_resume_waiting_executions(event: dict[str, Any]) -> list[dict[str, Any]
     return resumed
 
 
+
+def _dispatch_to_worker(rule_id: str, event: dict[str, Any]) -> dict[str, Any]:
+    """Enqueue a rule execution via Celery when Redis is configured.
+
+    Falls back to synchronous execution when the worker module is unavailable
+    or when running in eager/local mode.
+    """
+    try:
+        # Lazy import avoids a circular dependency: aeon_worker imports aeon_automations.
+        from aeon_worker import app as celery_app  # type: ignore[attr-defined]
+        from aeon_worker import enqueue_automation  # type: ignore[attr-defined]
+
+        # In eager/local mode run synchronously to avoid scheduling overhead and
+        # double execution. Only queue when a real broker is configured.
+        if celery_app.conf.task_always_eager:
+            return execute_rule_by_id(rule_id, event)
+
+        task_id = enqueue_automation(rule_id, event)
+        if task_id:
+            return {"ok": True, "dispatched": True, "task_id": task_id, "status": "dispatched"}
+    except Exception as exc:
+        logger.warning("Failed to dispatch rule %s to Celery: %s", rule_id, exc)
+
+    # Fallback: execute synchronously
+    return execute_rule_by_id(rule_id, event)
+
+
+def execute_rule_by_id(rule_id: str, event_payload: dict[str, Any]) -> dict[str, Any]:
+    """Fetch a single automation rule by ID and execute its actions.
+
+    This function is the synchronous entrypoint used by the Celery worker. It
+    performs the same cooldown, approval, and budget checks as
+    ``evaluate_automations`` before running ``_execute_action``.
+    """
+    workspace_id = event_payload.get("workspace_id")
+    rule = _fetch_rule_by_id(rule_id, workspace_id)
+    if not rule:
+        return {"ok": False, "error": "rule not found", "rule_id": rule_id}
+
+    event: dict[str, Any] = {
+        "type": event_payload.get("type") or "system",
+        "payload": event_payload.get("payload") or {},
+        "user_id": event_payload.get("user_id"),
+        "workspace_id": workspace_id,
+        "timestamp": event_payload.get("timestamp"),
+    }
+
+    # Phase 25: cooldown / throttling
+    if _is_in_cooldown(rule):
+        _log_execution_with_status(rule, event, "throttled", {"reason": "cooldown active"})
+        return {"ok": True, "status": "throttled", "reason": "cooldown active", "rule_id": rule_id}
+
+    # Phase 42: budget enforcement
+    try:
+        budget_result = check_automation_budget(str(workspace_id), rule_id=str(rule_id))
+        if not budget_result.allowed:
+            _log_execution_with_status(rule, event, "throttled", {"reason": budget_result.blocks})
+            return {"ok": True, "status": "throttled", "reason": budget_result.blocks, "rule_id": rule_id}
+    except Exception as exc:
+        logger.warning("Budget check failed for rule %s: %s", rule_id, exc)
+
+    # Phase 19: HITL approval checkpoint
+    if rule.get("approval_required"):
+        approval_result = _create_approval_request(rule, event)
+        if approval_result.get("ok"):
+            approval = approval_result.get("approval") or {}
+            approval_id = approval.get("id")
+            if approval_id:
+                _notify_approval_required(rule, str(approval_id), event)
+            _log_execution_with_status(
+                rule,
+                event,
+                "pending_approval",
+                {"approval_id": approval_id, "status": "pending"},
+            )
+            return {
+                "ok": True,
+                "status": "pending_approval",
+                "approval_id": approval_id,
+                "rule_id": rule_id,
+            }
+
+    result = _execute_action(rule, event)
+    _update_last_triggered(rule)
+    if result.get("status") == "sleeping":
+        _log_execution_with_status(
+            rule,
+            event,
+            "sleeping",
+            result,
+            resume_at=result.get("resume_at"),
+            state={
+                "pending_step_index": result.get("pending_step_index"),
+                "steps": result.get("steps"),
+            },
+        )
+    else:
+        _log_execution(rule, event, result)
+    return {"ok": result.get("ok", False), "status": result.get("status"), "result": result, "rule_id": rule_id}
+
+
 def evaluate_automations(
     event_type: str,
     payload: dict[str, Any],
     user_id: str | None = None,
     workspace_id: str | None = None,
+    *,
+    use_worker: bool = True,
 ) -> list[dict[str, Any]]:
-    """Evaluate all enabled automation rules for an event and execute matches."""
+    """Evaluate all enabled automation rules for an event and execute matches.
+
+    When ``use_worker`` is true and a Celery broker (Redis) is configured,
+    matching rules are dispatched to the worker queue instead of being executed
+    inline. This keeps the web process responsive and lets automation execution
+    scale horizontally across worker replicas.
+    """
     if event_type not in TRIGGER_EVENT_TYPES:
         return []
 
@@ -1769,22 +1878,30 @@ def evaluate_automations(
                 })
                 continue
 
-        result = _execute_action(rule, event)
-        _update_last_triggered(rule)
-        if result.get("status") == "sleeping":
-            _log_execution_with_status(
-                rule,
-                event,
-                "sleeping",
-                result,
-                resume_at=result.get("resume_at"),
-                state={
-                    "pending_step_index": result.get("pending_step_index"),
-                    "steps": result.get("steps"),
-                },
-            )
+        # Phase 42: enforce automation budgets before execution
+        try:
+            budget_result = check_automation_budget(str(workspace_id), rule_id=str(rule.get("id")))
+            if not budget_result.allowed:
+                _log_execution_with_status(rule, event, "throttled", {"reason": budget_result.blocks})
+                results.append({
+                    "rule_id": rule.get("id"),
+                    "rule_name": rule.get("name"),
+                    "result": {
+                        "ok": True,
+                        "status": "throttled",
+                        "reason": budget_result.blocks,
+                    },
+                })
+                continue
+        except Exception as exc:
+            logger.warning("Budget check failed for rule %s: %s", rule.get("id"), exc)
+
+        # Phase 43: dispatch to Celery when configured, otherwise run inline
+        if use_worker:
+            result = _dispatch_to_worker(str(rule.get("id")), event)
         else:
-            _log_execution(rule, event, result)
+            result = execute_rule_by_id(str(rule.get("id")), event)
+            _update_last_triggered(rule)
         results.append({
             "rule_id": rule.get("id"),
             "rule_name": rule.get("name"),
@@ -2063,21 +2180,27 @@ class ScheduledAutomationScheduler:
                 {"approval_id": (approval_result.get("approval") or {}).get("id"), "status": "pending"},
             )
         else:
-            result = _execute_action(rule, event)
-            if result.get("status") == "sleeping":
+            # Phase 43: run scheduled rules on Celery workers when configured.
+            result = _dispatch_to_worker(str(rule.get("id")), event)
+            dispatched = result.get("dispatched")
+            inner = result.get("result") if not dispatched else result
+            if dispatched:
+                # Celery task result is logged asynchronously by the worker.
+                _log_execution_with_status(rule, event, "dispatched", result)
+            elif inner and inner.get("status") == "sleeping":
                 _log_execution_with_status(
                     rule,
                     event,
                     "sleeping",
-                    result,
-                    resume_at=result.get("resume_at"),
+                    inner,
+                    resume_at=inner.get("resume_at"),
                     state={
-                        "pending_step_index": result.get("pending_step_index"),
-                        "steps": result.get("steps"),
+                        "pending_step_index": inner.get("pending_step_index"),
+                        "steps": inner.get("steps"),
                     },
                 )
             else:
-                _log_execution_with_status(rule, event, "triggered" if result.get("ok") else "failed", result)
+                _log_execution_with_status(rule, event, "triggered" if (inner or {}).get("ok") else "failed", inner or result)
 
         # Advance last_run_at and next_run_at
         next_run = _compute_next_run(rule.get("cron_expression", ""), now_dt)

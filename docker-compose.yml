@@ -115,6 +115,64 @@ services:
       retries: 5
       start_period: 20s
 
+  # ── Celery Worker ───────────────────────────────────────────────────────
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: aeon-worker
+    restart: unless-stopped
+    command: ["celery", "-A", "aeon_worker", "worker", "--loglevel=info"]
+    environment:
+      AEON_PYTHON_HOST: "0.0.0.0"
+      AEON_PYTHON_PORT: "5000"
+      AEON_ROOT: "/app/state"
+      AEON_LLM_PROVIDER: "${AEON_LLM_PROVIDER:-stub}"
+      AEON_LOG_LEVEL: "${AEON_LOG_LEVEL:-INFO}"
+      AEON_DATABASE_URL: "postgresql://aeon:${AEON_DB_PASSWORD:-aeon_dev_pass}@postgres:5432/aeon"
+      AEON_REDIS_URL: "redis://redis:6379/0"
+      AEON_STORAGE_BACKEND: "${AEON_STORAGE_BACKEND:-local}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      HUGGINGFACE_TOKEN: "${HUGGINGFACE_TOKEN:-}"
+    volumes:
+      - aeon-state:/app/state
+    networks:
+      - aeon-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ── Celery Beat (single-replica scheduler) ──────────────────────────────
+  beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: aeon-beat
+    restart: unless-stopped
+    command: ["celery", "-A", "aeon_worker", "beat", "--loglevel=info"]
+    environment:
+      AEON_PYTHON_HOST: "0.0.0.0"
+      AEON_PYTHON_PORT: "5000"
+      AEON_ROOT: "/app/state"
+      AEON_LLM_PROVIDER: "${AEON_LLM_PROVIDER:-stub}"
+      AEON_LOG_LEVEL: "${AEON_LOG_LEVEL:-INFO}"
+      AEON_DATABASE_URL: "postgresql://aeon:${AEON_DB_PASSWORD:-aeon_dev_pass}@postgres:5432/aeon"
+      AEON_REDIS_URL: "redis://redis:6379/0"
+      AEON_STORAGE_BACKEND: "${AEON_STORAGE_BACKEND:-local}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      HUGGINGFACE_TOKEN: "${HUGGINGFACE_TOKEN:-}"
+    volumes:
+      - aeon-state:/app/state
+    networks:
+      - aeon-net
+    depends_on:
+      redis:
+        condition: service_healthy
+
   # ── Next.js Web Dashboard ──────────────────────────────────────────────
   frontend:
     build:
