@@ -36,8 +36,10 @@ from flask import Flask, Response, g, jsonify, request
 from aeon_cache import get_cache
 from aeon_db import (
     add_automation_execution,
+    get_workspace_security_config,
     init_db,
     list_automation_executions,
+    upsert_workspace_security_config,
 )
 from aeon_db import (
     get_db as _get_local_db,
@@ -84,6 +86,7 @@ from aeon_policies import (
     PolicyEffect,
     evaluate_automation_policy,
 )
+from aeon_residency import residency_manager
 from aeon_scim import (
     require_scim_token,
     scim_create_group,
@@ -97,6 +100,7 @@ from aeon_scim import (
     scim_replace_group,
     scim_replace_user,
 )
+from aeon_security import SecurityScanner, sanitize_metadata
 from aeon_sso import (
     complete_oidc_login,
     complete_saml_login,
@@ -1261,6 +1265,142 @@ def scim_group_detail(group_id: str):
     return scim_patch_group(workspace_id, group_id, request.json or {})
 
 
+# ── Security, Compliance & Data Residency (Phase 45) ─────────────────────────
+@app.route("/workspaces/<workspace_id>/security/config", methods=["GET", "PUT"])
+@require_auth
+@require_workspace_role("ADMIN")
+def workspace_security_config(workspace_id: str):
+    """Get or update the security/residency configuration for a workspace."""
+    if request.method == "GET":
+        cfg = get_workspace_security_config(workspace_id)
+        if cfg is None:
+            return jsonify({
+                "ok": True,
+                "workspace_id": workspace_id,
+                "pii_redaction_enabled": True,
+                "phi_redaction_enabled": False,
+                "data_region": "global",
+                "kms_key_id": None,
+            })
+        return jsonify({
+            "ok": True,
+            "workspace_id": workspace_id,
+            "pii_redaction_enabled": cfg.pii_redaction_enabled,
+            "phi_redaction_enabled": cfg.phi_redaction_enabled,
+            "data_region": cfg.data_region,
+            "kms_key_id": cfg.kms_key_id,
+        })
+
+    data = request.json or {}
+    try:
+        cfg = upsert_workspace_security_config(
+            workspace_id,
+            pii_redaction_enabled=data.get("pii_redaction_enabled"),
+            phi_redaction_enabled=data.get("phi_redaction_enabled"),
+            data_region=data.get("data_region"),
+            kms_key_id=data.get("kms_key_id"),
+        )
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+    return jsonify({
+        "ok": True,
+        "workspace_id": workspace_id,
+        "pii_redaction_enabled": cfg.pii_redaction_enabled,
+        "phi_redaction_enabled": cfg.phi_redaction_enabled,
+        "data_region": cfg.data_region,
+        "kms_key_id": cfg.kms_key_id,
+    })
+
+
+@app.route("/workspaces/<workspace_id>/security/scan", methods=["POST"])
+@require_auth
+@require_workspace_role("ADMIN")
+def workspace_security_scan(workspace_id: str):
+    """Scan arbitrary text for PII/PHI based on the workspace security config."""
+    data = request.json or {}
+    text = data.get("text", "")
+    cfg = get_workspace_security_config(workspace_id)
+    scanner = SecurityScanner(
+        pii_enabled=cfg.pii_redaction_enabled if cfg else True,
+        phi_enabled=cfg.phi_redaction_enabled if cfg else False,
+    )
+    redacted, findings = scanner.scan_and_redact(text)
+    return jsonify({
+        "ok": True,
+        "workspace_id": workspace_id,
+        "redacted_text": redacted,
+        "findings": findings,
+    })
+
+
+@app.route("/workspaces/<workspace_id>/residency/check", methods=["GET"])
+@require_auth
+@require_workspace_role("ADMIN")
+def workspace_residency_check(workspace_id: str):
+    """Check whether the current runtime region satisfies the workspace policy."""
+    cfg = get_workspace_security_config(workspace_id)
+    required_region = cfg.data_region if cfg else "global"
+    try:
+        residency_manager.enforce_region(required_region)
+    except PermissionError as exc:
+        return jsonify({
+            "ok": False,
+            "workspace_id": workspace_id,
+            "current_region": residency_manager.current_region,
+            "required_region": required_region,
+            "error": str(exc),
+        }), 403
+    return jsonify({
+        "ok": True,
+        "workspace_id": workspace_id,
+        "current_region": residency_manager.current_region,
+        "required_region": required_region,
+    })
+
+
+@app.route("/workspaces/<workspace_id>/security/encrypt", methods=["POST"])
+@require_auth
+@require_workspace_role("ADMIN")
+def workspace_security_encrypt(workspace_id: str):
+    """Encrypt a payload using the workspace's configured KMS key (BYOK)."""
+    data = request.json or {}
+    payload = data.get("payload")
+    if not isinstance(payload, dict):
+        return jsonify({"ok": False, "error": "payload must be an object"}), 400
+    cfg = get_workspace_security_config(workspace_id)
+    try:
+        encrypted, envelope = residency_manager.encrypt_envelope(payload, kms_key_id=cfg.kms_key_id if cfg else None)
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+    return jsonify({
+        "ok": True,
+        "workspace_id": workspace_id,
+        "encrypted_data": encrypted,
+        "envelope": envelope,
+    })
+
+
+@app.route("/workspaces/<workspace_id>/security/decrypt", methods=["POST"])
+@require_auth
+@require_workspace_role("ADMIN")
+def workspace_security_decrypt(workspace_id: str):
+    """Decrypt a payload previously encrypted via /security/encrypt."""
+    data = request.json or {}
+    encrypted_data = data.get("encrypted_data")
+    envelope = data.get("envelope")
+    if not isinstance(encrypted_data, str) or not isinstance(envelope, dict):
+        return jsonify({"ok": False, "error": "encrypted_data and envelope are required"}), 400
+    try:
+        decrypted = residency_manager.decrypt_envelope(encrypted_data, envelope)
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+    return jsonify({
+        "ok": True,
+        "workspace_id": workspace_id,
+        "payload": decrypted,
+    })
+
+
 @app.route("/workspaces", methods=["GET"])
 @require_auth
 def workspaces_list():
@@ -1322,7 +1462,7 @@ def workspace_chat(workspace_id: str):
             user_id=user_id,
             workspace_id=workspace_id,
             email=ctx.get("email"),
-            metadata={"backend": result.get("backend", "unknown"), "provider_override": provider_override},
+            metadata=_secure_metadata({"backend": result.get("backend", "unknown"), "provider_override": provider_override}, ctx.get("workspace_id")),
         )
         return jsonify({"ok": True, "data": result, "backend": result.get("backend", "unknown")})
     except Exception as e:
@@ -1332,7 +1472,7 @@ def workspace_chat(workspace_id: str):
             user_id=user_id,
             workspace_id=workspace_id,
             email=ctx.get("email"),
-            metadata={"error": str(e)},
+            metadata=_secure_metadata({"error": str(e)}, ctx.get("workspace_id")),
         )
         return jsonify({"ok": False, "error": str(e)}), 500
 
@@ -1434,17 +1574,36 @@ def _log_automation_event(
     The event is queued through the GovernanceManager and flushed to the
     audit_logs table asynchronously.
     """
+    workspace_id = ctx.get("workspace_id")
     try:
         get_governance().log_audit(
             action=action,
             module="automations",
             user_id=ctx.get("user_id"),
-            workspace_id=ctx.get("workspace_id"),
+            workspace_id=workspace_id,
             email=ctx.get("email"),
-            metadata={"rule_id": rule_id, **(metadata or {})},
+            metadata=_secure_metadata({"rule_id": rule_id, **(metadata or {})}, workspace_id),
         )
     except Exception as exc:
         logger.warning("Failed to log automation audit event: %s", exc)
+
+
+def _secure_metadata(metadata: dict[str, Any], workspace_id: str | None = None) -> dict[str, Any]:
+    """Sanitize metadata for audit logging based on workspace security config.
+
+    If no workspace_id is provided, only basic PII redaction is applied.
+    """
+    pii_enabled = True
+    phi_enabled = False
+    if workspace_id:
+        try:
+            cfg = get_workspace_security_config(str(workspace_id))
+            if cfg:
+                pii_enabled = cfg.pii_redaction_enabled
+                phi_enabled = cfg.phi_redaction_enabled
+        except Exception:  #nosec B110
+            pass
+    return sanitize_metadata(metadata or {}, pii_enabled=pii_enabled, phi_enabled=phi_enabled)
 
 
 def _has_workspace_role(ctx: dict[str, Any], workspace_id: str, required_role: str) -> bool:
@@ -1491,7 +1650,7 @@ def chat():
             user_id=ctx.get("user_id"),
             workspace_id=ctx.get("workspace_id"),
             email=ctx.get("email"),
-            metadata={"backend": result.get("backend", "unknown"), "provider_override": provider_override},
+            metadata=_secure_metadata({"backend": result.get("backend", "unknown"), "provider_override": provider_override}, ctx.get("workspace_id")),
         )
         return jsonify({"ok": True, "data": result, "backend": result.get("backend", "unknown")})
     except Exception as e:
@@ -1501,7 +1660,7 @@ def chat():
             user_id=ctx.get("user_id"),
             workspace_id=ctx.get("workspace_id"),
             email=ctx.get("email"),
-            metadata={"error": str(e)},
+            metadata=_secure_metadata({"error": str(e)}, ctx.get("workspace_id")),
         )
         return jsonify({"ok": False, "error": str(e)}), 500
 
@@ -1530,7 +1689,7 @@ def app_chat(app_id: str):
             user_id=ctx.get("user_id"),
             workspace_id=ctx.get("workspace_id"),
             email=ctx.get("email"),
-            metadata={"backend": result.get("backend", "unknown")},
+            metadata=_secure_metadata({"backend": result.get("backend", "unknown")}, ctx.get("workspace_id")),
         )
         return jsonify({"ok": True, "data": result, "backend": result.get("backend", "unknown")})
     except Exception as e:
@@ -1540,7 +1699,7 @@ def app_chat(app_id: str):
             user_id=ctx.get("user_id"),
             workspace_id=ctx.get("workspace_id"),
             email=ctx.get("email"),
-            metadata={"error": str(e)},
+            metadata=_secure_metadata({"error": str(e)}, ctx.get("workspace_id")),
         )
         return jsonify({"ok": False, "error": str(e)}), 500
 

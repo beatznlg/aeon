@@ -13,7 +13,7 @@ Env:
 import os
 import uuid
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Optional
 
 from sqlalchemy import (
     JSON,
@@ -190,6 +190,19 @@ class ScimToken(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, default=_now)
 
 
+class WorkspaceSecurityConfig(Base):
+    __tablename__ = "workspace_security_configs"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    workspace_id = Column(String(36), ForeignKey("workspaces.id"), nullable=False, index=True, unique=True)
+    pii_redaction_enabled = Column(Boolean, nullable=False, default=True)
+    phi_redaction_enabled = Column(Boolean, nullable=False, default=False)
+    data_region = Column(String(50), nullable=False, default="global")
+    kms_key_id = Column(String(255), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_now)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
+
+
 class IdentityLink(Base):
     __tablename__ = "identity_links"
 
@@ -360,6 +373,40 @@ def list_automation_executions(
             }
             for row in rows
         ]
+
+
+def get_workspace_security_config(workspace_id: str) -> Optional["WorkspaceSecurityConfig"]:
+    """Fetch the security/residency configuration for a workspace."""
+    db = get_db()
+    with db.session() as s:
+        return s.query(WorkspaceSecurityConfig).filter_by(workspace_id=str(workspace_id)).first()
+
+
+def upsert_workspace_security_config(
+    workspace_id: str,
+    *,
+    pii_redaction_enabled: bool | None = None,
+    phi_redaction_enabled: bool | None = None,
+    data_region: str | None = None,
+    kms_key_id: str | None = None,
+) -> WorkspaceSecurityConfig:
+    """Create or update a workspace security configuration record."""
+    db = get_db()
+    with db.session() as s:
+        cfg = s.query(WorkspaceSecurityConfig).filter_by(workspace_id=str(workspace_id)).first()
+        if cfg is None:
+            cfg = WorkspaceSecurityConfig(workspace_id=str(workspace_id))
+            s.add(cfg)
+        if pii_redaction_enabled is not None:
+            cfg.pii_redaction_enabled = pii_redaction_enabled
+        if phi_redaction_enabled is not None:
+            cfg.phi_redaction_enabled = phi_redaction_enabled
+        if data_region is not None:
+            cfg.data_region = data_region
+        if kms_key_id is not None:
+            cfg.kms_key_id = kms_key_id
+        s.commit()
+        return cfg
 
 
 def add_audit_log(
