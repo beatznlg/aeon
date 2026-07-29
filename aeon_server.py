@@ -21,6 +21,7 @@ Next.js routes proxy when AEON_PYTHON_URL is set, e.g.:
 import json
 import logging
 import os
+import secrets
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -82,6 +83,39 @@ from aeon_llm import test_provider as _test_llm_provider
 from aeon_policies import (
     PolicyEffect,
     evaluate_automation_policy,
+)
+from aeon_scim import (
+    require_scim_token,
+    scim_create_group,
+    scim_create_user,
+    scim_get_group,
+    scim_get_user,
+    scim_list_groups,
+    scim_list_users,
+    scim_patch_group,
+    scim_patch_user,
+    scim_replace_group,
+    scim_replace_user,
+)
+from aeon_sso import (
+    complete_oidc_login,
+    complete_saml_login,
+    initiate_oidc_login,
+    initiate_saml_login,
+    list_sso_providers,
+    saml_available,
+)
+from aeon_sso import (
+    create_sso_provider as _create_sso_provider,
+)
+from aeon_sso import (
+    delete_sso_provider as _delete_sso_provider,
+)
+from aeon_sso import (
+    get_sso_provider as _get_sso_provider,
+)
+from aeon_sso import (
+    update_sso_provider as _update_sso_provider,
 )
 
 # Supported automation action types (kept in sync with aeon_automations.py)
@@ -1008,6 +1042,223 @@ def auth_jwt_rotate():
     new_secret = data.get("secret")
     result = rotate_jwt_secret(new_secret)
     return jsonify({"ok": True, "rotation": result})
+
+
+# ── Enterprise SSO (Phase 44) ───────────────────────────────────────────────
+@app.route("/sso/providers", methods=["GET", "POST"])
+@require_auth
+@require_workspace_role("ADMIN")
+def sso_providers_index():
+    """List or create SSO providers for the current workspace."""
+    ctx = g.user
+    workspace_id = ctx.get("workspace_id")
+
+    if request.method == "GET":
+        providers = list_sso_providers(workspace_id)
+        return jsonify({
+            "ok": True,
+            "providers": [
+                {
+                    "id": str(p.id),
+                    "workspace_id": str(p.workspace_id),
+                    "protocol": p.protocol,
+                    "name": p.name,
+                    "active": p.active,
+                    "config": p.config,
+                    "attribute_mapping": p.attribute_mapping,
+                    "created_at": p.created_at.isoformat() if p.created_at else None,
+                }
+                for p in providers
+            ],
+        })
+
+    data = request.json or {}
+    protocol = (data.get("protocol") or "").lower()
+    name = (data.get("name") or "").strip()
+    config = data.get("config") or {}
+    attribute_mapping = data.get("attribute_mapping") or {}
+    if protocol not in ("saml", "oidc"):
+        return jsonify({"ok": False, "error": "protocol must be saml or oidc"}), 400
+    if not name:
+        return jsonify({"ok": False, "error": "name is required"}), 400
+
+    provider = _create_sso_provider(
+        workspace_id=workspace_id,
+        protocol=protocol,
+        name=name,
+        config=config,
+        attribute_mapping=attribute_mapping,
+    )
+    return jsonify({
+        "ok": True,
+        "provider": {
+            "id": str(provider.id),
+            "workspace_id": str(provider.workspace_id),
+            "protocol": provider.protocol,
+            "name": provider.name,
+            "active": provider.active,
+        },
+    }), 201
+
+
+@app.route("/sso/providers/<provider_id>", methods=["GET", "PATCH", "DELETE"])
+@require_auth
+@require_workspace_role("ADMIN")
+def sso_provider_detail(provider_id: str):
+    """Get, update, or delete an SSO provider."""
+    provider = _get_sso_provider(provider_id)
+    if not provider:
+        return jsonify({"ok": False, "error": "provider not found"}), 404
+
+    if request.method == "GET":
+        return jsonify({
+            "ok": True,
+            "provider": {
+                "id": str(provider.id),
+                "workspace_id": str(provider.workspace_id),
+                "protocol": provider.protocol,
+                "name": provider.name,
+                "active": provider.active,
+                "config": provider.config,
+                "attribute_mapping": provider.attribute_mapping,
+            },
+        })
+
+    if request.method == "DELETE":
+        _delete_sso_provider(provider_id)
+        return jsonify({"ok": True})
+
+    data = request.json or {}
+    provider = _update_sso_provider(
+        provider,
+        name=data.get("name"),
+        config=data.get("config"),
+        attribute_mapping=data.get("attribute_mapping"),
+        active=data.get("active"),
+    )
+    return jsonify({
+        "ok": True,
+        "provider": {
+            "id": str(provider.id),
+            "name": provider.name,
+            "active": provider.active,
+        },
+    })
+
+
+@app.route("/sso/oidc/login/<provider_id>", methods=["GET"])
+def sso_oidc_login(provider_id: str):
+    """Initiate an OIDC login by redirecting to the identity provider."""
+    provider = _get_sso_provider(provider_id)
+    if not provider or provider.protocol != "oidc":
+        return jsonify({"ok": False, "error": "OIDC provider not found"}), 404
+
+    state = secrets.token_urlsafe(32)
+    nonce = secrets.token_urlsafe(32)
+    cache = get_cache()
+    cache.set(f"oidc:state:{state}", {"provider_id": str(provider.id), "nonce": nonce}, ttl=600)
+    redirect_url = initiate_oidc_login(provider, state, nonce)
+    return jsonify({"ok": True, "redirect_url": redirect_url})
+
+
+@app.route("/sso/oidc/callback/<provider_id>", methods=["GET"])
+def sso_oidc_callback(provider_id: str):
+    """Handle the OIDC callback, provision the user, and issue an AEON token."""
+    state = request.args.get("state")
+    code = request.args.get("code")
+    if not state or not code:
+        return jsonify({"ok": False, "error": "missing state or code"}), 400
+
+    cache = get_cache()
+    stored = cache.get(f"oidc:state:{state}")
+    if not stored or stored.get("provider_id") != provider_id:
+        return jsonify({"ok": False, "error": "invalid or expired state"}), 400
+    cache.delete(f"oidc:state:{state}")
+
+    provider = _get_sso_provider(provider_id)
+    if not provider or provider.protocol != "oidc":
+        return jsonify({"ok": False, "error": "OIDC provider not found"}), 404
+
+    try:
+        result = complete_oidc_login(provider, code, state, stored.get("nonce"))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("OIDC callback failed: %s", e)
+        return jsonify({"ok": False, "error": str(e)}), 400
+    return jsonify(result)
+
+
+@app.route("/sso/saml/login/<provider_id>", methods=["GET"])
+def sso_saml_login(provider_id: str):
+    """Initiate a SAML 2.0 login by redirecting to the identity provider."""
+    if not saml_available():
+        return jsonify({"ok": False, "error": "SAML support is not installed"}), 501
+    provider = _get_sso_provider(provider_id)
+    if not provider or provider.protocol != "saml":
+        return jsonify({"ok": False, "error": "SAML provider not found"}), 404
+    try:
+        redirect_url = initiate_saml_login(provider)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("SAML login initiation failed: %s", e)
+        return jsonify({"ok": False, "error": str(e)}), 400
+    return jsonify({"ok": True, "redirect_url": redirect_url})
+
+
+@app.route("/sso/saml/acs/<provider_id>", methods=["POST"])
+def sso_saml_acs(provider_id: str):
+    """SAML Assertion Consumer Service endpoint."""
+    if not saml_available():
+        return jsonify({"ok": False, "error": "SAML support is not installed"}), 501
+    provider = _get_sso_provider(provider_id)
+    if not provider or provider.protocol != "saml":
+        return jsonify({"ok": False, "error": "SAML provider not found"}), 404
+    try:
+        result = complete_saml_login(provider, request.form.to_dict(flat=True))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("SAML ACS failed: %s", e)
+        return jsonify({"ok": False, "error": str(e)}), 400
+    return jsonify(result)
+
+
+# ── SCIM 2.0 Provisioning (Phase 44) ─────────────────────────────────────────
+@app.route("/scim/v2/Users", methods=["GET", "POST"])
+@require_scim_token
+def scim_users_index():
+    workspace_id = g.scim_workspace_id
+    if request.method == "GET":
+        filter_expr = request.args.get("filter")
+        return scim_list_users(workspace_id, filter_expr)
+    return scim_create_user(workspace_id, request.json or {})
+
+
+@app.route("/scim/v2/Users/<user_id>", methods=["GET", "PUT", "PATCH"])
+@require_scim_token
+def scim_user_detail(user_id: str):
+    workspace_id = g.scim_workspace_id
+    if request.method == "GET":
+        return scim_get_user(workspace_id, user_id)
+    if request.method == "PUT":
+        return scim_replace_user(workspace_id, user_id, request.json or {})
+    return scim_patch_user(workspace_id, user_id, request.json or {})
+
+
+@app.route("/scim/v2/Groups", methods=["GET", "POST"])
+@require_scim_token
+def scim_groups_index():
+    workspace_id = g.scim_workspace_id
+    if request.method == "GET":
+        return scim_list_groups(workspace_id)
+    return scim_create_group(workspace_id, request.json or {})
+
+
+@app.route("/scim/v2/Groups/<group_id>", methods=["GET", "PUT", "PATCH"])
+@require_scim_token
+def scim_group_detail(group_id: str):
+    workspace_id = g.scim_workspace_id
+    if request.method == "GET":
+        return scim_get_group(workspace_id, group_id)
+    if request.method == "PUT":
+        return scim_replace_group(workspace_id, group_id, request.json or {})
+    return scim_patch_group(workspace_id, group_id, request.json or {})
 
 
 @app.route("/workspaces", methods=["GET"])

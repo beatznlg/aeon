@@ -164,6 +164,46 @@ class AutomationBudget(Base):
     updated_at = Column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
 
 
+# === SSO / SCIM models ========================================================
+class SsoProvider(Base):
+    __tablename__ = "sso_providers"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    workspace_id = Column(String(36), ForeignKey("workspaces.id"), nullable=False, index=True)
+    protocol = Column(String(10), nullable=False)  # "saml" or "oidc"
+    name = Column(String(255), nullable=False)
+    active = Column(Boolean, default=True, nullable=False)
+    config = Column(JSON, nullable=False, default=dict)
+    attribute_mapping = Column(JSON, nullable=False, default=dict)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_now)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
+
+
+class ScimToken(Base):
+    __tablename__ = "scim_tokens"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    workspace_id = Column(String(36), ForeignKey("workspaces.id"), nullable=False, index=True)
+    token_hash = Column(String(255), nullable=False, index=True)
+    description = Column(String(255), nullable=True)
+    last_used_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_now)
+
+
+class IdentityLink(Base):
+    __tablename__ = "identity_links"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    provider_id = Column(String(36), ForeignKey("sso_providers.id"), nullable=False, index=True)
+    external_id = Column(String(255), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_now)
+
+    __table_args__ = (
+        UniqueConstraint("provider_id", "external_id", name="uq_provider_external_id"),
+    )
+
+
 # === Engine / Session factory =================================================
 
 def get_database_url() -> str:
