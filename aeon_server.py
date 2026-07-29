@@ -216,8 +216,10 @@ from aeon_usage import BillingCalculator, HealthCollector, UsageMeter
 app = Flask(__name__)
 
 from aeon_anomalies_routes import anomalies_bp
+from aeon_dr_routes import dr_bp
 
 app.register_blueprint(anomalies_bp)
+app.register_blueprint(dr_bp)
 
 # ── Automation metrics (Phase 39) ───────────────────────────────────────────
 

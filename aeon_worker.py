@@ -114,3 +114,41 @@ def schedule_automation_tick(rule_id: str) -> str | None:
         return str(task.id)
     run_scheduled_rule_tick.apply_async(args=(rule_id,))
     return None
+
+
+@app.task(bind=True, max_retries=3, default_retry_delay=10)
+def execute_dr_backup_task(self, policy_id: str) -> dict:
+    """Run a backup for the given policy."""
+    try:
+        from aeon_db import get_backup_policy
+        from aeon_dr import BackupManager
+        policy = get_backup_policy(policy_id)
+        if not policy:
+            return {"ok": False, "error": "policy not found"}
+        job = BackupManager(policy.workspace_id).run_backup(policy_id)
+        return {"ok": True, "job_id": job.id, "status": job.status}
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("DR backup failed for policy %s", policy_id)
+        try:
+            self.retry(exc=exc)
+        except Exception:  # noqa: BLE001
+            return {"ok": False, "error": str(exc)}
+
+
+@app.task(bind=True, max_retries=3, default_retry_delay=10)
+def execute_dr_restore_task(self, backup_job_id: str) -> dict:
+    """Run a restore for the given backup job."""
+    try:
+        from aeon_db import get_backup_job
+        from aeon_dr import BackupManager
+        job = get_backup_job(backup_job_id)
+        if not job:
+            return {"ok": False, "error": "backup job not found"}
+        restore = BackupManager(job.workspace_id).restore_backup(backup_job_id)
+        return {"ok": True, "restore_id": restore.id, "status": restore.status}
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("DR restore failed for job %s", backup_job_id)
+        try:
+            self.retry(exc=exc)
+        except Exception:  # noqa: BLE001
+            return {"ok": False, "error": str(exc)}

@@ -253,6 +253,87 @@ class Incident(Base):
     resolved_at = Column(DateTime(timezone=True), nullable=True)
 
 
+# === Disaster Recovery models (Phase 47) ====================================
+class BackupPolicy(Base):
+    __tablename__ = "backup_policies"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    workspace_id = Column(String(36), ForeignKey("workspaces.id"), nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    schedule = Column(String(50), nullable=False, default="0 2 * * *")
+    retention_days = Column(Integer, nullable=False, default=30)
+    target = Column(String(50), nullable=False, default="local")
+    target_config = Column(JSON, nullable=False, default=dict)
+    encryption_enabled = Column(Boolean, nullable=False, default=True)
+    enabled = Column(Boolean, nullable=False, default=True)
+    last_run_at = Column(DateTime(timezone=True), nullable=True)
+    next_run_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_now)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
+
+
+class BackupJob(Base):
+    __tablename__ = "backup_jobs"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    workspace_id = Column(String(36), ForeignKey("workspaces.id"), nullable=False, index=True)
+    policy_id = Column(String(36), ForeignKey("backup_policies.id"), nullable=True, index=True)
+    status = Column(String(50), nullable=False, default="pending")
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    size_bytes = Column(Integer, nullable=True)
+    checksum = Column(String(255), nullable=True)
+    storage_key = Column(String(1024), nullable=True)
+    metadata_json = Column("metadata", JSON, default=dict)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_now)
+
+
+class RestoreJob(Base):
+    __tablename__ = "restore_jobs"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    workspace_id = Column(String(36), ForeignKey("workspaces.id"), nullable=False, index=True)
+    backup_job_id = Column(String(36), ForeignKey("backup_jobs.id"), nullable=False, index=True)
+    status = Column(String(50), nullable=False, default="pending")
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    metadata_json = Column("metadata", JSON, default=dict)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_now)
+
+
+class DRPlan(Base):
+    __tablename__ = "dr_plans"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    workspace_id = Column(String(36), ForeignKey("workspaces.id"), nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    rto_minutes = Column(Integer, nullable=False, default=60)
+    rpo_minutes = Column(Integer, nullable=False, default=60)
+    target_region = Column(String(50), nullable=False, default="primary")
+    failover_regions = Column(JSON, nullable=False, default=list)
+    contact_info = Column(JSON, nullable=False, default=dict)
+    enabled = Column(Boolean, nullable=False, default=True)
+    last_drill_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_now)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
+
+
+class DRDrill(Base):
+    __tablename__ = "dr_drills"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    workspace_id = Column(String(36), ForeignKey("workspaces.id"), nullable=False, index=True)
+    plan_id = Column(String(36), ForeignKey("dr_plans.id"), nullable=False, index=True)
+    status = Column(String(50), nullable=False, default="pending")
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    findings = Column(JSON, nullable=False, default=list)
+    score = Column(Float, nullable=False, default=0.0)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_now)
+
+
 class IdentityLink(Base):
     __tablename__ = "identity_links"
 
@@ -939,3 +1020,409 @@ def query_audit_logs(
             }
             for row in rows
         ]
+
+
+# === Disaster Recovery helpers ===============================================
+
+def create_backup_policy(
+    workspace_id: str,
+    name: str,
+    schedule: str = "0 2 * * *",
+    retention_days: int = 30,
+    target: str = "local",
+    target_config: dict[str, Any] | None = None,
+    encryption_enabled: bool = True,
+    enabled: bool = True,
+    next_run_at: datetime | None = None,
+) -> BackupPolicy:
+    db = get_db()
+    with db.session() as s:
+        policy = BackupPolicy(
+            workspace_id=str(workspace_id),
+            name=name,
+            schedule=schedule,
+            retention_days=int(retention_days),
+            target=target,
+            target_config=target_config or {},
+            encryption_enabled=encryption_enabled,
+            enabled=enabled,
+            next_run_at=next_run_at,
+        )
+        s.add(policy)
+        s.commit()
+        return policy
+
+
+def get_backup_policy(policy_id: str, workspace_id: str | None = None) -> BackupPolicy | None:
+    db = get_db()
+    with db.session() as s:
+        q = s.query(BackupPolicy).filter_by(id=str(policy_id))
+        if workspace_id is not None:
+            q = q.filter_by(workspace_id=str(workspace_id))
+        return q.first()
+
+
+def list_backup_policies(workspace_id: str, enabled_only: bool = False) -> list[BackupPolicy]:
+    db = get_db()
+    with db.session() as s:
+        q = s.query(BackupPolicy).filter_by(workspace_id=str(workspace_id))
+        if enabled_only:
+            q = q.filter_by(enabled=True)
+        return q.order_by(BackupPolicy.created_at.desc()).all()
+
+
+def update_backup_policy(
+    policy: BackupPolicy,
+    name: str | None = None,
+    schedule: str | None = None,
+    retention_days: int | None = None,
+    target: str | None = None,
+    target_config: dict[str, Any] | None = None,
+    encryption_enabled: bool | None = None,
+    enabled: bool | None = None,
+    next_run_at: datetime | None = None,
+    last_run_at: datetime | None = None,
+) -> BackupPolicy:
+    if name is not None:
+        policy.name = name
+    if schedule is not None:
+        policy.schedule = schedule
+    if retention_days is not None:
+        policy.retention_days = int(retention_days)
+    if target is not None:
+        policy.target = target
+    if target_config is not None:
+        policy.target_config = target_config
+    if encryption_enabled is not None:
+        policy.encryption_enabled = encryption_enabled
+    if enabled is not None:
+        policy.enabled = enabled
+    if next_run_at is not None:
+        policy.next_run_at = next_run_at
+    if last_run_at is not None:
+        policy.last_run_at = last_run_at
+    db = get_db()
+    with db.session() as s:
+        s.add(policy)
+        s.commit()
+        return policy
+
+
+def delete_backup_policy(policy_id: str, workspace_id: str | None = None) -> bool:
+    db = get_db()
+    with db.session() as s:
+        q = s.query(BackupPolicy).filter_by(id=str(policy_id))
+        if workspace_id is not None:
+            q = q.filter_by(workspace_id=str(workspace_id))
+        deleted = q.delete()
+        s.commit()
+        return bool(deleted)
+
+
+def create_backup_job(
+    workspace_id: str,
+    policy_id: str | None,
+    status: str = "pending",
+    storage_key: str | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> BackupJob:
+    db = get_db()
+    with db.session() as s:
+        job = BackupJob(
+            workspace_id=str(workspace_id),
+            policy_id=str(policy_id) if policy_id else None,
+            status=status,
+            storage_key=storage_key,
+            metadata_json=metadata or {},
+        )
+        s.add(job)
+        s.commit()
+        return job
+
+
+def get_backup_job(job_id: str, workspace_id: str | None = None) -> BackupJob | None:
+    db = get_db()
+    with db.session() as s:
+        q = s.query(BackupJob).filter_by(id=str(job_id))
+        if workspace_id is not None:
+            q = q.filter_by(workspace_id=str(workspace_id))
+        return q.first()
+
+
+def list_backup_jobs(workspace_id: str, limit: int = 100) -> list[BackupJob]:
+    db = get_db()
+    with db.session() as s:
+        return (
+            s.query(BackupJob)
+            .filter_by(workspace_id=str(workspace_id))
+            .order_by(BackupJob.created_at.desc())
+            .limit(limit)
+            .all()
+        )
+
+
+def update_backup_job(
+    job: BackupJob,
+    status: str | None = None,
+    size_bytes: int | None = None,
+    checksum: str | None = None,
+    storage_key: str | None = None,
+    metadata: dict[str, Any] | None = None,
+    error_message: str | None = None,
+    started_at: datetime | None = None,
+    completed_at: datetime | None = None,
+) -> BackupJob:
+    if status is not None:
+        job.status = status
+    if size_bytes is not None:
+        job.size_bytes = size_bytes
+    if checksum is not None:
+        job.checksum = checksum
+    if storage_key is not None:
+        job.storage_key = storage_key
+    if metadata is not None:
+        job.metadata_json = metadata
+    if error_message is not None:
+        job.error_message = error_message
+    if started_at is not None:
+        job.started_at = started_at
+    if completed_at is not None:
+        job.completed_at = completed_at
+    db = get_db()
+    with db.session() as s:
+        s.add(job)
+        s.commit()
+        return job
+
+
+def delete_backup_job(job_id: str, workspace_id: str | None = None) -> bool:
+    db = get_db()
+    with db.session() as s:
+        q = s.query(BackupJob).filter_by(id=str(job_id))
+        if workspace_id is not None:
+            q = q.filter_by(workspace_id=str(workspace_id))
+        deleted = q.delete()
+        s.commit()
+        return bool(deleted)
+
+
+def create_restore_job(
+    workspace_id: str,
+    backup_job_id: str,
+    status: str = "pending",
+    metadata: dict[str, Any] | None = None,
+) -> RestoreJob:
+    db = get_db()
+    with db.session() as s:
+        job = RestoreJob(
+            workspace_id=str(workspace_id),
+            backup_job_id=str(backup_job_id),
+            status=status,
+            metadata_json=metadata or {},
+        )
+        s.add(job)
+        s.commit()
+        return job
+
+
+def get_restore_job(job_id: str, workspace_id: str | None = None) -> RestoreJob | None:
+    db = get_db()
+    with db.session() as s:
+        q = s.query(RestoreJob).filter_by(id=str(job_id))
+        if workspace_id is not None:
+            q = q.filter_by(workspace_id=str(workspace_id))
+        return q.first()
+
+
+def list_restore_jobs(workspace_id: str, limit: int = 100) -> list[RestoreJob]:
+    db = get_db()
+    with db.session() as s:
+        return (
+            s.query(RestoreJob)
+            .filter_by(workspace_id=str(workspace_id))
+            .order_by(RestoreJob.created_at.desc())
+            .limit(limit)
+            .all()
+        )
+
+
+def update_restore_job(
+    job: RestoreJob,
+    status: str | None = None,
+    metadata: dict[str, Any] | None = None,
+    error_message: str | None = None,
+    started_at: datetime | None = None,
+    completed_at: datetime | None = None,
+) -> RestoreJob:
+    if status is not None:
+        job.status = status
+    if metadata is not None:
+        job.metadata_json = metadata
+    if error_message is not None:
+        job.error_message = error_message
+    if started_at is not None:
+        job.started_at = started_at
+    if completed_at is not None:
+        job.completed_at = completed_at
+    db = get_db()
+    with db.session() as s:
+        s.add(job)
+        s.commit()
+        return job
+
+
+def create_dr_plan(
+    workspace_id: str,
+    name: str,
+    rto_minutes: int = 60,
+    rpo_minutes: int = 60,
+    target_region: str = "primary",
+    failover_regions: list[str] | None = None,
+    contact_info: dict[str, Any] | None = None,
+    enabled: bool = True,
+) -> DRPlan:
+    db = get_db()
+    with db.session() as s:
+        plan = DRPlan(
+            workspace_id=str(workspace_id),
+            name=name,
+            rto_minutes=int(rto_minutes),
+            rpo_minutes=int(rpo_minutes),
+            target_region=target_region,
+            failover_regions=failover_regions or [],
+            contact_info=contact_info or {},
+            enabled=enabled,
+        )
+        s.add(plan)
+        s.commit()
+        return plan
+
+
+def get_dr_plan(plan_id: str, workspace_id: str | None = None) -> DRPlan | None:
+    db = get_db()
+    with db.session() as s:
+        q = s.query(DRPlan).filter_by(id=str(plan_id))
+        if workspace_id is not None:
+            q = q.filter_by(workspace_id=str(workspace_id))
+        return q.first()
+
+
+def list_dr_plans(workspace_id: str, enabled_only: bool = False) -> list[DRPlan]:
+    db = get_db()
+    with db.session() as s:
+        q = s.query(DRPlan).filter_by(workspace_id=str(workspace_id))
+        if enabled_only:
+            q = q.filter_by(enabled=True)
+        return q.order_by(DRPlan.created_at.desc()).all()
+
+
+def update_dr_plan(
+    plan: DRPlan,
+    name: str | None = None,
+    rto_minutes: int | None = None,
+    rpo_minutes: int | None = None,
+    target_region: str | None = None,
+    failover_regions: list[str] | None = None,
+    contact_info: dict[str, Any] | None = None,
+    enabled: bool | None = None,
+    last_drill_at: datetime | None = None,
+) -> DRPlan:
+    if name is not None:
+        plan.name = name
+    if rto_minutes is not None:
+        plan.rto_minutes = int(rto_minutes)
+    if rpo_minutes is not None:
+        plan.rpo_minutes = int(rpo_minutes)
+    if target_region is not None:
+        plan.target_region = target_region
+    if failover_regions is not None:
+        plan.failover_regions = failover_regions
+    if contact_info is not None:
+        plan.contact_info = contact_info
+    if enabled is not None:
+        plan.enabled = enabled
+    if last_drill_at is not None:
+        plan.last_drill_at = last_drill_at
+    db = get_db()
+    with db.session() as s:
+        s.add(plan)
+        s.commit()
+        return plan
+
+
+def delete_dr_plan(plan_id: str, workspace_id: str | None = None) -> bool:
+    db = get_db()
+    with db.session() as s:
+        q = s.query(DRPlan).filter_by(id=str(plan_id))
+        if workspace_id is not None:
+            q = q.filter_by(workspace_id=str(workspace_id))
+        deleted = q.delete()
+        s.commit()
+        return bool(deleted)
+
+
+def create_dr_drill(
+    workspace_id: str,
+    plan_id: str,
+    status: str = "pending",
+    findings: list[dict[str, Any]] | None = None,
+    score: float = 0.0,
+) -> DRDrill:
+    db = get_db()
+    with db.session() as s:
+        drill = DRDrill(
+            workspace_id=str(workspace_id),
+            plan_id=str(plan_id),
+            status=status,
+            findings=findings or [],
+            score=float(score),
+        )
+        s.add(drill)
+        s.commit()
+        return drill
+
+
+def get_dr_drill(drill_id: str, workspace_id: str | None = None) -> DRDrill | None:
+    db = get_db()
+    with db.session() as s:
+        q = s.query(DRDrill).filter_by(id=str(drill_id))
+        if workspace_id is not None:
+            q = q.filter_by(workspace_id=str(workspace_id))
+        return q.first()
+
+
+def list_dr_drills(workspace_id: str, limit: int = 100) -> list[DRDrill]:
+    db = get_db()
+    with db.session() as s:
+        return (
+            s.query(DRDrill)
+            .filter_by(workspace_id=str(workspace_id))
+            .order_by(DRDrill.created_at.desc())
+            .limit(limit)
+            .all()
+        )
+
+
+def update_dr_drill(
+    drill: DRDrill,
+    status: str | None = None,
+    findings: list[dict[str, Any]] | None = None,
+    score: float | None = None,
+    started_at: datetime | None = None,
+    completed_at: datetime | None = None,
+) -> DRDrill:
+    if status is not None:
+        drill.status = status
+    if findings is not None:
+        drill.findings = findings
+    if score is not None:
+        drill.score = float(score)
+    if started_at is not None:
+        drill.started_at = started_at
+    if completed_at is not None:
+        drill.completed_at = completed_at
+    db = get_db()
+    with db.session() as s:
+        s.add(drill)
+        s.commit()
+        return drill
