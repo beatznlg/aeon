@@ -14,6 +14,7 @@ Usage:
 """
 
 import json
+import logging
 import os
 import queue
 import re
@@ -24,6 +25,8 @@ from datetime import datetime, timezone
 from typing import Any
 
 import requests
+
+logger = logging.getLogger(__name__)
 
 # === PII patterns ==========================================================
 
@@ -166,11 +169,30 @@ class GovernanceManager:
             timestamp=time.time(),
             pii_redacted=redacted,
         )
-        self._queue.put(event)
+        try:
+            self._queue.put(event, block=False)
+        except queue.Full:
+            logger.warning("Audit event queue is full; dropping event")
         return event
 
     def _flush(self, events: list[AuditEvent]):
         if not self._supabase_url or not self._supabase_key:
+            # Local DB fallback so audit events are still persisted in dev/test/preview.
+            from aeon_db import add_audit_log
+
+            for ev in events:
+                try:
+                    add_audit_log(
+                        action=ev.action,
+                        module=ev.module,
+                        user_id=ev.user_id,
+                        workspace_id=ev.workspace_id,
+                        email=ev.email,
+                        metadata=ev.metadata,
+                        pii_redacted=ev.pii_redacted,
+                    )
+                except Exception:  #nosec B110
+                    pass
             return
 
         rows = []
@@ -213,9 +235,21 @@ class GovernanceManager:
         limit: int = 100,
         offset: int = 0,
     ) -> dict[str, Any]:
-        """Query audit logs from Supabase with optional filters."""
+        """Query audit logs from Supabase (or local DB fallback) with optional filters."""
         if not self._supabase_url or not self._supabase_key:
-            return {"ok": True, "rows": [], "count": 0, "limit": limit, "offset": offset}
+            from aeon_db import query_audit_logs
+
+            try:
+                rows = query_audit_logs(
+                    workspace_id=workspace_id,
+                    action=action,
+                    module=module,
+                    limit=limit,
+                    offset=offset,
+                )
+                return {"ok": True, "rows": rows, "count": len(rows), "limit": limit, "offset": offset}
+            except Exception as e:
+                return {"ok": False, "error": str(e), "rows": [], "count": 0, "limit": limit, "offset": offset}
 
         params = {"limit": min(limit, 1000), "offset": offset, "order": "timestamp.desc"}
         conditions = []

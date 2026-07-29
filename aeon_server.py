@@ -33,6 +33,14 @@ import requests
 from flask import Flask, Response, g, jsonify, request
 
 from aeon_cache import get_cache
+from aeon_db import (
+    add_automation_execution,
+    init_db,
+    list_automation_executions,
+)
+from aeon_db import (
+    get_db as _get_local_db,
+)
 
 # ── Logging setup ────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -52,10 +60,29 @@ from aeon_auth import (
     require_workspace_role,
 )
 from aeon_automations import _compute_next_run, _execute_action, evaluate_condition, resolve_approval, start_scheduler
+from aeon_budgets import (
+    check_automation_budget,
+)
+from aeon_db import (
+    create_automation_budget,
+    create_automation_policy,
+    delete_automation_budget,
+    delete_automation_policy,
+    get_automation_budget,
+    get_automation_policy,
+    list_automation_budgets,
+    list_automation_policies,
+    update_automation_budget,
+    update_automation_policy,
+)
 from aeon_governance import GovernanceManager, get_governance
 from aeon_integrations import IntegrationManager, WebhookDelivery, get_integration_catalog
 from aeon_llm import get_llm_provider, list_providers, set_active_provider
 from aeon_llm import test_provider as _test_llm_provider
+from aeon_policies import (
+    PolicyEffect,
+    evaluate_automation_policy,
+)
 
 # Supported automation action types (kept in sync with aeon_automations.py)
 _AUTOMATION_ACTION_TYPES = frozenset({
@@ -155,6 +182,58 @@ app = Flask(__name__)
 _SUCCESS_STATUSES = {"triggered", "completed"}
 
 
+def _metrics_local_fallback_enabled() -> bool:
+    """Return True if metrics should fall back to the local DB."""
+    return os.environ.get("AEON_METRICS_LOCAL_FALLBACK", "").lower() in ("1", "true", "yes")
+
+
+def _seed_sample_automation_executions(workspace_id: str) -> None:
+    """Seed a few sample automation executions for a preview workspace."""
+    sample_rows = [
+        {
+            "rule_id": "preview-rule-onboarding",
+            "workspace_id": str(workspace_id),
+            "status": "completed",
+            "result": {"runtime_ms": 120},
+        },
+        {
+            "rule_id": "preview-rule-onboarding",
+            "workspace_id": str(workspace_id),
+            "status": "completed",
+            "result": {"runtime_ms": 95},
+        },
+        {
+            "rule_id": "preview-rule-onboarding",
+            "workspace_id": str(workspace_id),
+            "status": "failed",
+            "result": {"runtime_ms": 80},
+        },
+        {
+            "rule_id": "preview-rule-daily-digest",
+            "workspace_id": str(workspace_id),
+            "status": "completed",
+            "result": {"runtime_ms": 200},
+        },
+        {
+            "rule_id": "preview-rule-daily-digest",
+            "workspace_id": str(workspace_id),
+            "status": "throttled",
+            "result": None,
+        },
+        {
+            "rule_id": "preview-rule-approval",
+            "workspace_id": str(workspace_id),
+            "status": "pending_approval",
+            "result": None,
+        },
+    ]
+    for row in sample_rows:
+        try:
+            add_automation_execution(**row)
+        except Exception as exc:
+            logger.warning("Failed to seed sample execution: %s", exc)
+
+
 def _aggregate_automation_metrics(executions: list[dict[str, Any]]) -> dict[str, Any]:
     """Aggregate raw execution rows into totals, rates, and daily trends."""
     total_runs = len(executions)
@@ -222,51 +301,59 @@ def automation_metrics_workspace():
     ctx = _governance_context()
     workspace_id = ctx.get("workspace_id")
 
+    days = min(90, max(1, request.args.get("days", 30, type=int)))
+    since = (datetime.now(timezone.utc) - timedelta(days=days))
+
     supabase_url = os.environ.get("SUPABASE_URL")
     service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
     if not supabase_url or not service_key:
-        return jsonify({"ok": False, "error": "Supabase not configured"}), 503
+        if not _metrics_local_fallback_enabled():
+            return jsonify({"ok": False, "error": "Supabase not configured"}), 503
+        # Use local SQLite fallback for preview/dev environments.
+        executions = list_automation_executions(str(workspace_id), since=since)
+        source = "local"
+    else:
+        since_iso = since.isoformat()
+        try:
+            r = requests.get(
+                f"{supabase_url}/rest/v1/automation_executions",
+                headers={
+                    "apikey": service_key,
+                    "Authorization": f"Bearer {service_key}",
+                },
+                params={
+                    "workspace_id": f"eq.{workspace_id}",
+                    "created_at": f"gte.{since_iso}",
+                    "order": "created_at.desc",
+                    "limit": 1000,
+                },
+                timeout=10,
+            )
+            r.raise_for_status()
+            executions = r.json() or []
+            source = "supabase"
+        except Exception as e:
+            logger.warning("Failed to fetch automation metrics from Supabase: %s", e)
+            return jsonify({"ok": False, "error": str(e)}), 500
 
-    days = min(90, max(1, request.args.get("days", 30, type=int)))
-    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    metrics = _aggregate_automation_metrics(executions)
 
-    try:
-        r = requests.get(
-            f"{supabase_url}/rest/v1/automation_executions",
-            headers={
-                "apikey": service_key,
-                "Authorization": f"Bearer {service_key}",
-            },
-            params={
-                "workspace_id": f"eq.{workspace_id}",
-                "created_at": f"gte.{since}",
-                "order": "created_at.desc",
-                "limit": 1000,
-            },
-            timeout=10,
-        )
-        r.raise_for_status()
-        executions = r.json() or []
-        metrics = _aggregate_automation_metrics(executions)
+    # Per-rule breakdown
+    rule_counts: dict[str, int] = {}
+    for execution in executions:
+        rid = execution.get("rule_id")
+        if rid:
+            rule_counts[rid] = rule_counts.get(rid, 0) + 1
+    top_rules = sorted(rule_counts.items(), key=lambda item: item[1], reverse=True)[:10]
 
-        # Per-rule breakdown
-        rule_counts: dict[str, int] = {}
-        for execution in executions:
-            rid = execution.get("rule_id")
-            if rid:
-                rule_counts[rid] = rule_counts.get(rid, 0) + 1
-        top_rules = sorted(rule_counts.items(), key=lambda item: item[1], reverse=True)[:10]
-
-        return jsonify({
-            "ok": True,
-            "workspace_id": workspace_id,
-            "days": days,
-            **metrics,
-            "top_rules": [{"rule_id": rid, "runs": count} for rid, count in top_rules],
-        })
-    except Exception as e:
-        logger.warning("Failed to fetch automation metrics: %s", e)
-        return jsonify({"ok": False, "error": str(e)}), 500
+    return jsonify({
+        "ok": True,
+        "workspace_id": workspace_id,
+        "days": days,
+        "source": source,
+        **metrics,
+        "top_rules": [{"rule_id": rid, "runs": count} for rid, count in top_rules],
+    })
 
 
 @app.route("/automations/<rule_id>/metrics", methods=["GET"])
@@ -277,44 +364,53 @@ def automation_metrics_rule(rule_id: str):
     ctx = _governance_context()
     workspace_id = ctx.get("workspace_id")
 
+    days = min(90, max(1, request.args.get("days", 30, type=int)))
+    since = (datetime.now(timezone.utc) - timedelta(days=days))
+
     supabase_url = os.environ.get("SUPABASE_URL")
     service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
     if not supabase_url or not service_key:
-        return jsonify({"ok": False, "error": "Supabase not configured"}), 503
+        if not _metrics_local_fallback_enabled():
+            return jsonify({"ok": False, "error": "Supabase not configured"}), 503
+        # Use local SQLite fallback for preview/dev environments.
+        all_executions = list_automation_executions(str(workspace_id), since=since)
+        executions = [e for e in all_executions if e.get("rule_id") == rule_id]
+        source = "local"
+    else:
+        since_iso = since.isoformat()
+        try:
+            r = requests.get(
+                f"{supabase_url}/rest/v1/automation_executions",
+                headers={
+                    "apikey": service_key,
+                    "Authorization": f"Bearer {service_key}",
+                },
+                params={
+                    "rule_id": f"eq.{rule_id}",
+                    "workspace_id": f"eq.{workspace_id}",
+                    "created_at": f"gte.{since_iso}",
+                    "order": "created_at.desc",
+                    "limit": 1000,
+                },
+                timeout=10,
+            )
+            r.raise_for_status()
+            executions = r.json() or []
+            source = "supabase"
+        except Exception as e:
+            logger.warning("Failed to fetch automation metrics from Supabase: %s", e)
+            return jsonify({"ok": False, "error": str(e)}), 500
 
-    days = min(90, max(1, request.args.get("days", 30, type=int)))
-    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    metrics = _aggregate_automation_metrics(executions)
 
-    try:
-        r = requests.get(
-            f"{supabase_url}/rest/v1/automation_executions",
-            headers={
-                "apikey": service_key,
-                "Authorization": f"Bearer {service_key}",
-            },
-            params={
-                "rule_id": f"eq.{rule_id}",
-                "workspace_id": f"eq.{workspace_id}",
-                "created_at": f"gte.{since}",
-                "order": "created_at.desc",
-                "limit": 1000,
-            },
-            timeout=10,
-        )
-        r.raise_for_status()
-        executions = r.json() or []
-        metrics = _aggregate_automation_metrics(executions)
-
-        return jsonify({
-            "ok": True,
-            "rule_id": rule_id,
-            "workspace_id": workspace_id,
-            "days": days,
-            **metrics,
-        })
-    except Exception as e:
-        logger.warning("Failed to fetch automation metrics: %s", e)
-        return jsonify({"ok": False, "error": str(e)}), 500
+    return jsonify({
+        "ok": True,
+        "rule_id": rule_id,
+        "workspace_id": workspace_id,
+        "days": days,
+        "source": source,
+        **metrics,
+    })
 
 # Start background scheduler for cron-based automations unless disabled.
 if os.environ.get("AEON_DISABLE_SCHEDULER") != "1":
@@ -395,6 +491,10 @@ HOST = os.environ.get("AEON_PYTHON_HOST", "0.0.0.0")  #nosec B104
 PORT = int(os.environ.get("AEON_PYTHON_PORT", "5000"))
 AEON_ROOT = Path(os.environ.get("AEON_ROOT", "./aeon_state/server"))
 AEON_ROOT.mkdir(parents=True, exist_ok=True)
+
+# Initialize local database tables (SQLite fallback for preview/dev)
+init_db()
+_get_local_db().ensure_default_workspace()
 
 # Initialize Stripe client at startup
 init_stripe(AEON_ROOT)
@@ -722,7 +822,7 @@ def auth_login():
     from aeon_auth import _FallbackAdmin, create_access_token
     from aeon_db import get_db
 
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     email = (data.get("email") or "").strip().lower()
     password = data.get("password", "")
     if not email or not password:
@@ -852,6 +952,14 @@ def auth_register():
             s.commit()
 
             workspace_id = str(workspace.id)
+
+        # Seed sample automation metrics for preview/dev environments so the
+        # dashboard has real data to display without a live Supabase instance.
+        if _metrics_local_fallback_enabled():
+            try:
+                _seed_sample_automation_executions(workspace_id)
+            except Exception as exc:
+                logger.warning("Failed to seed preview metrics: %s", exc)
 
         token = create_access_token(user.id, user.email, user.role, workspace_id)
         logger.info("New user registered: %s (workspace: %s)", email, slug        )
@@ -1062,6 +1170,30 @@ def _governance_context() -> dict[str, Any]:
         "workspace_id": data.get("workspace_id") or request.headers.get("X-Workspace-Id"),
         "email": data.get("email") or request.headers.get("X-User-Email"),
     }
+
+
+def _log_automation_event(
+    action: str,
+    ctx: dict[str, Any],
+    rule_id: str | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> None:
+    """Emit an automation governance audit event.
+
+    The event is queued through the GovernanceManager and flushed to the
+    audit_logs table asynchronously.
+    """
+    try:
+        get_governance().log_audit(
+            action=action,
+            module="automations",
+            user_id=ctx.get("user_id"),
+            workspace_id=ctx.get("workspace_id"),
+            email=ctx.get("email"),
+            metadata={"rule_id": rule_id, **(metadata or {})},
+        )
+    except Exception as exc:
+        logger.warning("Failed to log automation audit event: %s", exc)
 
 
 def _has_workspace_role(ctx: dict[str, Any], workspace_id: str, required_role: str) -> bool:
@@ -2719,6 +2851,34 @@ def automations_index():
         if next_run_at is None:
             return jsonify({"ok": False, "error": "invalid cron_expression"}), 400
 
+    rule_payload = {
+        "name": name,
+        "event_type": event_type,
+        "condition": data.get("condition", {}),
+        "action_type": action_type,
+        "action_config": action_config,
+        "actions": actions,
+    }
+    policy_result = _check_automation_policy(workspace_id, rule_payload)
+    if not policy_result["allowed"]:
+        if policy_result["effect"] == "require_approval":
+            data["approval_required"] = True
+            data["approver_message"] = "Policy requires approval: " + "; ".join(
+                (v.get("message", "") if isinstance(v, dict) else getattr(v, "message", "")) for v in policy_result["violations"]
+            )
+        else:
+            _log_automation_event(
+                "automation_policy_blocked",
+                ctx,
+                metadata={"name": name, "effect": policy_result["effect"], "violations": policy_result["violations"]},
+            )
+            return jsonify({
+                "ok": False,
+                "error": "policy violation",
+                "policy_effect": policy_result["effect"],
+                "violations": policy_result["violations"],
+            }), 403
+
     try:
         payload = {
             "name": name,
@@ -2749,6 +2909,13 @@ def automations_index():
         )
         r.raise_for_status()
         created = r.json()
+        created_id = created[0].get("id") if created else None
+        _log_automation_event(
+            "automation_created",
+            ctx,
+            rule_id=created_id,
+            metadata={"name": name, "event_type": event_type, "rule_id": created_id},
+        )
         return jsonify({"ok": True, "rule": created[0] if created else None}), 201
     except Exception as e:
         logger.warning("Failed to create automation rule: %s", e)
@@ -2795,6 +2962,7 @@ def automation_detail(rule_id: str):
             timeout=10,
         )
         r.raise_for_status()
+        _log_automation_event("automation_deleted", ctx, rule_id=rule_id, metadata={"rule_id": rule_id})
         return jsonify({"ok": True})
 
     # PATCH
@@ -2872,6 +3040,36 @@ def automation_detail(rule_id: str):
     if not updates:
         return jsonify({"ok": False, "error": "no fields to update"}), 400
 
+    # Phase 41: enforce automation policies on the proposed rule.
+    rule_payload = {
+        "name": updates.get("name", rows[0].get("name", "")),
+        "event_type": updates.get("event_type", rows[0].get("event_type", "")),
+        "condition": updates.get("condition", rows[0].get("condition", {})),
+        "action_type": updates.get("action_type", rows[0].get("action_type", "")),
+        "action_config": updates.get("action_config", rows[0].get("action_config", {})),
+        "actions": updates.get("actions", rows[0].get("actions", [])),
+    }
+    policy_result = _check_automation_policy(workspace_id, rule_payload)
+    if not policy_result["allowed"]:
+        if policy_result["effect"] == "require_approval":
+            updates["approval_required"] = True
+            updates["approver_message"] = "Policy requires approval: " + "; ".join(
+                (v.get("message", "") if isinstance(v, dict) else getattr(v, "message", "")) for v in policy_result["violations"]
+            )
+        else:
+            _log_automation_event(
+                "automation_policy_blocked",
+                ctx,
+                rule_id=rule_id,
+                metadata={"rule_id": rule_id, "effect": policy_result["effect"], "violations": policy_result["violations"]},
+            )
+            return jsonify({
+                "ok": False,
+                "error": "policy violation",
+                "policy_effect": policy_result["effect"],
+                "violations": policy_result["violations"],
+            }), 403
+
     # Phase 38: snapshot the current rule before mutating it.
     _create_rule_snapshot(supabase_url, service_key, rows[0], ctx)
 
@@ -2891,6 +3089,7 @@ def automation_detail(rule_id: str):
     rows = r.json()
     if not rows:
         return jsonify({"ok": False, "error": "rule not found"}), 404
+    _log_automation_event("automation_updated", ctx, rule_id=rule_id, metadata={"rule_id": rule_id, "fields": list(updates.keys())})
     return jsonify({"ok": True, "rule": rows[0]})
 
 
@@ -2925,6 +3124,51 @@ def automation_run_now(rule_id: str):
             return jsonify({"ok": False, "error": "rule not found"}), 404
         rule = rows[0]
 
+        # Phase 41: enforce runtime automation policies.
+        rule_payload = {
+            "name": rule.get("name", ""),
+            "event_type": rule.get("event_type", ""),
+            "condition": rule.get("condition", {}),
+            "action_type": rule.get("action_type", ""),
+            "action_config": rule.get("action_config", {}),
+            "actions": rule.get("actions", []),
+        }
+        policy_result = _check_automation_policy(workspace_id, rule_payload)
+        if not policy_result["allowed"]:
+            _log_automation_event(
+                "automation_policy_blocked",
+                ctx,
+                rule_id=rule_id,
+                metadata={"rule_id": rule_id, "effect": policy_result["effect"], "violations": policy_result["violations"]},
+            )
+            return jsonify({
+                "ok": False,
+                "error": "policy violation",
+                "policy_effect": policy_result["effect"],
+                "violations": policy_result["violations"],
+            }), 403
+
+        # Phase 42: enforce automation budgets before execution.
+        budget_result = check_automation_budget(str(workspace_id), rule_id=rule_id)
+        if not budget_result.allowed:
+            add_automation_execution(
+                rule_id=rule_id,
+                workspace_id=str(workspace_id),
+                status="throttled",
+                result={"reason": budget_result.blocks},
+            )
+            _log_automation_event(
+                "automation_budget_blocked",
+                ctx,
+                rule_id=rule_id,
+                metadata={"rule_id": rule_id, "blocks": budget_result.blocks},
+            )
+            return jsonify({
+                "ok": False,
+                "error": "budget exceeded",
+                "blocks": budget_result.blocks,
+            }), 429
+
         body = request.get_json(silent=True) or {}
         dry_run = bool(body.get("dry_run"))
 
@@ -2935,6 +3179,7 @@ def automation_run_now(rule_id: str):
             "workspace_id": workspace_id,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
+        _log_automation_event("automation_run", ctx, rule_id=rule_id, metadata={"rule_id": rule_id, "dry_run": dry_run})
         result = _execute_action(rule, event, dry_run=dry_run)
         return jsonify({"ok": result.get("ok"), "dry_run": dry_run, "result": result})
     except Exception as e:
@@ -3115,6 +3360,338 @@ def automation_executions(rule_id: str):
 
 
 
+# ── Automation policy enforcement (Phase 41) ────────────────────────────────
+
+@app.route("/automations/policies", methods=["GET", "POST"])
+@require_auth
+@require_workspace_role("ADMIN")
+def automation_policies_index():
+    """List or create automation policies for the current workspace."""
+    ctx = _governance_context()
+    workspace_id = ctx.get("workspace_id")
+
+    if request.method == "GET":
+        policies = list_automation_policies(workspace_id, enabled_only=request.args.get("enabled", "true").lower() != "false")
+        return jsonify({
+            "ok": True,
+            "policies": [
+                {
+                    "id": p.id,
+                    "workspace_id": p.workspace_id,
+                    "name": p.name,
+                    "description": p.description,
+                    "effect": p.effect,
+                    "rules": p.rules,
+                    "enabled": p.enabled,
+                    "created_at": p.created_at.isoformat() if p.created_at else None,
+                    "updated_at": p.updated_at.isoformat() if p.updated_at else None,
+                }
+                for p in policies
+            ],
+        })
+
+    data = request.json or {}
+    name = (data.get("name") or "").strip()
+    effect = (data.get("effect") or "").strip()
+    rules = data.get("rules") or {}
+    if not name:
+        return jsonify({"ok": False, "error": "name is required"}), 400
+    if effect not in {PolicyEffect.BLOCK, PolicyEffect.REQUIRE_APPROVAL}:
+        return jsonify({"ok": False, "error": "effect must be 'block' or 'require_approval'"}), 400
+    if not isinstance(rules, dict):
+        return jsonify({"ok": False, "error": "rules must be an object"}), 400
+
+    policy = create_automation_policy(
+        workspace_id=workspace_id,
+        name=name,
+        effect=effect,
+        rules=rules,
+        description=data.get("description"),
+        enabled=bool(data.get("enabled", True)),
+    )
+    _log_automation_event("automation_policy_created", ctx, metadata={"policy_id": policy.id, "name": policy.name})
+    return jsonify({
+        "ok": True,
+        "policy": {
+            "id": policy.id,
+            "workspace_id": policy.workspace_id,
+            "name": policy.name,
+            "description": policy.description,
+            "effect": policy.effect,
+            "rules": policy.rules,
+            "enabled": policy.enabled,
+            "created_at": policy.created_at.isoformat() if policy.created_at else None,
+            "updated_at": policy.updated_at.isoformat() if policy.updated_at else None,
+        },
+    }), 201
+
+
+@app.route("/automations/policies/<policy_id>", methods=["GET", "PATCH", "DELETE"])
+@require_auth
+@require_workspace_role("ADMIN")
+def automation_policy_detail(policy_id: str):
+    """Get, update, or delete a single automation policy."""
+    ctx = _governance_context()
+    workspace_id = ctx.get("workspace_id")
+
+    policy = get_automation_policy(policy_id, workspace_id=workspace_id)
+    if not policy:
+        return jsonify({"ok": False, "error": "policy not found"}), 404
+
+    if request.method == "GET":
+        return jsonify({
+            "ok": True,
+            "policy": {
+                "id": policy.id,
+                "workspace_id": policy.workspace_id,
+                "name": policy.name,
+                "description": policy.description,
+                "effect": policy.effect,
+                "rules": policy.rules,
+                "enabled": policy.enabled,
+                "created_at": policy.created_at.isoformat() if policy.created_at else None,
+                "updated_at": policy.updated_at.isoformat() if policy.updated_at else None,
+            },
+        })
+
+    if request.method == "DELETE":
+        delete_automation_policy(policy_id, workspace_id=workspace_id)
+        _log_automation_event("automation_policy_deleted", ctx, metadata={"policy_id": policy_id})
+        return jsonify({"ok": True})
+
+    data = request.json or {}
+    name = data.get("name")
+    effect = data.get("effect")
+    rules = data.get("rules")
+    description = data.get("description")
+    enabled = data.get("enabled")
+    if effect is not None and effect not in {PolicyEffect.BLOCK, PolicyEffect.REQUIRE_APPROVAL}:
+        return jsonify({"ok": False, "error": "effect must be 'block' or 'require_approval'"}), 400
+    if rules is not None and not isinstance(rules, dict):
+        return jsonify({"ok": False, "error": "rules must be an object"}), 400
+
+    updated = update_automation_policy(
+        policy,
+        name=name.strip() if isinstance(name, str) else None,
+        effect=effect,
+        rules=rules,
+        description=description,
+        enabled=enabled if isinstance(enabled, bool) else None,
+    )
+    _log_automation_event("automation_policy_updated", ctx, metadata={"policy_id": policy_id})
+    return jsonify({
+        "ok": True,
+        "policy": {
+            "id": updated.id,
+            "workspace_id": updated.workspace_id,
+            "name": updated.name,
+            "description": updated.description,
+            "effect": updated.effect,
+            "rules": updated.rules,
+            "enabled": updated.enabled,
+            "created_at": updated.created_at.isoformat() if updated.created_at else None,
+            "updated_at": updated.updated_at.isoformat() if updated.updated_at else None,
+        },
+    })
+
+
+@app.route("/automations/policies/evaluate", methods=["POST"])
+@require_auth
+@require_workspace_role("OPERATOR")
+def automation_policies_evaluate():
+    """Evaluate a proposed rule against current workspace policies without persisting it.
+
+    Body: { name, event_type, condition, actions, action_type, action_config }
+    Returns: { allowed, effect, violations }
+    """
+    ctx = _governance_context()
+    workspace_id = ctx.get("workspace_id")
+    data = request.json or {}
+
+    rule_payload = {
+        "name": data.get("name", ""),
+        "event_type": data.get("event_type", ""),
+        "condition": data.get("condition") or {},
+        "actions": data.get("actions") or [],
+        "action_type": data.get("action_type", ""),
+        "action_config": data.get("action_config") or {},
+    }
+
+    result = evaluate_automation_policy(workspace_id, rule_payload)
+    _log_automation_event(
+        "automation_policy_evaluated",
+        ctx,
+        metadata={"allowed": result.allowed, "effect": result.effect, "violation_count": len(result.violations)},
+    )
+    return jsonify(result.to_dict())
+
+
+
+
+def _serialize_budget(budget) -> dict[str, Any]:
+    return {
+        "id": budget.id,
+        "workspace_id": budget.workspace_id,
+        "name": budget.name,
+        "rule_id": budget.rule_id,
+        "period": budget.period,
+        "limit_value": budget.limit_value,
+        "action": budget.action,
+        "enabled": budget.enabled,
+        "created_at": budget.created_at.isoformat() if budget.created_at else None,
+        "updated_at": budget.updated_at.isoformat() if budget.updated_at else None,
+    }
+
+
+@app.route("/automations/budgets", methods=["GET", "POST"])
+@require_auth
+@require_workspace_role("ADMIN")
+def automation_budgets_index():
+    """List or create automation budgets for the current workspace."""
+    ctx = _governance_context()
+    workspace_id = ctx.get("workspace_id")
+
+    if request.method == "GET":
+        budgets = list_automation_budgets(workspace_id, enabled_only=request.args.get("enabled", "true").lower() != "false")
+        return jsonify({"ok": True, "budgets": [_serialize_budget(b) for b in budgets]})
+
+    data = request.json or {}
+    name = (data.get("name") or "").strip()
+    period = (data.get("period") or "").strip().lower()
+    limit_value = data.get("limit_value")
+    action = (data.get("action") or "block").strip().lower()
+    rule_id = data.get("rule_id")
+
+    if not name:
+        return jsonify({"ok": False, "error": "name is required"}), 400
+    if period not in {"hour", "day", "month", "total"}:
+        return jsonify({"ok": False, "error": "period must be hour, day, month, or total"}), 400
+    try:
+        limit_value = int(limit_value)
+        if limit_value < 0:
+            raise ValueError
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "limit_value must be a non-negative integer"}), 400
+    if action not in {"block", "warn"}:
+        return jsonify({"ok": False, "error": "action must be 'block' or 'warn'"}), 400
+
+    budget = create_automation_budget(
+        workspace_id=workspace_id,
+        name=name,
+        period=period,
+        limit_value=limit_value,
+        action=action,
+        rule_id=rule_id,
+        enabled=bool(data.get("enabled", True)),
+    )
+    _log_automation_event("automation_budget_created", ctx, metadata={"budget_id": budget.id, "name": budget.name})
+    return jsonify({"ok": True, "budget": _serialize_budget(budget)}), 201
+
+
+@app.route("/automations/budgets/check", methods=["GET", "POST"])
+@require_auth
+@require_workspace_role("OPERATOR")
+def automation_budgets_check():
+    """Evaluate automation budgets for a workspace/rule without executing."""
+    ctx = _governance_context()
+    workspace_id = ctx.get("workspace_id")
+    data = request.get_json(silent=True) or {}
+    rule_id = request.args.get("rule_id") or data.get("rule_id")
+    result = check_automation_budget(str(workspace_id), rule_id=rule_id)
+    return jsonify({"ok": True, **result.to_dict()})
+
+
+def _check_automation_policy(workspace_id: str, rule: dict[str, Any]) -> dict[str, Any]:
+    """Evaluate a proposed automation rule against workspace policies.
+
+    Returns a dict with keys: allowed (bool), effect (str), violations (list).
+    """
+    result = evaluate_automation_policy(str(workspace_id), rule)
+    return {
+        "allowed": result.allowed,
+        "effect": result.effect,
+        "violations": [v.to_dict() if hasattr(v, "to_dict") else v for v in result.violations],
+    }
+
+
+def _apply_policy_decision(
+    data: dict[str, Any],
+    policy_result: dict[str, Any],
+) -> tuple[bool, dict[str, Any] | None]:
+    """Return (proceed, error_response) based on policy evaluation.
+
+    If the rule is blocked, return an error response. If it requires approval,
+    mutate data to set approval_required=True and return (True, None).
+    """
+    if policy_result["allowed"]:
+        return True, None
+    if policy_result["effect"] == "require_approval":
+        data["approval_required"] = True
+        data["approver_message"] = "Policy requires approval: " + "; ".join(
+            (v.get("message", "") if isinstance(v, dict) else getattr(v, "message", "")) for v in policy_result["violations"]
+        )
+        return True, None
+    return False, {
+        "ok": False,
+        "error": "policy violation",
+        "policy_effect": policy_result["effect"],
+        "violations": policy_result["violations"],
+    }
+
+
+@app.route("/automations/budgets/<budget_id>", methods=["GET", "PATCH", "DELETE"])
+@require_auth
+@require_workspace_role("ADMIN")
+def automation_budget_detail(budget_id: str):
+    """Get, update, or delete a single automation budget."""
+    ctx = _governance_context()
+    workspace_id = ctx.get("workspace_id")
+
+    budget = get_automation_budget(budget_id, workspace_id=workspace_id)
+    if not budget:
+        return jsonify({"ok": False, "error": "budget not found"}), 404
+
+    if request.method == "GET":
+        return jsonify({"ok": True, "budget": _serialize_budget(budget)})
+
+    if request.method == "DELETE":
+        delete_automation_budget(budget_id, workspace_id=workspace_id)
+        _log_automation_event("automation_budget_deleted", ctx, metadata={"budget_id": budget_id})
+        return jsonify({"ok": True})
+
+    data = request.json or {}
+    name = data.get("name")
+    period = data.get("period")
+    limit_value = data.get("limit_value")
+    action = data.get("action")
+    rule_id = data.get("rule_id")
+    enabled = data.get("enabled")
+
+    if period is not None and period not in {"hour", "day", "month", "total"}:
+        return jsonify({"ok": False, "error": "period must be hour, day, month, or total"}), 400
+    if limit_value is not None:
+        try:
+            limit_value = int(limit_value)
+            if limit_value < 0:
+                raise ValueError
+        except (TypeError, ValueError):
+            return jsonify({"ok": False, "error": "limit_value must be a non-negative integer"}), 400
+    if action is not None and action not in {"block", "warn"}:
+        return jsonify({"ok": False, "error": "action must be 'block' or 'warn'"}), 400
+
+    updated = update_automation_budget(
+        budget,
+        name=name.strip() if isinstance(name, str) else None,
+        period=period,
+        limit_value=limit_value,
+        action=action,
+        rule_id=rule_id,
+        enabled=enabled if isinstance(enabled, bool) else None,
+    )
+    _log_automation_event("automation_budget_updated", ctx, metadata={"budget_id": budget_id})
+    return jsonify({"ok": True, "budget": _serialize_budget(updated)})
+
+
 @app.route("/automations/test-condition", methods=["POST"])
 @require_auth
 def automation_test_condition():
@@ -3132,6 +3709,57 @@ def automation_test_condition():
     except Exception as e:
         logger.warning("Failed to evaluate condition: %s", e)
         return jsonify({"ok": False, "error": str(e)}), 500
+
+# ── Automation governance & audit logs (Phase 40) ────────────────────────────
+
+@app.route("/automations/audit", methods=["GET"])
+@require_auth
+@require_workspace_role("VIEWER")
+def automation_audit_index():
+    """Query automation governance audit logs for the current workspace.
+
+    Query params:
+      action  - filter by audit action (optional)
+      module  - filter by module (default: automations)
+      limit   - max rows to return (default 100, max 1000)
+      offset  - pagination offset (default 0)
+    """
+    ctx = _governance_context()
+    workspace_id = ctx.get("workspace_id")
+    action = request.args.get("action")
+    module = request.args.get("module", "automations")
+    limit = min(1000, max(1, request.args.get("limit", 100, type=int)))
+    offset = max(0, request.args.get("offset", 0, type=int))
+
+    result = get_governance().query_audit(
+        workspace_id=workspace_id,
+        action=action,
+        module=module,
+        limit=limit,
+        offset=offset,
+    )
+    return jsonify(result)
+
+
+@app.route("/automations/audit/export", methods=["GET"])
+@require_auth
+@require_workspace_role("VIEWER")
+def automation_audit_export():
+    """Export automation governance audit logs as a sanitized JSON payload."""
+    ctx = _governance_context()
+    workspace_id = ctx.get("workspace_id")
+    module = request.args.get("module", "automations")
+    limit = min(10000, max(1, request.args.get("limit", 1000, type=int)))
+
+    result = get_governance().query_audit(
+        workspace_id=workspace_id,
+        module=module,
+        limit=limit,
+        offset=0,
+    )
+    export = get_governance().export_audit(result.get("rows", []), format="json")
+    return jsonify(export)
+
 
 # ── Inbound webhook management (Phase 21) ───────────────────────────────────
 # ── Automation import / export / blueprints (Phase 37) ─────────────────────
@@ -3186,6 +3814,7 @@ def automations_export():
         )
         r.raise_for_status()
         rules = r.json() or []
+        _log_automation_event("automation_exported", ctx, metadata={"count": len(rules), "rule_id": request.args.get("rule_id")})
         return jsonify({
             "ok": True,
             "exported_at": datetime.now(timezone.utc).isoformat(),
@@ -3249,6 +3878,27 @@ def automations_import():
 
         schedule_type = (raw.get("schedule_type") or "event").strip()
         cron_expression = (raw.get("cron_expression") or "").strip()
+
+        # Phase 41: enforce automation policies on imported rules.
+        rule_payload = {
+            "name": (raw.get("name") or "").strip(),
+            "event_type": (raw.get("event_type") or "").strip(),
+            "condition": raw.get("condition", {}),
+            "action_type": action_type,
+            "action_config": action_config,
+            "actions": actions,
+        }
+        policy_result = _check_automation_policy(workspace_id, rule_payload)
+        if not policy_result["allowed"]:
+            if policy_result["effect"] == "require_approval":
+                raw["approval_required"] = True
+                raw["approver_message"] = "Policy requires approval: " + "; ".join(
+                    (v.get("message", "") if isinstance(v, dict) else getattr(v, "message", "")) for v in policy_result["violations"]
+                )
+            else:
+                errors.append({"index": idx, "error": "policy violation", "violations": policy_result["violations"]})
+                continue
+
         next_run_at = None
         if schedule_type == "cron" and cron_expression:
             next_run_at = _compute_next_run(cron_expression)
@@ -3291,6 +3941,7 @@ def automations_import():
             logger.warning("Failed to import automation rule: %s", e)
             errors.append({"index": idx, "error": str(e)})
 
+    _log_automation_event("automation_imported", ctx, metadata={"imported": len(created), "errors": len(errors)})
     return jsonify({
         "ok": len(errors) == 0,
         "imported": len(created),
@@ -3426,6 +4077,7 @@ def automation_snapshots(rule_id: str):
         snapshot = _create_rule_snapshot(supabase_url, service_key, rule, ctx)
         if snapshot is None:
             return jsonify({"ok": False, "error": "failed to create snapshot"}), 500
+        _log_automation_event("automation_snapshot_created", ctx, rule_id=rule_id, metadata={"rule_id": rule_id, "snapshot_id": snapshot.get("id")})
         return jsonify({"ok": True, "snapshot": snapshot}), 201
 
     # GET
@@ -3559,6 +4211,7 @@ def automation_rollback(rule_id: str, snapshot_id: str):
         rows = r.json()
         if not rows:
             return jsonify({"ok": False, "error": "rule not found"}), 404
+        _log_automation_event("automation_rollback", ctx, rule_id=rule_id, metadata={"rule_id": rule_id, "snapshot_id": snapshot_id})
         return jsonify({"ok": True, "rule": rows[0]})
     except Exception as e:
         logger.warning("Failed to rollback automation rule: %s", e)

@@ -21,6 +21,7 @@ from sqlalchemy import (
     Column,
     DateTime,
     ForeignKey,
+    Integer,
     String,
     Text,
     UniqueConstraint,
@@ -121,6 +122,46 @@ class RefreshToken(Base):
     expires_at = Column(DateTime(timezone=True), nullable=False)
     revoked = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), nullable=False, default=_now)
+
+
+class AutomationExecution(Base):
+    __tablename__ = "automation_executions"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    rule_id = Column(String(255), nullable=True, index=True)
+    workspace_id = Column(String(36), nullable=True, index=True)
+    status = Column(String(50), nullable=True)
+    result = Column(JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_now)
+
+
+class AutomationPolicy(Base):
+    __tablename__ = "automation_policies"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    workspace_id = Column(String(36), nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    effect = Column(String(50), nullable=False, default="block")  # block, require_approval
+    rules = Column(JSON, nullable=False, default=dict)
+    enabled = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_now)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
+
+
+class AutomationBudget(Base):
+    __tablename__ = "automation_budgets"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    workspace_id = Column(String(36), nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    rule_id = Column(String(255), nullable=True, index=True)
+    period = Column(String(50), nullable=False)  # hour, day, month, total
+    limit_value = Column(Integer, nullable=False)
+    action = Column(String(50), nullable=False, default="block")  # block, warn
+    enabled = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_now)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
 
 
 # === Engine / Session factory =================================================
@@ -231,3 +272,314 @@ def get_db() -> Database:
 def init_db():
     """Create tables. Safe to call repeatedly."""
     get_db().create_all()
+
+
+def add_automation_execution(
+    rule_id: str,
+    workspace_id: str,
+    status: str,
+    result: dict[str, Any] | None = None,
+) -> AutomationExecution:
+    """Persist a single automation execution row."""
+    db = get_db()
+    with db.session() as s:
+        execution = AutomationExecution(
+            rule_id=rule_id,
+            workspace_id=str(workspace_id),
+            status=status,
+            result=result,
+        )
+        s.add(execution)
+        s.commit()
+        return execution
+
+
+def list_automation_executions(
+    workspace_id: str,
+    since: datetime | None = None,
+) -> list[dict[str, Any]]:
+    """Return recent automation executions for a workspace as plain dicts."""
+    db = get_db()
+    with db.session() as s:
+        q = s.query(AutomationExecution).filter_by(workspace_id=str(workspace_id))
+        if since is not None:
+            q = q.filter(AutomationExecution.created_at >= since)
+        rows = (
+            q.order_by(AutomationExecution.created_at.desc())
+            .limit(1000)
+            .all()
+        )
+        return [
+            {
+                "id": row.id,
+                "rule_id": row.rule_id,
+                "workspace_id": row.workspace_id,
+                "status": row.status,
+                "result": row.result,
+                "created_at": row.created_at.isoformat() if row.created_at else None,
+            }
+            for row in rows
+        ]
+
+
+def add_audit_log(
+    action: str,
+    module: str,
+    user_id: str | None,
+    workspace_id: str | None,
+    email: str | None,
+    metadata: dict[str, Any] | None = None,
+    pii_redacted: bool = False,
+) -> AuditLog:
+    """Persist a single audit log row locally."""
+    db = get_db()
+    with db.session() as s:
+        log = AuditLog(
+            user_id=str(user_id) if user_id else None,
+            email=email,
+            action=action,
+            module=module,
+            workspace_id=str(workspace_id) if workspace_id else None,
+            metadata_json=metadata or {},
+            pii_redacted=pii_redacted,
+        )
+        s.add(log)
+        s.commit()
+        return log
+
+
+# === Automation policy helpers =================================================
+
+def create_automation_policy(
+    workspace_id: str,
+    name: str,
+    effect: str,
+    rules: dict[str, Any] | None = None,
+    description: str | None = None,
+    enabled: bool = True,
+) -> AutomationPolicy:
+    """Create and return a new automation policy for a workspace."""
+    db = get_db()
+    with db.session() as s:
+        policy = AutomationPolicy(
+            workspace_id=str(workspace_id),
+            name=name,
+            description=description,
+            effect=effect,
+            rules=rules or {},
+            enabled=enabled,
+        )
+        s.add(policy)
+        s.commit()
+        return policy
+
+
+def get_automation_policy(policy_id: str, workspace_id: str | None = None) -> AutomationPolicy | None:
+    """Fetch a single policy by id, optionally scoped to a workspace."""
+    db = get_db()
+    with db.session() as s:
+        q = s.query(AutomationPolicy).filter_by(id=str(policy_id))
+        if workspace_id is not None:
+            q = q.filter_by(workspace_id=str(workspace_id))
+        return q.first()
+
+
+def list_automation_policies(workspace_id: str, enabled_only: bool = True) -> list[AutomationPolicy]:
+    """Return policies for a workspace as ORM objects."""
+    db = get_db()
+    with db.session() as s:
+        q = s.query(AutomationPolicy).filter_by(workspace_id=str(workspace_id))
+        if enabled_only:
+            q = q.filter_by(enabled=True)
+        return q.order_by(AutomationPolicy.created_at.desc()).all()
+
+
+def update_automation_policy(
+    policy: AutomationPolicy,
+    name: str | None = None,
+    effect: str | None = None,
+    rules: dict[str, Any] | None = None,
+    description: str | None = None,
+    enabled: bool | None = None,
+) -> AutomationPolicy:
+    """Update an existing automation policy in place."""
+    if name is not None:
+        policy.name = name
+    if effect is not None:
+        policy.effect = effect
+    if rules is not None:
+        policy.rules = rules
+    if description is not None:
+        policy.description = description
+    if enabled is not None:
+        policy.enabled = enabled
+    db = get_db()
+    with db.session() as s:
+        s.add(policy)
+        s.commit()
+        return policy
+
+
+def delete_automation_policy(policy_id: str, workspace_id: str | None = None) -> bool:
+    """Delete a policy and return True if a row was removed."""
+    db = get_db()
+    with db.session() as s:
+        q = s.query(AutomationPolicy).filter_by(id=str(policy_id))
+        if workspace_id is not None:
+            q = q.filter_by(workspace_id=str(workspace_id))
+        deleted = q.delete()
+        s.commit()
+        return bool(deleted)
+
+
+def count_automation_policies(workspace_id: str) -> int:
+    """Return the number of enabled policies in a workspace."""
+    db = get_db()
+    with db.session() as s:
+        return s.query(AutomationPolicy).filter_by(
+            workspace_id=str(workspace_id), enabled=True
+        ).count()
+
+
+# === Automation budget helpers =================================================
+
+def create_automation_budget(
+    workspace_id: str,
+    name: str,
+    period: str,
+    limit_value: int,
+    action: str = "block",
+    rule_id: str | None = None,
+    enabled: bool = True,
+) -> AutomationBudget:
+    """Create and return a new automation budget for a workspace."""
+    db = get_db()
+    with db.session() as s:
+        budget = AutomationBudget(
+            workspace_id=str(workspace_id),
+            name=name,
+            rule_id=str(rule_id) if rule_id else None,
+            period=period,
+            limit_value=int(limit_value),
+            action=action,
+            enabled=enabled,
+        )
+        s.add(budget)
+        s.commit()
+        return budget
+
+
+def get_automation_budget(budget_id: str, workspace_id: str | None = None) -> AutomationBudget | None:
+    """Fetch a single budget by id, optionally scoped to a workspace."""
+    db = get_db()
+    with db.session() as s:
+        q = s.query(AutomationBudget).filter_by(id=str(budget_id))
+        if workspace_id is not None:
+            q = q.filter_by(workspace_id=str(workspace_id))
+        return q.first()
+
+
+def list_automation_budgets(workspace_id: str, enabled_only: bool = True) -> list[AutomationBudget]:
+    """Return budgets for a workspace as ORM objects."""
+    db = get_db()
+    with db.session() as s:
+        q = s.query(AutomationBudget).filter_by(workspace_id=str(workspace_id))
+        if enabled_only:
+            q = q.filter_by(enabled=True)
+        return q.order_by(AutomationBudget.created_at.desc()).all()
+
+
+def update_automation_budget(
+    budget: AutomationBudget,
+    name: str | None = None,
+    period: str | None = None,
+    limit_value: int | None = None,
+    action: str | None = None,
+    rule_id: str | None = None,
+    enabled: bool | None = None,
+) -> AutomationBudget:
+    """Update an existing automation budget in place."""
+    if name is not None:
+        budget.name = name
+    if period is not None:
+        budget.period = period
+    if limit_value is not None:
+        budget.limit_value = int(limit_value)
+    if action is not None:
+        budget.action = action
+    if rule_id is not None:
+        budget.rule_id = str(rule_id) if rule_id else None
+    if enabled is not None:
+        budget.enabled = enabled
+    db = get_db()
+    with db.session() as s:
+        s.add(budget)
+        s.commit()
+        return budget
+
+
+def delete_automation_budget(budget_id: str, workspace_id: str | None = None) -> bool:
+    """Delete a budget and return True if a row was removed."""
+    db = get_db()
+    with db.session() as s:
+        q = s.query(AutomationBudget).filter_by(id=str(budget_id))
+        if workspace_id is not None:
+            q = q.filter_by(workspace_id=str(workspace_id))
+        deleted = q.delete()
+        s.commit()
+        return bool(deleted)
+
+
+def count_automation_executions(
+    workspace_id: str,
+    rule_id: str | None = None,
+    since: datetime | None = None,
+) -> int:
+    """Return the number of automation executions in a workspace since a given time."""
+    db = get_db()
+    with db.session() as s:
+        q = s.query(AutomationExecution).filter_by(workspace_id=str(workspace_id))
+        if rule_id is not None:
+            q = q.filter_by(rule_id=str(rule_id))
+        if since is not None:
+            q = q.filter(AutomationExecution.created_at >= since)
+        return q.count()
+
+
+def query_audit_logs(
+    workspace_id: str | None = None,
+    action: str | None = None,
+    module: str | None = None,
+    offset: int = 0,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    """Query local audit logs with optional filters."""
+    db = get_db()
+    with db.session() as s:
+        q = s.query(AuditLog)
+        if workspace_id:
+            q = q.filter(AuditLog.workspace_id == str(workspace_id))
+        if action:
+            q = q.filter(AuditLog.action == action)
+        if module:
+            q = q.filter(AuditLog.module == module)
+        rows = (
+            q.order_by(AuditLog.timestamp.desc())
+            .offset(offset)
+            .limit(limit)
+            .all()
+        )
+        return [
+            {
+                "id": row.id,
+                "user_id": row.user_id,
+                "email": row.email,
+                "action": row.action,
+                "module": row.module,
+                "workspace_id": row.workspace_id,
+                "metadata": row.metadata_json,
+                "pii_redacted": row.pii_redacted,
+                "timestamp": row.timestamp.isoformat() if row.timestamp else None,
+            }
+            for row in rows
+        ]

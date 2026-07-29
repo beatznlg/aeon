@@ -18,6 +18,9 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from aeon_budgets import check_automation_budget
+from aeon_db import add_automation_execution
+
 logger = logging.getLogger("aeon_automations")
 
 # Maximum depth for nested sub-automation calls (Phase 33)
@@ -2024,6 +2027,24 @@ class ScheduledAutomationScheduler:
         db_url = _get_db_url()
         headers = _supabase_headers()
         now_dt = datetime.now(timezone.utc)
+
+        # Phase 42: enforce automation budgets before scheduled execution.
+        workspace_id = rule.get("workspace_id")
+        rule_id = rule.get("id")
+        try:
+            budget_result = check_automation_budget(str(workspace_id), rule_id=str(rule_id))
+            if not budget_result.allowed:
+                logger.warning("Scheduled rule %s blocked by budget in workspace %s", rule_id, workspace_id)
+                add_automation_execution(
+                    rule_id=str(rule_id),
+                    workspace_id=str(workspace_id),
+                    status="throttled",
+                    result={"reason": budget_result.blocks},
+                )
+                return
+        except Exception as exc:
+            logger.warning("Budget check failed for scheduled rule %s: %s", rule_id, exc)
+
         event = {
             "type": rule.get("event_type") or "system",
             "payload": {"schedule_type": "cron", "rule_id": rule.get("id")},

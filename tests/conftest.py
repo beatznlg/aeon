@@ -186,6 +186,9 @@ class FakeHealthCollector:
 
 
 class FakeGovernanceManager:
+    def __init__(self, *args, **kwargs):
+        pass
+
     def log_audit(self, **kwargs):
         pass
 
@@ -331,13 +334,8 @@ aeon_usage_mod = _make_module(
 )
 sys.modules["aeon_usage"] = aeon_usage_mod
 
-# aeon_governance.py
-aeon_governance_mod = _make_module(
-    "aeon_governance",
-    GovernanceManager=FakeGovernanceManager,
-    get_governance=lambda: FakeGovernanceManager(),
-)
-sys.modules["aeon_governance"] = aeon_governance_mod
+# aeon_governance.py is lightweight; use the real module so governance/audit
+# tests exercise actual local persistence and PII redaction logic.
 
 # aeon_llm.py
 aeon_llm_mod = _make_module(
