@@ -20,6 +20,7 @@ from sqlalchemy import (
     Boolean,
     Column,
     DateTime,
+    Float,
     ForeignKey,
     Integer,
     String,
@@ -203,6 +204,55 @@ class WorkspaceSecurityConfig(Base):
     updated_at = Column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
 
 
+# === Anomaly & Incident models (Phase 46) ===================================
+class Anomaly(Base):
+    __tablename__ = "anomalies"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    workspace_id = Column(String(36), ForeignKey("workspaces.id"), nullable=False, index=True)
+    anomaly_type = Column(String(50), nullable=False)
+    severity = Column(String(20), nullable=False, default="warning")
+    title = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    score = Column(Float, nullable=False, default=0.0)
+    source_rule_id = Column(String(255), nullable=True)
+    source_metric = Column(String(100), nullable=True)
+    metadata_json = Column("metadata", JSON, default=dict)
+    dismissed = Column(Boolean, default=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_now)
+
+
+class IncidentRunbook(Base):
+    __tablename__ = "incident_runbooks"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    workspace_id = Column(String(36), ForeignKey("workspaces.id"), nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    triggers = Column(JSON, nullable=False, default=list)
+    actions = Column(JSON, nullable=False, default=list)
+    enabled = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_now)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
+
+
+class Incident(Base):
+    __tablename__ = "incidents"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    workspace_id = Column(String(36), ForeignKey("workspaces.id"), nullable=False, index=True)
+    title = Column(String(255), nullable=False)
+    severity = Column(String(20), nullable=False, default="warning")
+    status = Column(String(50), nullable=False, default="open")
+    root_cause_anomaly_id = Column(String(36), ForeignKey("anomalies.id"), nullable=True)
+    runbook_id = Column(String(36), ForeignKey("incident_runbooks.id"), nullable=True)
+    assignee_user_id = Column(String(36), ForeignKey("users.id"), nullable=True)
+    metadata_json = Column("metadata", JSON, default=dict)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_now)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
+    resolved_at = Column(DateTime(timezone=True), nullable=True)
+
+
 class IdentityLink(Base):
     __tablename__ = "identity_links"
 
@@ -332,6 +382,7 @@ def add_automation_execution(
     workspace_id: str,
     status: str,
     result: dict[str, Any] | None = None,
+    created_at: datetime | None = None,
 ) -> AutomationExecution:
     """Persist a single automation execution row."""
     db = get_db()
@@ -341,6 +392,7 @@ def add_automation_execution(
             workspace_id=str(workspace_id),
             status=status,
             result=result,
+            created_at=created_at,
         )
         s.add(execution)
         s.commit()
@@ -417,6 +469,7 @@ def add_audit_log(
     email: str | None,
     metadata: dict[str, Any] | None = None,
     pii_redacted: bool = False,
+    timestamp: datetime | None = None,
 ) -> AuditLog:
     """Persist a single audit log row locally."""
     db = get_db()
@@ -429,10 +482,226 @@ def add_audit_log(
             workspace_id=str(workspace_id) if workspace_id else None,
             metadata_json=metadata or {},
             pii_redacted=pii_redacted,
+            timestamp=timestamp,
         )
         s.add(log)
         s.commit()
         return log
+
+
+# === Anomaly / incident helpers ==============================================
+
+def create_anomaly(
+    workspace_id: str,
+    anomaly_type: str,
+    severity: str,
+    title: str,
+    description: str | None = None,
+    score: float = 0.0,
+    source_rule_id: str | None = None,
+    source_metric: str | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> Anomaly:
+    """Persist and return a new anomaly record."""
+    db = get_db()
+    with db.session() as s:
+        anomaly = Anomaly(
+            workspace_id=str(workspace_id),
+            anomaly_type=anomaly_type,
+            severity=severity,
+            title=title,
+            description=description,
+            score=score,
+            source_rule_id=source_rule_id,
+            source_metric=source_metric,
+            metadata_json=metadata or {},
+        )
+        s.add(anomaly)
+        s.commit()
+        return anomaly
+
+
+def list_anomalies(
+    workspace_id: str,
+    dismissed: bool | None = None,
+    severity: str | None = None,
+    limit: int = 100,
+) -> list[Anomaly]:
+    """Return anomalies for a workspace."""
+    db = get_db()
+    with db.session() as s:
+        q = s.query(Anomaly).filter_by(workspace_id=str(workspace_id))
+        if dismissed is not None:
+            q = q.filter_by(dismissed=dismissed)
+        if severity is not None:
+            q = q.filter_by(severity=severity)
+        return q.order_by(Anomaly.created_at.desc()).limit(limit).all()
+
+
+def get_anomaly(anomaly_id: str) -> Anomaly | None:
+    """Fetch a single anomaly by ID."""
+    db = get_db()
+    with db.session() as s:
+        return s.query(Anomaly).filter_by(id=str(anomaly_id)).first()
+
+
+def dismiss_anomaly(anomaly_id: str) -> Anomaly | None:
+    """Mark an anomaly as dismissed."""
+    db = get_db()
+    with db.session() as s:
+        anomaly = s.query(Anomaly).filter_by(id=str(anomaly_id)).first()
+        if anomaly:
+            anomaly.dismissed = True
+            s.commit()
+        return anomaly
+
+
+def create_incident(
+    workspace_id: str,
+    title: str,
+    severity: str,
+    status: str = "open",
+    root_cause_anomaly_id: str | None = None,
+    runbook_id: str | None = None,
+    assignee_user_id: str | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> Incident:
+    """Persist and return a new incident record."""
+    db = get_db()
+    with db.session() as s:
+        incident = Incident(
+            workspace_id=str(workspace_id),
+            title=title,
+            severity=severity,
+            status=status,
+            root_cause_anomaly_id=root_cause_anomaly_id,
+            runbook_id=runbook_id,
+            assignee_user_id=assignee_user_id,
+            metadata_json=metadata or {},
+        )
+        s.add(incident)
+        s.commit()
+        return incident
+
+
+def get_incident(incident_id: str) -> Incident | None:
+    """Fetch a single incident by ID."""
+    db = get_db()
+    with db.session() as s:
+        return s.query(Incident).filter_by(id=str(incident_id)).first()
+
+
+def list_incidents(
+    workspace_id: str,
+    status: str | None = None,
+    limit: int = 100,
+) -> list[Incident]:
+    """Return incidents for a workspace."""
+    db = get_db()
+    with db.session() as s:
+        q = s.query(Incident).filter_by(workspace_id=str(workspace_id))
+        if status is not None:
+            q = q.filter_by(status=status)
+        return q.order_by(Incident.created_at.desc()).limit(limit).all()
+
+
+def update_incident(
+    incident: Incident,
+    status: str | None = None,
+    assignee_user_id: str | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> Incident:
+    """Update incident status/assignee and commit."""
+    if status is not None:
+        incident.status = status
+        if status == "resolved":
+            incident.resolved_at = _now()
+    if assignee_user_id is not None:
+        incident.assignee_user_id = assignee_user_id
+    if metadata is not None:
+        incident.metadata_json = metadata
+    db = get_db()
+    with db.session() as s:
+        s.add(incident)
+        s.commit()
+        return incident
+
+
+def create_incident_runbook(
+    workspace_id: str,
+    name: str,
+    triggers: list[dict[str, Any]],
+    actions: list[dict[str, Any]],
+    description: str | None = None,
+    enabled: bool = True,
+) -> IncidentRunbook:
+    """Persist and return a new incident runbook."""
+    db = get_db()
+    with db.session() as s:
+        runbook = IncidentRunbook(
+            workspace_id=str(workspace_id),
+            name=name,
+            description=description,
+            triggers=triggers,
+            actions=actions,
+            enabled=enabled,
+        )
+        s.add(runbook)
+        s.commit()
+        return runbook
+
+
+def get_incident_runbook(runbook_id: str) -> IncidentRunbook | None:
+    """Fetch a single runbook by ID."""
+    db = get_db()
+    with db.session() as s:
+        return s.query(IncidentRunbook).filter_by(id=str(runbook_id)).first()
+
+
+def list_incident_runbooks(workspace_id: str, enabled_only: bool = False) -> list[IncidentRunbook]:
+    """Return runbooks for a workspace."""
+    db = get_db()
+    with db.session() as s:
+        q = s.query(IncidentRunbook).filter_by(workspace_id=str(workspace_id))
+        if enabled_only:
+            q = q.filter_by(enabled=True)
+        return q.order_by(IncidentRunbook.created_at.desc()).all()
+
+
+def update_incident_runbook(
+    runbook: IncidentRunbook,
+    name: str | None = None,
+    description: str | None = None,
+    triggers: list[dict[str, Any]] | None = None,
+    actions: list[dict[str, Any]] | None = None,
+    enabled: bool | None = None,
+) -> IncidentRunbook:
+    """Update a runbook in place and commit."""
+    if name is not None:
+        runbook.name = name
+    if description is not None:
+        runbook.description = description
+    if triggers is not None:
+        runbook.triggers = triggers
+    if actions is not None:
+        runbook.actions = actions
+    if enabled is not None:
+        runbook.enabled = enabled
+    db = get_db()
+    with db.session() as s:
+        s.add(runbook)
+        s.commit()
+        return runbook
+
+
+def delete_incident_runbook(runbook_id: str) -> bool:
+    """Delete a runbook and return True if a row was removed."""
+    db = get_db()
+    with db.session() as s:
+        q = s.query(IncidentRunbook).filter_by(id=str(runbook_id))
+        deleted = q.delete()
+        s.commit()
+        return bool(deleted)
 
 
 # === Automation policy helpers =================================================
