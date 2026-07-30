@@ -459,7 +459,7 @@ export default function AdminSectorsPage() {
         <div className="loading-spinner">Loading sectors...</div>
       ) : filteredSectors.length === 0 ? (
         <div className="empty-state">
-          <p>🔍 No sectors match "{search}"</p>
+          <p>🔍 No sectors match &quot;{search}&quot;</p>
           <button className="btn btn-sm" onClick={() => setSearch("")}>Clear search</button>
         </div>
       ) : (
