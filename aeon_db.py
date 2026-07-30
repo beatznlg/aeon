@@ -80,6 +80,7 @@ class Workspace(Base):
     slug = Column(String(255), unique=True, nullable=False, index=True)
     name = Column(String(255), nullable=False)
     plan = Column(String(50), nullable=False, default="free")
+    theme_config = Column(JSON, nullable=False, default=dict)
     created_at = Column(DateTime(timezone=True), nullable=False, default=_now)
 
     memberships = relationship("Membership", back_populates="workspace", cascade="all, delete-orphan")
@@ -348,6 +349,45 @@ class IdentityLink(Base):
     )
 
 
+# === SIEM Integration models (Phase 49) =====================================
+class SiemIntegration(Base):
+    __tablename__ = "siem_integrations"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    workspace_id = Column(String(36), ForeignKey("workspaces.id"), nullable=False, index=True)
+    provider = Column(String(50), nullable=False)  # splunk, datadog, elastic, webhook, qradar, sentinel
+    name = Column(String(255), nullable=False)
+    endpoint_url = Column(String(2048), nullable=False)
+    auth_type = Column(String(20), nullable=False, default="token")  # token, basic, custom
+    api_token_hash = Column(String(255), nullable=True)
+    username = Column(String(255), nullable=True)
+    password_hash = Column(String(255), nullable=True)
+    custom_headers = Column(JSON, nullable=False, default=dict)
+    event_filters = Column(JSON, nullable=False, default=list)  # e.g. ["audit", "anomaly", "incident", "dlp"]
+    log_level = Column(String(20), nullable=False, default="all")  # all, warning, critical
+    batch_size = Column(Integer, nullable=False, default=100)
+    enabled = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_now)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
+
+
+class SiemExportLog(Base):
+    __tablename__ = "siem_export_logs"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    workspace_id = Column(String(36), ForeignKey("workspaces.id"), nullable=False, index=True)
+    integration_id = Column(String(36), ForeignKey("siem_integrations.id"), nullable=False, index=True)
+    event_type = Column(String(100), nullable=False, index=True)  # audit, anomaly, incident, dlp
+    event_id = Column(String(36), nullable=True, index=True)
+    status = Column(String(50), nullable=False, default="pending")  # pending, delivered, failed, buffered
+    http_status = Column(Integer, nullable=True)
+    payload_size = Column(Integer, nullable=True)
+    response_text = Column(Text, nullable=True)
+    retry_count = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_now)
+    sent_at = Column(DateTime(timezone=True), nullable=True)
+
+
 # === Engine / Session factory =================================================
 
 def get_database_url() -> str:
@@ -389,6 +429,25 @@ class Database:
 
     def create_all(self):
         Base.metadata.create_all(self.engine)
+        self._run_migrations()
+
+    def _run_migrations(self):
+        """Lightweight migrations for schema changes added after first deploy."""
+        try:
+            from sqlalchemy import inspect, text
+
+            inspector = inspect(self.engine)
+            columns = {col["name"] for col in inspector.get_columns("workspaces")}
+            if "theme_config" not in columns:
+                with self.engine.begin() as conn:
+                    try:
+                        conn.execute(text("ALTER TABLE workspaces ADD COLUMN theme_config JSON DEFAULT '{}'"))
+                    except Exception:
+                        conn.execute(text("ALTER TABLE workspaces ADD COLUMN theme_config TEXT DEFAULT '{}'"))
+        except Exception as exc:
+            import logging
+
+            logging.getLogger("aeon_db").warning("DB migration skipped: %s", exc)
 
     def session(self) -> Session:
         return self.SessionLocal()
@@ -508,6 +567,30 @@ def list_automation_executions(
         ]
 
 
+def get_workspace_theme_config(workspace_id: str) -> dict[str, Any]:
+    """Return the stored theme/branding config for a workspace (or an empty dict)."""
+    db = get_db()
+    with db.session() as s:
+        ws = s.query(Workspace).filter_by(id=str(workspace_id)).first()
+        if ws and isinstance(ws.theme_config, dict):
+            return ws.theme_config
+        return {}
+
+
+def update_workspace_theme_config(workspace_id: str, config: dict[str, Any]) -> dict[str, Any]:
+    """Merge *config* into the workspace's existing theme_config and return it."""
+    db = get_db()
+    with db.session() as s:
+        ws = s.query(Workspace).filter_by(id=str(workspace_id)).first()
+        if not ws:
+            raise ValueError("workspace not found")
+        existing = ws.theme_config if isinstance(ws.theme_config, dict) else {}
+        updated = {**existing, **config}
+        ws.theme_config = updated
+        s.commit()
+        return updated
+
+
 def get_workspace_security_config(workspace_id: str) -> Optional["WorkspaceSecurityConfig"]:
     """Fetch the security/residency configuration for a workspace."""
     db = get_db()
@@ -567,7 +650,19 @@ def add_audit_log(
         )
         s.add(log)
         s.commit()
-        return log
+
+    # Best-effort SIEM forward (lazy import avoids circular dependency).
+    try:
+        from aeon_siem import forward_audit_log_event
+        forward_audit_log_event(
+            workspace_id=str(workspace_id) if workspace_id else None,
+            action=action,
+            metadata={"module": module, "user_id": user_id, "email": email, **(metadata or {})},
+        )
+    except Exception:
+        pass
+
+    return log
 
 
 # === Anomaly / incident helpers ==============================================
@@ -1022,6 +1117,208 @@ def query_audit_logs(
         ]
 
 
+# === SIEM integration helpers (Phase 49) ===================================
+
+def create_siem_integration(
+    workspace_id: str,
+    provider: str,
+    name: str,
+    endpoint_url: str,
+    *,
+    auth_type: str = "token",
+    api_token: str | None = None,
+    username: str | None = None,
+    password: str | None = None,
+    custom_headers: dict[str, str] | None = None,
+    event_filters: list[str] | None = None,
+    log_level: str = "all",
+    batch_size: int = 100,
+    enabled: bool = True,
+) -> SiemIntegration:
+    """Create a new SIEM integration record."""
+    db = get_db()
+    with db.session() as s:
+        integration = SiemIntegration(
+            workspace_id=str(workspace_id),
+            provider=provider,
+            name=name,
+            endpoint_url=endpoint_url,
+            auth_type=auth_type,
+            api_token_hash=_hash_secret(api_token) if api_token else None,
+            username=username,
+            password_hash=_hash_secret(password) if password else None,
+            custom_headers=custom_headers or {},
+            event_filters=event_filters or ["audit", "anomaly", "incident", "dlp"],
+            log_level=log_level,
+            batch_size=batch_size,
+            enabled=enabled,
+        )
+        s.add(integration)
+        s.commit()
+        return integration
+
+
+def get_siem_integration(integration_id: str, workspace_id: str | None = None) -> SiemIntegration | None:
+    """Fetch a single SIEM integration by id, optionally scoped to a workspace."""
+    db = get_db()
+    with db.session() as s:
+        q = s.query(SiemIntegration).filter_by(id=str(integration_id))
+        if workspace_id is not None:
+            q = q.filter_by(workspace_id=str(workspace_id))
+        return q.first()
+
+
+def list_siem_integrations(workspace_id: str, enabled_only: bool = False) -> list[SiemIntegration]:
+    """Return SIEM integrations for a workspace."""
+    db = get_db()
+    with db.session() as s:
+        q = s.query(SiemIntegration).filter_by(workspace_id=str(workspace_id))
+        if enabled_only:
+            q = q.filter_by(enabled=True)
+        return q.order_by(SiemIntegration.created_at.desc()).all()
+
+
+def update_siem_integration(
+    integration: SiemIntegration,
+    *,
+    name: str | None = None,
+    provider: str | None = None,
+    endpoint_url: str | None = None,
+    auth_type: str | None = None,
+    api_token: str | None = None,
+    username: str | None = None,
+    password: str | None = None,
+    custom_headers: dict[str, str] | None = None,
+    event_filters: list[str] | None = None,
+    log_level: str | None = None,
+    batch_size: int | None = None,
+    enabled: bool | None = None,
+) -> SiemIntegration:
+    """Update a SIEM integration in place and commit."""
+    if name is not None:
+        integration.name = name
+    if provider is not None:
+        integration.provider = provider
+    if endpoint_url is not None:
+        integration.endpoint_url = endpoint_url
+    if auth_type is not None:
+        integration.auth_type = auth_type
+    if api_token is not None:
+        integration.api_token_hash = _hash_secret(api_token) if api_token else None
+    if username is not None:
+        integration.username = username
+    if password is not None:
+        integration.password_hash = _hash_secret(password) if password else None
+    if custom_headers is not None:
+        integration.custom_headers = custom_headers
+    if event_filters is not None:
+        integration.event_filters = event_filters
+    if log_level is not None:
+        integration.log_level = log_level
+    if batch_size is not None:
+        integration.batch_size = int(batch_size)
+    if enabled is not None:
+        integration.enabled = enabled
+    db = get_db()
+    with db.session() as s:
+        s.add(integration)
+        s.commit()
+        return integration
+
+
+def delete_siem_integration(integration_id: str, workspace_id: str | None = None) -> bool:
+    """Delete a SIEM integration and return True if a row was removed."""
+    db = get_db()
+    with db.session() as s:
+        q = s.query(SiemIntegration).filter_by(id=str(integration_id))
+        if workspace_id is not None:
+            q = q.filter_by(workspace_id=str(workspace_id))
+        deleted = q.delete()
+        s.commit()
+        return bool(deleted)
+
+
+def create_siem_export_log(
+    workspace_id: str,
+    integration_id: str,
+    event_type: str,
+    event_id: str | None,
+    status: str = "pending",
+    *,
+    http_status: int | None = None,
+    payload_size: int | None = None,
+    response_text: str | None = None,
+    retry_count: int = 0,
+) -> SiemExportLog:
+    """Persist a SIEM export log record."""
+    db = get_db()
+    with db.session() as s:
+        log = SiemExportLog(
+            workspace_id=str(workspace_id),
+            integration_id=str(integration_id),
+            event_type=event_type,
+            event_id=str(event_id) if event_id else None,
+            status=status,
+            http_status=http_status,
+            payload_size=payload_size,
+            response_text=response_text,
+            retry_count=retry_count,
+        )
+        s.add(log)
+        s.commit()
+        return log
+
+
+def list_siem_export_logs(
+    workspace_id: str,
+    integration_id: str | None = None,
+    event_type: str | None = None,
+    limit: int = 100,
+) -> list[SiemExportLog]:
+    """Return SIEM export logs for a workspace, optionally filtered."""
+    db = get_db()
+    with db.session() as s:
+        q = s.query(SiemExportLog).filter_by(workspace_id=str(workspace_id))
+        if integration_id:
+            q = q.filter(SiemExportLog.integration_id == str(integration_id))
+        if event_type:
+            q = q.filter(SiemExportLog.event_type == event_type)
+        return q.order_by(SiemExportLog.created_at.desc()).limit(limit).all()
+
+
+def update_siem_export_log_status(
+    log: SiemExportLog,
+    status: str,
+    *,
+    http_status: int | None = None,
+    response_text: str | None = None,
+    retry_count: int | None = None,
+) -> SiemExportLog:
+    """Update a SIEM export log status and commit."""
+    log.status = status
+    if http_status is not None:
+        log.http_status = http_status
+    if response_text is not None:
+        log.response_text = response_text
+    if retry_count is not None:
+        log.retry_count = retry_count
+    log.sent_at = _now()
+    db = get_db()
+    with db.session() as s:
+        s.add(log)
+        s.commit()
+        return log
+
+
+def _hash_secret(secret: str | None) -> str | None:
+    """Hash a secret for safe storage using SHA-256 (one-way)."""
+    import hashlib
+
+    if not secret:
+        return None
+    return hashlib.sha256(secret.encode()).hexdigest()
+
+
 # === Disaster Recovery helpers ===============================================
 
 def create_backup_policy(
@@ -1401,6 +1698,122 @@ def list_dr_drills(workspace_id: str, limit: int = 100) -> list[DRDrill]:
             .limit(limit)
             .all()
         )
+
+
+# === Sector Data models (Phase 50+) ============================================
+
+WORKS_PERMITTED_SECTOR_TOOLS: dict[str, list[str]] = {
+    "cybersecurity": ["threats", "vulnerabilities", "compliance", "ip-reputation", "news"],
+    "health": ["diagnostics", "vitals", "drug-interactions", "telehealth"],
+    "finance": ["risk", "market", "fraud", "credit", "payments"],
+    "retail": ["forecast", "inventory", "suppliers", "pricing"],
+    "transport": ["traffic", "fleet", "routes"],
+    "manufacturing": ["maintenance", "quality", "logistics"],
+    "tourism": ["bookings", "pricing", "concierge", "visitors"],
+    "utilities": ["resources", "services", "waste", "grid"],
+    "cultural_heritage": ["visitors", "sites", "exhibitions", "tours"],
+    "sme": ["workflows", "documents", "support", "supply-chain"],
+}
+
+
+class SectorDataRecord(Base):
+    """
+    Generic key-value store for sector tool data.
+
+    Each row represents one tool's dataset for a workspace. The actual data
+    is stored in the ``data_json`` column as a JSON list/object so that every
+    sector and tool can be modelled without schema changes.
+
+    The ``tool`` column maps to the URL path segment, e.g. "threats",
+    "diagnostics", "fraud", etc.
+    """
+
+    __tablename__ = "sector_data"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    workspace_id = Column(String(36), ForeignKey("workspaces.id"), nullable=False, index=True)
+    sector = Column(String(64), nullable=False, index=True)
+    tool = Column(String(64), nullable=False, index=True)
+    data_json = Column(JSON, nullable=False, default=dict)
+    version = Column(Integer, nullable=False, default=1)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_now)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
+
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "sector", "tool", name="uq_workspace_sector_tool"),
+    )
+
+
+def upsert_sector_data(
+    workspace_id: str,
+    sector: str,
+    tool: str,
+    data: dict | list,
+) -> SectorDataRecord:
+    """Insert or replace sector tool data for a workspace. Returns the record."""
+    db = get_db()
+    with db.session() as s:
+        record = (
+            s.query(SectorDataRecord)
+            .filter_by(workspace_id=str(workspace_id), sector=sector, tool=tool)
+            .first()
+        )
+        if record:
+            record.data_json = data
+            record.version += 1
+        else:
+            record = SectorDataRecord(
+                workspace_id=str(workspace_id),
+                sector=sector,
+                tool=tool,
+                data_json=data,
+            )
+            s.add(record)
+        s.commit()
+        return record
+
+
+def get_sector_data(
+    workspace_id: str,
+    sector: str,
+    tool: str,
+) -> dict | list | None:
+    """Return the stored data for a sector tool, or None if not seeded."""
+    db = get_db()
+    with db.session() as s:
+        record = (
+            s.query(SectorDataRecord)
+            .filter_by(workspace_id=str(workspace_id), sector=sector, tool=tool)
+            .first()
+        )
+        if record:
+            return record.data_json
+        return None
+
+
+def list_sector_data(workspace_id: str, sector: str) -> list[SectorDataRecord]:
+    """Return all tool records for a given sector and workspace."""
+    db = get_db()
+    with db.session() as s:
+        return (
+            s.query(SectorDataRecord)
+            .filter_by(workspace_id=str(workspace_id), sector=sector)
+            .order_by(SectorDataRecord.tool)
+            .all()
+        )
+
+
+def delete_sector_data(workspace_id: str, sector: str, tool: str) -> bool:
+    """Delete a sector tool record and return True if a row was removed."""
+    db = get_db()
+    with db.session() as s:
+        q = (
+            s.query(SectorDataRecord)
+            .filter_by(workspace_id=str(workspace_id), sector=sector, tool=tool)
+        )
+        deleted = q.delete()
+        s.commit()
+        return bool(deleted)
 
 
 def update_dr_drill(

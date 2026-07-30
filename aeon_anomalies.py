@@ -96,6 +96,13 @@ class AnomalyDetector:
                 anomaly["created_at"] = record.created_at.isoformat() if record.created_at else None
                 persisted.append(anomaly)
 
+                # Forward to SIEM integrations (best-effort).
+                try:
+                    from aeon_siem import forward_anomaly_event
+                    forward_anomaly_event(self.workspace_id, str(record.id), anomaly)
+                except Exception:
+                    pass
+
                 # Trigger incident-response runbooks for non-info anomalies.
                 if anomaly["severity"] in (_SEVERITY_WARNING, _SEVERITY_CRITICAL):
                     from aeon_incidents import handle_anomaly

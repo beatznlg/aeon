@@ -1,201 +1,74 @@
-"use client";
-
-import { useState, useEffect } from "react";
-import { usePathname } from "next/navigation";
-import Link from "next/link";
-import { SessionProvider } from "next-auth/react";
-import UserMenu from "@/components/UserMenu";
-import NotificationBell from "@/components/NotificationBell";
-import CommandPalette from "@/components/CommandPalette";
+import type { Metadata } from "next";
 import "./globals.css";
+import { auth } from "@/auth";
+import Providers from "@/components/Providers";
+import AppSidebar from "@/components/AppSidebar";
+import { ThemeConfig } from "@/lib/theme-config";
 
-// ─── Navigation items ───────────────────────────────────────────
-const NAV_ITEMS = [
-  {
-    section: "Core",
-    links: [
-      { href: "/", label: "Dashboard", icon: "◈" },
-      { href: "/chat", label: "Chat", icon: "💬" },
-      { href: "/os", label: "OS Modules", icon: "⊞" },
-      { href: "/os/automations/metrics", label: "Automations", icon: "🤖" },
-      { href: "/swarms", label: "Swarms", icon: "🐝" },
-      { href: "/llm", label: "LLM Brain", icon: "⚡" },
-      { href: "/os/api-keys", label: "API Keys", icon: "🔑" },
-      { href: "/os/billing", label: "Billing & Plans", icon: "💰" },
-      { href: "/os/observability", label: "Observability", icon: "📊" },
-      { href: "/os/monitoring", label: "Monitoring", icon: "📈" },
-      { href: "/os/knowledge", label: "Knowledge", icon: "📚" },
-      { href: "/os/rag-chat", label: "RAG Chat", icon: "🧠" },
-      { href: "/os/ai-studio", label: "AI Studio", icon: "🤖" },
-      { href: "/os/notifications", label: "Notifications", icon: "🔔" },
-      { href: "/os/activity", label: "Activity", icon: "⚡" },
-    ],
-  },
-  {
-    section: "Modules",
-    links: [
-      { href: "/os/cybersecurity", label: "Security", icon: "🛡️" },
-      { href: "/os/health", label: "Health", icon: "🏥" },
-      { href: "/os/finance", label: "Finance", icon: "💰" },
-      { href: "/os/retail", label: "Commerce", icon: "📦" },
-      { href: "/os/transport", label: "Transport", icon: "🚚" },
-      { href: "/os/manufacturing", label: "Manufacturing", icon: "🏭" },
-      { href: "/os/tourism", label: "Tourism", icon: "🏨" },
-      { href: "/os/cultural_heritage", label: "Cultural", icon: "🎭" },
-      { href: "/os/professional", label: "Professional", icon: "📋" },
-      { href: "/os/utilities", label: "Utilities", icon: "⚡" },
-      { href: "/os/sme", label: "SME Suite", icon: "🏢" },
-    ],
-  },
-];
+export const metadata: Metadata = {
+  title: "AEON OS — Enterprise AI Operating System",
+  description:
+    "AEON OS: Autonomous AI operating system for government and enterprise.",
+};
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [health, setHealth] = useState<{ ok: boolean; backend?: string } | null>(null);
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
+interface Health {
+  ok: boolean;
+  backend?: string;
+}
 
-  useEffect(() => {
-    const saved = localStorage.getItem("aeon-theme") as "dark" | "light" | null;
-    const t = saved || "dark";
-    setTheme(t);
-    document.documentElement.classList.toggle("light", t === "light");
-  }, []);
+interface BrandingResponse {
+  ok: boolean;
+  workspace_id?: string;
+  branding?: Partial<ThemeConfig>;
+}
 
-  useEffect(() => {
-    fetch("/api/health", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((d) => setHealth(d))
-      .catch(() => setHealth({ ok: false }));
-    const t = setInterval(() => {
-      fetch("/api/health", { cache: "no-store" })
-        .then((r) => r.json())
-        .then((d) => setHealth(d))
-        .catch(() => {});
-    }, 30000);
-    return () => clearInterval(t);
-  }, []);
+async function getHealth(): Promise<Health | null> {
+  try {
+    const res = await fetch("/api/health", { cache: "no-store" });
+    if (!res.ok) return null;
+    return (await res.json()) as Health;
+  } catch {
+    return null;
+  }
+}
 
-  const toggleTheme = () => {
-    const next = theme === "dark" ? "light" : "dark";
-    setTheme(next);
-    document.documentElement.classList.toggle("light", next === "light");
-    localStorage.setItem("aeon-theme", next);
-  };
+async function getWorkspaceBranding(workspaceId: string): Promise<Partial<ThemeConfig> | null> {
+  try {
+    const backendUrl = process.env.AEON_PYTHON_URL || "http://127.0.0.1:5000";
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2000);
+    const res = await fetch(`${backendUrl}/workspaces/${encodeURIComponent(workspaceId)}/branding`, {
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    if (!res.ok) return null;
+    const data = (await res.json()) as BrandingResponse;
+    return data.branding || null;
+  } catch {
+    return null;
+  }
+}
 
-  const isActive = (href: string) => {
-    if (href === "/") return pathname === "/";
-    return pathname.startsWith(href);
-  };
+export default async function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const health = await getHealth();
+  const session = await auth();
+  const workspaceId = session?.user?.workspaceId as string | undefined;
+  const branding = workspaceId ? await getWorkspaceBranding(workspaceId) : null;
 
   return (
     <html lang="en">
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>AEON OS — Enterprise AI Operating System</title>
-        <meta name="description" content="AEON OS: Autonomous AI operating system for government and enterprise." />
       </head>
       <body>
-        <SessionProvider>
-        {/* Mobile overlay */}
-        <div
-          className={`sidebar-overlay ${sidebarOpen ? "open" : ""}`}
-          onClick={() => setSidebarOpen(false)}
-        />
-
-        {/* Sidebar */}
-        <aside className={`sidebar ${sidebarOpen ? "open" : ""}`}>
-          <div className="sidebar-header">
-            <div className="sidebar-brand">
-              <div className="sidebar-logo">⟁</div>
-              <div>
-                <div className="sidebar-brand-text">AEON OS</div>
-                <div className="sidebar-brand-sub">Enterprise Intelligence</div>
-              </div>
-            </div>
-            <div className="sidebar-status">
-              <span className="sidebar-status-dot" />
-              <span>
-                {health === null
-                  ? "Connecting..."
-                  : health.ok
-                  ? `System Online · ${health.backend || "stub"}`
-                  : "Connecting..."}
-              </span>
-            </div>
-          </div>
-
-          <nav className="sidebar-nav">
-            {NAV_ITEMS.map((section) => (
-              <div key={section.section}>
-                <div className="sidebar-section-label">{section.section}</div>
-                {section.links.map((link) => (
-                  <Link
-                    key={link.href}
-                    href={link.href}
-                    className={`sidebar-link ${isActive(link.href) ? "active" : ""}`}
-                    onClick={() => setSidebarOpen(false)}
-                  >
-                    <span className="sidebar-link-icon">{link.icon}</span>
-                    <span className="sidebar-link-text">{link.label}</span>
-                  </Link>
-                ))}
-              </div>
-            ))}
-          </nav>
-
-          <div className="sidebar-footer">
-            <Link href="/settings" className="sidebar-footer-link" onClick={() => setSidebarOpen(false)}>
-              <span className="sidebar-link-icon">⚙</span>
-              <span>Settings & Keys</span>
-            </Link>
-            <button className="sidebar-footer-link" onClick={toggleTheme}>
-              <span className="sidebar-link-icon">{theme === "dark" ? "☼" : "☾"}</span>
-              <span>{theme === "dark" ? "Light Mode" : "Dark Mode"}</span>
-            </button>
-          </div>
-        </aside>
-
-        {/* Main content */}
-        <div className="main-content">
-          <header className="main-header">
-            <div className="main-header-left">
-              <button className="btn-icon" onClick={() => setSidebarOpen(true)} title="Menu">
-                ☰
-              </button>
-              <h1>AEON OS</h1>
-            </div>
-            <div className="main-header-right">
-              <button
-                className="search-trigger-btn"
-                onClick={() => {
-                  const event = new KeyboardEvent("keydown", {
-                    key: "k",
-                    metaKey: true,
-                    bubbles: true,
-                  });
-                  document.dispatchEvent(event);
-                }}
-                title="Search (Cmd+K)"
-              >
-                <span>🔍</span>
-                <span className="search-trigger-text">Search</span>
-                <kbd className="search-trigger-kbd">⌘K</kbd>
-              </button>
-              <NotificationBell />
-              <UserMenu />
-              <Link href="/settings" className="btn btn-sm">
-                ⚙ Settings
-              </Link>
-              <Link href="/llm" className="btn btn-sm btn-primary">
-                ⚡ Connect Brain
-              </Link>
-            </div>
-          </header>
+        <Providers sidebar={<AppSidebar health={health} branding={branding ?? undefined} userRole={(session?.user as any)?.role} />} initialConfig={branding ?? undefined}>
           {children}
-        </div>
-        <CommandPalette />
-        </SessionProvider>
+        </Providers>
       </body>
     </html>
   );

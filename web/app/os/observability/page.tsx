@@ -147,7 +147,17 @@ export default function ObservabilityPage() {
       </header>
 
       {(usageLoading || billingLoading || healthLoading) && (
-        <div style={{ color: "var(--fg-mute)", padding: 40, textAlign: "center" }}>Loading observability data…</div>
+        <div className="skeleton-page" role="status" aria-label="Loading observability">
+          <span className="sr-only">Loading observability data…</span>
+          <div className="os-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
+            {[1,2,3,4].map(i => (
+              <div key={i} className="skeleton-card" style={{ flexDirection: "column" }}>
+                <div className="skeleton-shimmer" style={{ height: "0.7rem", width: "40%", marginBottom: "0.75rem" }} />
+                <div className="skeleton-shimmer" style={{ height: "2rem", width: "30%", marginBottom: "0.5rem" }} />
+              </div>
+            ))}
+          </div>
+        </div>
       )}
 
       {/* KPIs */}

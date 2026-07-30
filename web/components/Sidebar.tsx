@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 
 type SetupKeys = {
@@ -121,6 +122,22 @@ export default function Sidebar({
         <a href="https://github.com/beatznlg/aeon/settings/security_analysis" target="_blank" rel="noopener noreferrer">
           GHAS settings ↗
         </a>
+      </nav>
+
+      <nav className="sidebar-section">
+        <h3>Security & Operations</h3>
+        <Link href="/anomalies" onClick={() => onCloseMobile?.()}>
+          ⚠️ Anomalies
+        </Link>
+        <Link href="/incidents" onClick={() => onCloseMobile?.()}>
+          🚨 Incidents
+        </Link>
+        <Link href="/dr" onClick={() => onCloseMobile?.()}>
+          🛡️ Disaster Recovery
+        </Link>
+        <Link href="/os/siem" onClick={() => onCloseMobile?.()}>
+          🔍 SIEM
+        </Link>
       </nav>
 
       <div className="sidebar-footer">

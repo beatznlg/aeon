@@ -842,6 +842,8 @@ const SwarmGraph = forwardRef<HTMLDivElement, {
   );
 });
 
+SwarmGraph.displayName = "SwarmGraph";
+
 // ── Main Swarm Page ──────────────────────────────────────────────────────
 
 export default function SwarmsPage() {

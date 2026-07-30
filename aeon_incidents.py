@@ -227,6 +227,23 @@ def handle_anomaly(anomaly) -> dict[str, Any]:
         },
     )
 
+    # Forward to SIEM integrations (best-effort).
+    try:
+        from aeon_siem import forward_incident_event
+        forward_incident_event(
+            workspace_id,
+            str(incident.id),
+            {
+                "title": incident.title,
+                "severity": incident.severity,
+                "status": incident.status,
+                "anomaly_type": anomaly_record.anomaly_type,
+                "runbook_id": str(incident.runbook_id),
+            },
+        )
+    except Exception:
+        pass
+
     # Execute actions for each matched runbook.
     all_results: list[dict[str, Any]] = []
     for runbook in matched_runbooks:

@@ -223,11 +223,16 @@ def get_current_user_context() -> dict[str, Any] | None:
     if api_token:
         expected = os.environ.get("AEON_API_TOKEN")
         if expected and hmac.compare_digest(api_token, expected):
+            # Preserve the actual caller's identity when the frontend proxy
+            # forwards a valid service token alongside user context headers.
+            user_id = request.headers.get("X-User-Id") or "service"
+            user_role = request.headers.get("X-User-Role") or "ADMIN"
+            workspace_id = request.headers.get("X-Workspace-Id")
             return {
-                "user_id": "service",
-                "email": "service@aeon.local",
-                "role": "ADMIN",
-                "workspace_id": request.headers.get("X-Workspace-Id") or "default",
+                "user_id": user_id,
+                "email": request.headers.get("X-User-Email") or f"{user_id}@aeon.local",
+                "role": user_role,
+                "workspace_id": workspace_id or "default",
                 "auth_method": "api_token",
             }
 

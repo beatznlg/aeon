@@ -406,6 +406,26 @@ export default function SettingsPage() {
         )}
       </div>
 
+      {/* Workspace Branding */}
+      <div className="settings-section">
+        <div className="settings-section-header">
+          <span style={{ fontSize: "1.2rem" }}>🎨</span>
+          <div>
+            <h2>Workspace Branding</h2>
+            <p>Customize the look and feel for your company or organization</p>
+          </div>
+        </div>
+        <div className="settings-item">
+          <div>
+            <div className="settings-item-label">Company Branding</div>
+            <div className="settings-item-desc">Edit company name, product name, logo, primary color, and module toggles</div>
+          </div>
+          <Link href="/settings/branding" className="btn btn-sm btn-primary">
+            Customize
+          </Link>
+        </div>
+      </div>
+
       {/* Workspace Info */}
       <div className="settings-section">
         <div className="settings-section-header">

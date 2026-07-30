@@ -28,6 +28,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 from pathlib import Path
+import re
 from typing import Any
 
 import requests
@@ -37,8 +38,16 @@ from aeon_cache import get_cache
 from aeon_db import (
     add_automation_execution,
     get_workspace_security_config,
+    get_workspace_theme_config,
     init_db,
+    list_anomalies,
     list_automation_executions,
+    list_automation_policies,
+    list_backup_policies,
+    list_dr_plans,
+    list_incidents,
+    list_siem_integrations,
+    update_workspace_theme_config,
     upsert_workspace_security_config,
 )
 from aeon_db import (
@@ -217,9 +226,13 @@ app = Flask(__name__)
 
 from aeon_anomalies_routes import anomalies_bp
 from aeon_dr_routes import dr_bp
+from aeon_sectors import sectors_bp
+from aeon_siem_routes import siem_bp
 
 app.register_blueprint(anomalies_bp)
 app.register_blueprint(dr_bp)
+app.register_blueprint(sectors_bp, url_prefix="/sectors")
+app.register_blueprint(siem_bp)
 
 # ── Automation metrics (Phase 39) ───────────────────────────────────────────
 
@@ -853,6 +866,42 @@ def live():
     return jsonify({"ok": True, "status": "alive"}), 200
 
 
+@app.route("/dashboard/stats", methods=["GET"])
+@require_auth
+@require_workspace_role("VIEWER")
+def dashboard_stats():
+    """Return aggregate counts for the current workspace dashboard."""
+    workspace_id = g.user.get("workspace_id")
+    if not workspace_id:
+        return jsonify({"ok": False, "error": "workspace not selected"}), 400
+
+    anomalies = list_anomalies(str(workspace_id))
+    incidents = list_incidents(str(workspace_id))
+    open_incidents = list_incidents(str(workspace_id), status="open")
+    automations = list_automation_policies(str(workspace_id))
+    backup_policies = list_backup_policies(str(workspace_id))
+    dr_plans = list_dr_plans(str(workspace_id))
+    siem = list_siem_integrations(str(workspace_id))
+
+    since = datetime.now(timezone.utc) - timedelta(days=30)
+    executions = list_automation_executions(str(workspace_id), since=since)
+
+    return jsonify({
+        "ok": True,
+        "workspace_id": str(workspace_id),
+        "counts": {
+            "anomalies": len(anomalies),
+            "incidents": len(incidents),
+            "open_incidents": len(open_incidents),
+            "automations": len(automations),
+            "backup_policies": len(backup_policies),
+            "dr_plans": len(dr_plans),
+            "siem_integrations": len(siem),
+            "automation_executions_30d": len(executions),
+        },
+    })
+
+
 # Initialize Stripe at startup
 init_stripe(AEON_ROOT)
 
@@ -1331,6 +1380,23 @@ def workspace_security_scan(workspace_id: str):
         phi_enabled=cfg.phi_redaction_enabled if cfg else False,
     )
     redacted, findings = scanner.scan_and_redact(text)
+
+    if findings:
+        try:
+            from aeon_siem import forward_dlp_event
+            forward_dlp_event(
+                workspace_id,
+                None,
+                {
+                    "findings_count": len(findings),
+                    "categories": list({f.get("category") for f in findings}),
+                    "types": list({f.get("type") for f in findings}),
+                    "scan_trigger": "security_scan",
+                },
+            )
+        except Exception:
+            pass
+
     return jsonify({
         "ok": True,
         "workspace_id": workspace_id,
@@ -1532,6 +1598,112 @@ def workspace_history(workspace_id: str):
         return jsonify({"ok": True, "history": context, "source": "local"})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
+
+
+# ── Per-tenant Branding & Theme (Phase 48+) ─────────────────────────────────
+
+
+def _validate_branding_payload(data: dict[str, Any]) -> dict[str, Any]:
+    """Validate and sanitize a workspace branding payload.
+
+    Returns a dict containing only the allowed keys, with safe defaults where
+    applicable. Raises ValueError on invalid input.
+    """
+    allowed: dict[str, Any] = {}
+
+    if "companyName" in data:
+        allowed["companyName"] = str(data["companyName"])[:120]
+    if "productName" in data:
+        allowed["productName"] = str(data["productName"])[:120]
+    if "tagline" in data:
+        allowed["tagline"] = str(data["tagline"])[:240]
+
+    if "primaryColor" in data:
+        color = str(data["primaryColor"]).strip()
+        if not re.fullmatch(r"^#[0-9A-Fa-f]{6}$", color):
+            raise ValueError("primaryColor must be a 6-digit hex color (e.g. #6366f1)")
+        allowed["primaryColor"] = color.lower()
+
+    if "logoUrl" in data:
+        logo = str(data["logoUrl"]).strip()
+        if logo and not re.match(r"^https?://", logo):
+            raise ValueError("logoUrl must be an http or https URL")
+        allowed["logoUrl"] = logo
+
+    if "defaultMode" in data:
+        mode = str(data["defaultMode"]).lower()
+        if mode not in {"light", "dark"}:
+            raise ValueError("defaultMode must be 'light' or 'dark'")
+        allowed["defaultMode"] = mode
+
+    if "modules" in data:
+        raw_modules = data["modules"]
+        if not isinstance(raw_modules, list):
+            raise ValueError("modules must be an array")
+        sanitized: list[dict[str, Any]] = []
+        for mod in raw_modules:
+            if not isinstance(mod, dict):
+                continue
+            sanitized.append({
+                "id": str(mod.get("id", ""))[:64],
+                "label": str(mod.get("label", ""))[:120],
+                "icon": str(mod.get("icon", ""))[:32],
+                "enabled": bool(mod.get("enabled", True)),
+            })
+        allowed["modules"] = sanitized
+
+    return allowed
+
+
+@app.route("/workspaces/<workspace_id>/branding", methods=["GET"])
+def workspace_branding_get(workspace_id: str):
+    """Return the stored branding/theme config for a workspace.
+
+    This endpoint is intentionally public so that public/unsigned pages such as
+    login and landing pages can load per-tenant branding.
+    """
+    config = get_workspace_theme_config(workspace_id)
+    return jsonify({
+        "ok": True,
+        "workspace_id": workspace_id,
+        "branding": config or {},
+    })
+
+
+@app.route("/workspaces/<workspace_id>/branding", methods=["POST"])
+@require_auth
+@require_workspace_role("ADMIN")
+def workspace_branding_update(workspace_id: str):
+    """Update the branding/theme config for a workspace. Admin only."""
+    data = request.json or {}
+    try:
+        validated = _validate_branding_payload(data)
+        updated = update_workspace_theme_config(workspace_id, validated)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 500
+    return jsonify({
+        "ok": True,
+        "workspace_id": workspace_id,
+        "branding": updated,
+    })
+
+
+@app.route("/workspaces/<workspace_id>/seed", methods=["POST"])
+@require_auth
+@require_workspace_role("ADMIN")
+def workspace_seed_demo(workspace_id: str):
+    """Seed a workspace with realistic demo data. Admin only."""
+    try:
+        from aeon_seed import seed_demo_workspace
+        result = seed_demo_workspace(workspace_id)
+        return jsonify(result)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 404
+    except Exception as exc:
+        logger.exception("Demo seed failed for workspace %s", workspace_id)
+        return jsonify({"ok": False, "error": str(exc)}), 500
 
 
 @app.route("/ready", methods=["GET"])
