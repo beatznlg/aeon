@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { redirect } from "next/navigation";
 import Link from "next/link";
@@ -189,31 +189,6 @@ export default function AdminSectorsPage() {
   const [nextRefreshIn, setNextRefreshIn] = useState(30);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
 
-  // Auto-polling: refreshes all expanded sectors every 30s
-  useEffect(() => {
-    if (!autoRefresh) return;
-
-    const intervalId = setInterval(async () => {
-      const expandedSectors = Object.entries(sectors)
-        .filter(([, s]) => s.expanded)
-        .map(([id]) => id);
-      if (expandedSectors.length > 0) {
-        await Promise.all(expandedSectors.map((id) => fetchSectorAll(id)));
-        setLastRefreshed(new Date());
-      }
-      setNextRefreshIn(30);
-    }, 30_000);
-
-    const countdownId = setInterval(() => {
-      setNextRefreshIn((prev) => Math.max(0, prev - 1));
-    }, 1000);
-
-    return () => {
-      clearInterval(intervalId);
-      clearInterval(countdownId);
-    };
-  }, [autoRefresh, Object.keys(sectors).length]);
-
   // Initialize sector states
   useEffect(() => {
     const init: Record<string, SectorState> = {};
@@ -238,7 +213,7 @@ export default function AdminSectorsPage() {
     setGlobalLoading(false);
   }, []);
 
-  const fetchToolData = async (sectorId: string, toolPath: string) => {
+  const fetchToolData = useCallback(async (sectorId: string, toolPath: string) => {
     setSectors((prev) => ({
       ...prev,
       [sectorId]: {
@@ -277,9 +252,9 @@ export default function AdminSectorsPage() {
         },
       }));
     }
-  };
+  }, []);
 
-  const fetchSectorAll = async (sectorId: string) => {
+  const fetchSectorAll = useCallback(async (sectorId: string) => {
     setSectors((prev) => ({
       ...prev,
       [sectorId]: { ...prev[sectorId], loading: true, expanded: true },
@@ -294,7 +269,39 @@ export default function AdminSectorsPage() {
       ...prev,
       [sectorId]: { ...prev[sectorId], loading: false },
     }));
-  };
+  }, [fetchToolData]);
+
+  // Keep a live ref to sectors so the polling interval always sees current state
+  // without resetting the interval whenever sectors updates.
+  const sectorsRef = useRef(sectors);
+  useEffect(() => {
+    sectorsRef.current = sectors;
+  }, [sectors]);
+
+  // Auto-polling: refreshes all expanded sectors every 30s
+  useEffect(() => {
+    if (!autoRefresh) return;
+
+    const intervalId = setInterval(async () => {
+      const expandedSectors = Object.entries(sectorsRef.current)
+        .filter(([, s]) => s.expanded)
+        .map(([id]) => id);
+      if (expandedSectors.length > 0) {
+        await Promise.all(expandedSectors.map((id) => fetchSectorAll(id)));
+        setLastRefreshed(new Date());
+      }
+      setNextRefreshIn(30);
+    }, 30_000);
+
+    const countdownId = setInterval(() => {
+      setNextRefreshIn((prev) => Math.max(0, prev - 1));
+    }, 1000);
+
+    return () => {
+      clearInterval(intervalId);
+      clearInterval(countdownId);
+    };
+  }, [autoRefresh, fetchSectorAll]);
 
   const fetchAllSectors = async () => {
     setGlobalLoadAll(true);

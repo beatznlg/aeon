@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import Select from "@/components/ui/Select";
@@ -39,7 +39,7 @@ export default function AnomaliesPageClient() {
   const [detecting, setDetecting] = useState(false);
   const [severityFilter, setSeverityFilter] = useState<string>("");
 
-  const fetchAnomalies = async () => {
+  const fetchAnomalies = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -58,11 +58,11 @@ export default function AnomaliesPageClient() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [severityFilter]);
 
   useEffect(() => {
     fetchAnomalies();
-  }, [severityFilter]);
+  }, [fetchAnomalies]);
 
   const runDetection = async () => {
     try {

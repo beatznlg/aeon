@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import Link from "next/link";
 
 type AppDefinition = {
@@ -109,19 +109,19 @@ export default function WorkflowBuilderPage() {
     currentStateRef.current = { name, description, nodes, edges };
   }, [name, description, nodes, edges]);
 
-  const restoreState = (state: WorkflowState) => {
+  const restoreState = useCallback((state: WorkflowState) => {
     setName(state.name);
     setDescription(state.description);
     setNodes(state.nodes.map((n) => ({ ...n })));
     setEdges(state.edges.map((e) => ({ ...e })));
-  };
+  }, []);
 
   const saveSnapshot = () => {
     setPast((prev) => [...prev, cloneState(currentStateRef.current)].slice(-50));
     setFuture([]);
   };
 
-  const undo = () => {
+  const undo = useCallback(() => {
     setPast((prev) => {
       if (prev.length === 0) return prev;
       const previous = prev[prev.length - 1];
@@ -129,9 +129,9 @@ export default function WorkflowBuilderPage() {
       restoreState(previous);
       return prev.slice(0, prev.length - 1);
     });
-  };
+  }, [restoreState]);
 
-  const redo = () => {
+  const redo = useCallback(() => {
     setFuture((prev) => {
       if (prev.length === 0) return prev;
       const next = prev[0];
@@ -139,7 +139,7 @@ export default function WorkflowBuilderPage() {
       restoreState(next);
       return prev.slice(1);
     });
-  };
+  }, [restoreState]);
 
   const clearDraft = () => {
     if (!confirm("Are you sure you want to clear your current draft?")) return;
@@ -168,7 +168,140 @@ export default function WorkflowBuilderPage() {
   };
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    Promise.all([
+      fetch("/api/os/apps", { cache: "no-store" }).then((r) => r.json()),
+      fetch("/api/os/workflows", { cache: "no-store" }).then((r) => r.json()),
+      fetch("/api/os/integrations", { cache: "no-store" }).then((r) => r.json()),
+    ])
+      .then(([appsData, workflowsData, intData]) => {
+        if (appsData.ok) setApps(appsData.apps || []);
+        if (workflowsData.ok) setWorkflows(workflowsData.workflows || []);
+        else setError(workflowsData.error || "failed to load workflows");
+        if (intData.ok) setIntegrations(intData.integrations || []);
+
+        const draft = localStorage.getItem("aeon_workflow_draft");
+        if (draft) {
+          try {
+            const parsed = JSON.parse(draft);
+            if (parsed.name) setName(parsed.name);
+            if (parsed.description) setDescription(parsed.description);
+            if (parsed.nodes) setNodes(parsed.nodes);
+            if (parsed.edges) setEdges(parsed.edges);
+            if (parsed.past) setPast(parsed.past.slice(-50));
+            if (parsed.future) setFuture(parsed.future.slice(0, 50));
+          } catch (e) {
+            console.error("Failed to parse draft", e);
+          }
+        }
+
+        setLoading(false);
+      })
+      .catch((e) => {
+        setError(String(e));
+        setLoading(false);
+      });
+  }, []);
+
+  useEffect(() => {
+    if (loading) return;
+    const stateToSave = {
+      name,
+      description,
+      nodes,
+      edges,
+      past: past.slice(-50),
+      future: future.slice(0, 50),
+    };
+    localStorage.setItem("aeon_workflow_draft", JSON.stringify(stateToSave));
+  }, [name, description, nodes, edges, past, future, loading]);
+
+  const PROVIDERS = [
+    { id: "", name: "Workflow default" },
+    { id: "stub", name: "Stub" },
+    { id: "openai", name: "OpenAI" },
+    { id: "anthropic", name: "Claude" },
+    { id: "ollama", name: "Ollama" },
+    { id: "hf", name: "Hugging Face" },
+    { id: "qwen", name: "Qwen Local" },
+  ];
+
+  const addNode = (id: string, type: "agent" | "integration") => {
+    saveSnapshot();
+    const count = nodes.length;
+    const app = type === "agent" ? apps.find((a) => a.id === id) : undefined;
+    const integration = type === "integration" ? integrations.find((i) => i.id === id) : undefined;
+    const newNode: WorkflowNode = {
+      id: generateId(),
+      app_id: type === "agent" ? id : "",
+      integration_id: type === "integration" ? id : "",
+      type,
+      prompt: app ? `Run ${app.name} analysis` : "",
+      endpoint: type === "integration" ? "" : undefined,
+      method: type === "integration" ? "GET" : undefined,
+      payload: type === "integration" ? "" : undefined,
+      x: 120 + (count % 4) * 220,
+      y: 120 + Math.floor(count / 4) * 160,
+    };
+    setNodes((prev) => [...prev, newNode]);
+    setSelectedNode(newNode.id);
+  };
+
+  const updateNode = (id: string, patch: Partial<WorkflowNode>) => {
+    setNodes((prev) => prev.map((n) => (n.id === id ? { ...n, ...patch } : n)));
+  };
+
+  const removeNode = useCallback((id: string) => {
+    saveSnapshot();
+    setNodes((prev) => prev.filter((n) => n.id !== id));
+    setEdges((prev) => prev.filter((e) => e.source !== id && e.target !== id));
+    setSelectedNode(null);
+  }, []);
+
+  const addEdge = () => {
+    if (nodes.length < 2) return;
+    saveSnapshot();
+    setEdges((prev) => [
+      ...prev,
+      { source: nodes[0].id, target: nodes[1].id, condition: "always" },
+    ]);
+  };
+
+  const updateEdge = (idx: number, patch: Partial<WorkflowEdge>) => {
+    setEdges((prev) => prev.map((e, i) => (i === idx ? { ...e, ...patch } : e)));
+  };
+
+  const removeEdge = (idx: number) => {
+    saveSnapshot();
+    setEdges((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const saveWorkflow = useCallback(async () => {
+    setError(null);
+    const body = { name, description, nodes, edges };
+    const res = await fetch("/api/os/workflows", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      setWorkflows((prev) => {
+        const existing = prev.find((w) => w.id === data.workflow.id);
+        if (existing) {
+          return prev.map((w) => (w.id === data.workflow.id ? data.workflow : w));
+        }
+        return [...prev, data.workflow];
+      });
+      setPast([]);
+      setFuture([]);
+      setRunResult(null);
+    } else {
+      setError(data.error || "failed to save workflow");
+    }
+  }, [name, description, nodes, edges]);
+
+  // Keyboard shortcuts for the workflow canvas
+  useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
       const tag = target?.tagName?.toLowerCase();
@@ -256,140 +389,7 @@ export default function WorkflowBuilderPage() {
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [selectedNode]);
-
-  useEffect(() => {
-    Promise.all([
-      fetch("/api/os/apps", { cache: "no-store" }).then((r) => r.json()),
-      fetch("/api/os/workflows", { cache: "no-store" }).then((r) => r.json()),
-      fetch("/api/os/integrations", { cache: "no-store" }).then((r) => r.json()),
-    ])
-      .then(([appsData, workflowsData, intData]) => {
-        if (appsData.ok) setApps(appsData.apps || []);
-        if (workflowsData.ok) setWorkflows(workflowsData.workflows || []);
-        else setError(workflowsData.error || "failed to load workflows");
-        if (intData.ok) setIntegrations(intData.integrations || []);
-
-        const draft = localStorage.getItem("aeon_workflow_draft");
-        if (draft) {
-          try {
-            const parsed = JSON.parse(draft);
-            if (parsed.name) setName(parsed.name);
-            if (parsed.description) setDescription(parsed.description);
-            if (parsed.nodes) setNodes(parsed.nodes);
-            if (parsed.edges) setEdges(parsed.edges);
-            if (parsed.past) setPast(parsed.past.slice(-50));
-            if (parsed.future) setFuture(parsed.future.slice(0, 50));
-          } catch (e) {
-            console.error("Failed to parse draft", e);
-          }
-        }
-
-        setLoading(false);
-      })
-      .catch((e) => {
-        setError(String(e));
-        setLoading(false);
-      });
-  }, []);
-
-  useEffect(() => {
-    if (loading) return;
-    const stateToSave = {
-      name,
-      description,
-      nodes,
-      edges,
-      past: past.slice(-50),
-      future: future.slice(0, 50),
-    };
-    localStorage.setItem("aeon_workflow_draft", JSON.stringify(stateToSave));
-  }, [name, description, nodes, edges, past, future, loading]);
-
-  const PROVIDERS = [
-    { id: "", name: "Workflow default" },
-    { id: "stub", name: "Stub" },
-    { id: "openai", name: "OpenAI" },
-    { id: "anthropic", name: "Claude" },
-    { id: "ollama", name: "Ollama" },
-    { id: "hf", name: "Hugging Face" },
-    { id: "qwen", name: "Qwen Local" },
-  ];
-
-  const addNode = (id: string, type: "agent" | "integration") => {
-    saveSnapshot();
-    const count = nodes.length;
-    const app = type === "agent" ? apps.find((a) => a.id === id) : undefined;
-    const integration = type === "integration" ? integrations.find((i) => i.id === id) : undefined;
-    const newNode: WorkflowNode = {
-      id: generateId(),
-      app_id: type === "agent" ? id : "",
-      integration_id: type === "integration" ? id : "",
-      type,
-      prompt: app ? `Run ${app.name} analysis` : "",
-      endpoint: type === "integration" ? "" : undefined,
-      method: type === "integration" ? "GET" : undefined,
-      payload: type === "integration" ? "" : undefined,
-      x: 120 + (count % 4) * 220,
-      y: 120 + Math.floor(count / 4) * 160,
-    };
-    setNodes((prev) => [...prev, newNode]);
-    setSelectedNode(newNode.id);
-  };
-
-  const updateNode = (id: string, patch: Partial<WorkflowNode>) => {
-    setNodes((prev) => prev.map((n) => (n.id === id ? { ...n, ...patch } : n)));
-  };
-
-  const removeNode = (id: string) => {
-    saveSnapshot();
-    setNodes((prev) => prev.filter((n) => n.id !== id));
-    setEdges((prev) => prev.filter((e) => e.source !== id && e.target !== id));
-    setSelectedNode(null);
-  };
-
-  const addEdge = () => {
-    if (nodes.length < 2) return;
-    saveSnapshot();
-    setEdges((prev) => [
-      ...prev,
-      { source: nodes[0].id, target: nodes[1].id, condition: "always" },
-    ]);
-  };
-
-  const updateEdge = (idx: number, patch: Partial<WorkflowEdge>) => {
-    setEdges((prev) => prev.map((e, i) => (i === idx ? { ...e, ...patch } : e)));
-  };
-
-  const removeEdge = (idx: number) => {
-    saveSnapshot();
-    setEdges((prev) => prev.filter((_, i) => i !== idx));
-  };
-
-  const saveWorkflow = async () => {
-    setError(null);
-    const body = { name, description, nodes, edges };
-    const res = await fetch("/api/os/workflows", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const data = await res.json();
-    if (data.ok) {
-      setWorkflows((prev) => {
-        const existing = prev.find((w) => w.id === data.workflow.id);
-        if (existing) {
-          return prev.map((w) => (w.id === data.workflow.id ? data.workflow : w));
-        }
-        return [...prev, data.workflow];
-      });
-      setPast([]);
-      setFuture([]);
-      setRunResult(null);
-    } else {
-      setError(data.error || "failed to save workflow");
-    }
-  };
+  }, [selectedNode, undo, redo, removeNode, saveWorkflow]);
 
   const runWorkflow = async (workflowId: string) => {
     setRunning(true);

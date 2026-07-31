@@ -1003,7 +1003,7 @@ export default function SwarmsPage() {
         return merged.sort((a, b) => a.timestamp - b.timestamp);
       });
     }
-  }, [selectedSwarm, swarmMessages]);
+  }, [selectedSwarm, swarmMessages, timelineEvents]);
 
   // ── Auto-scroll to new swarm ─────────────────────────────────────────
   useEffect(() => {

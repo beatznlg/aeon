@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { SystemHealthPanel, AlertBanner, AlertPanel } from "../components/LiveMonitor";
@@ -77,7 +77,7 @@ function AnimatedStat({ value, label, color }: {
   color: string;
 }) {
   const [display, setDisplay] = useState("0");
-  const animRef = { current: false };
+  const animRef = useRef(false);
 
   useEffect(() => {
     const target = typeof value === "string" ? parseFloat(value.replace(/[^0-9.]/g, "")) : value;
@@ -103,7 +103,7 @@ function AnimatedStat({ value, label, color }: {
     } else {
       setDisplay(String(value));
     }
-  }, [value]);
+  }, [value, animRef]);
 
   return (
     <div className="stat-card text-center">
