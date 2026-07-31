@@ -1,19 +1,11 @@
-#!/usr/bin/env bash
-# Start the full AEON preview stack: Python backend + Next.js frontend.
-set -e
+#!/bin/sh
 
-# Make user-installed Python packages visible when the preview runs under a
-# different user or a stripped environment.
-export PYTHONPATH="/home/daytona/.local/lib/python3.10/site-packages:${PYTHONPATH}"
+# Copy root env vars into the web/ app so Next.js loads them at startup.
+# This bridges Freebuff's monorepo root .env.local with Next.js's
+# expectation of a .env.local in the app directory.
+if [ -f ".env.local" ]; then
+  cp .env.local web/.env.local
+fi
 
-# Ensure the Next.js dev server binds to all interfaces.
-export HOST="0.0.0.0"
-export HOSTNAME="0.0.0.0"
-
-# Use the local SQLite automation_executions table when Supabase is not
-# configured, so the preview dashboard can still show real metrics.
-export AEON_METRICS_LOCAL_FALLBACK="1"
-
-cd web
-export AEON_PYTHON_URL="${AEON_PYTHON_URL:-http://127.0.0.1:5000}"
-npm run dev:full
+# Start the Next.js dev server bound to all interfaces on port 3000.
+cd web && npm run dev -- -H 0.0.0.0 -p 3000
