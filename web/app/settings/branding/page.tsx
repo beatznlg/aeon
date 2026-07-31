@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
+import Image from "next/image";
 import Link from "next/link";
 import { defaultThemeConfig, BrandModule, ThemeConfig } from "@/lib/theme-config";
 import DashboardEditor from "@/components/DashboardEditor";
@@ -253,9 +254,12 @@ export default function BrandingSettingsPage() {
               <div>
                 <div className="settings-item-label">Logo preview</div>
               </div>
-              <img
+              <Image
                 src={logoUrl}
                 alt="Logo preview"
+                unoptimized
+                width={160}
+                height={40}
                 style={{
                   height: 40,
                   maxWidth: 160,
