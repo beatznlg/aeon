@@ -44,7 +44,11 @@ export default function KnowledgePageClient() {
   const [docText, setDocText] = useState("");
   const [docFile, setDocFile] = useState<File | null>(null);
   const [uploadMode, setUploadMode] = useState<"text" | "file">("text");
-  const [uploadResult, setUploadResult] = useState<{ doc_id: string; chunks: number; preview?: any[] } | null>(null);
+  const [uploadResult, setUploadResult] = useState<{
+    doc_id: string;
+    chunks: number;
+    preview?: any[];
+  } | null>(null);
   const [showPreview, setShowPreview] = useState(false);
 
   const [query, setQuery] = useState("");
@@ -186,12 +190,23 @@ export default function KnowledgePageClient() {
     <div className="os-page">
       <header className="os-header">
         <div>
-          <h1 style={{ background: "var(--grad)", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>
+          <h1
+            style={{
+              background: "var(--grad)",
+              WebkitBackgroundClip: "text",
+              backgroundClip: "text",
+              color: "transparent",
+            }}
+          >
             Knowledge Bases
           </h1>
-          <p className="dashboard-subtitle">Upload documents, manage chunks, and test RAG retrieval</p>
+          <p className="dashboard-subtitle">
+            Upload documents, manage chunks, and test RAG retrieval
+          </p>
         </div>
-        <Link href="/os" className="btn btn-secondary">← OS Launcher</Link>
+        <Link href="/os" className="btn btn-secondary">
+          ← OS Launcher
+        </Link>
       </header>
 
       {error && <div className="module-alert danger">{error}</div>}
@@ -209,13 +224,23 @@ export default function KnowledgePageClient() {
           </label>
           <label>
             Chunk size
-            <input type="number" value={chunkSize} onChange={(e) => setChunkSize(Number(e.target.value))} />
+            <input
+              type="number"
+              value={chunkSize}
+              onChange={(e) => setChunkSize(Number(e.target.value))}
+            />
           </label>
           <label>
             Overlap
-            <input type="number" value={overlap} onChange={(e) => setOverlap(Number(e.target.value))} />
+            <input
+              type="number"
+              value={overlap}
+              onChange={(e) => setOverlap(Number(e.target.value))}
+            />
           </label>
-          <button type="submit" className="btn btn-primary">Create</button>
+          <button type="submit" className="btn btn-primary">
+            Create
+          </button>
         </form>
       </section>
 
@@ -227,19 +252,33 @@ export default function KnowledgePageClient() {
             <select value={selectedKb} onChange={(e) => setSelectedKb(e.target.value)}>
               <option value="">Select…</option>
               {kbs.map((k) => (
-                <option key={k.id} value={k.id}>{k.name}</option>
+                <option key={k.id} value={k.id}>
+                  {k.name}
+                </option>
               ))}
             </select>
           </label>
           <label>
             Document ID (optional)
-            <input value={docId} onChange={(e) => setDocId(e.target.value)} placeholder="auto-generated" />
+            <input
+              value={docId}
+              onChange={(e) => setDocId(e.target.value)}
+              placeholder="auto-generated"
+            />
           </label>
           <div className="upload-mode-toggle">
-            <button type="button" className={`btn btn-sm ${uploadMode === "text" ? "btn-primary" : ""}`} onClick={() => setUploadMode("text")}>
+            <button
+              type="button"
+              className={`btn btn-sm ${uploadMode === "text" ? "btn-primary" : ""}`}
+              onClick={() => setUploadMode("text")}
+            >
               Paste Text
             </button>
-            <button type="button" className={`btn btn-sm ${uploadMode === "file" ? "btn-primary" : ""}`} onClick={() => setUploadMode("file")}>
+            <button
+              type="button"
+              className={`btn btn-sm ${uploadMode === "file" ? "btn-primary" : ""}`}
+              onClick={() => setUploadMode("file")}
+            >
               Upload File
             </button>
           </div>
@@ -251,21 +290,36 @@ export default function KnowledgePageClient() {
           ) : (
             <label className="span-2">
               File (txt, md, csv, json)
-              <input type="file" accept=".txt,.md,.csv,.json,.py,.js,.ts,.jsx,.tsx" onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) setDocFile(file);
-              }} />
-              {docFile && <p style={{ marginTop: 4, fontSize: "0.8rem", color: "var(--fg-soft)" }}>{docFile.name} ({(docFile.size / 1024).toFixed(1)} KB)</p>}
+              <input
+                type="file"
+                accept=".txt,.md,.csv,.json,.py,.js,.ts,.jsx,.tsx"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) setDocFile(file);
+                }}
+              />
+              {docFile && (
+                <p style={{ marginTop: 4, fontSize: "0.8rem", color: "var(--fg-soft)" }}>
+                  {docFile.name} ({(docFile.size / 1024).toFixed(1)} KB)
+                </p>
+              )}
             </label>
           )}
-          <button type="submit" className="btn btn-primary" disabled={uploadMode === "file" && !docFile}>
+          <button
+            type="submit"
+            className="btn btn-primary"
+            disabled={uploadMode === "file" && !docFile}
+          >
             Upload & Chunk
           </button>
         </form>
 
         {uploadResult && (
           <div className="upload-result" style={{ marginTop: 16 }}>
-            <div className="module-alert" style={{ borderLeft: "3px solid #22c55e", color: "#22c55e" }}>
+            <div
+              className="module-alert"
+              style={{ borderLeft: "3px solid #22c55e", color: "#22c55e" }}
+            >
               Document uploaded — {uploadResult.chunks} chunks created
             </div>
             {uploadResult.preview && uploadResult.preview.length > 0 && (
@@ -294,7 +348,12 @@ export default function KnowledgePageClient() {
         <form onSubmit={runQuery} className="form-grid">
           <label className="span-2">
             Query
-            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Ask something about the uploaded documents…" required />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Ask something about the uploaded documents…"
+              required
+            />
           </label>
           <label>
             Search mode
@@ -306,9 +365,17 @@ export default function KnowledgePageClient() {
           </label>
           <label>
             Top-K
-            <input type="number" min={1} max={20} value={topK} onChange={(e) => setTopK(Number(e.target.value))} />
+            <input
+              type="number"
+              min={1}
+              max={20}
+              value={topK}
+              onChange={(e) => setTopK(Number(e.target.value))}
+            />
           </label>
-          <button type="submit" className="btn btn-primary" disabled={querying}>{querying ? "Querying…" : "Retrieve"}</button>
+          <button type="submit" className="btn btn-primary" disabled={querying}>
+            {querying ? "Querying…" : "Retrieve"}
+          </button>
         </form>
         {chunks.length > 0 && (
           <div style={{ marginTop: 16 }}>
@@ -318,8 +385,12 @@ export default function KnowledgePageClient() {
                 <div className="os-card-header">
                   <span className="os-status-pill active">{c.doc_id}</span>
                   <span className="os-status-pill active">score {c.rrf_score ?? c.score}</span>
-                  {typeof c.vector_rank === "number" && <span className="os-status-pill active">v-rank {c.vector_rank}</span>}
-                  {typeof c.keyword_rank === "number" && <span className="os-status-pill active">k-rank {c.keyword_rank}</span>}
+                  {typeof c.vector_rank === "number" && (
+                    <span className="os-status-pill active">v-rank {c.vector_rank}</span>
+                  )}
+                  {typeof c.keyword_rank === "number" && (
+                    <span className="os-status-pill active">k-rank {c.keyword_rank}</span>
+                  )}
                 </div>
                 <p className="os-desc">{c.text}</p>
               </div>
@@ -346,10 +417,13 @@ export default function KnowledgePageClient() {
                 <p className="os-desc">Chunks: {k.chunk_count}</p>
                 {stats[k.id] && (
                   <p className="os-desc">
-                    Backend: <strong>{stats[k.id].backend}</strong> · Docs: {stats[k.id].document_count} · Chunks: {stats[k.id].chunk_count}
+                    Backend: <strong>{stats[k.id].backend}</strong> · Docs:{" "}
+                    {stats[k.id].document_count} · Chunks: {stats[k.id].chunk_count}
                   </p>
                 )}
-                <button className="btn btn-sm" onClick={() => deleteKb(k.id)}>Delete</button>
+                <button className="btn btn-sm" onClick={() => deleteKb(k.id)}>
+                  Delete
+                </button>
               </div>
             ))}
           </div>

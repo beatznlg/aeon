@@ -57,7 +57,12 @@ export const defaultThemeConfig: ThemeConfig = {
     { id: "anomalies", label: "Anomalies", icon: "\uD83D\uDD0D", enabled: true },
     { id: "incidents", label: "Incidents", icon: "\uD83D\uDEA8", enabled: true },
     { id: "dr", label: "Disaster Recovery", icon: "\uD83D\uDEE1\uFE0F", enabled: true },
-    { id: "integrations", label: "API Gateway & Integrations", icon: "\uD83D\uDD17", enabled: true },
+    {
+      id: "integrations",
+      label: "API Gateway & Integrations",
+      icon: "\uD83D\uDD17",
+      enabled: true,
+    },
     { id: "governance", label: "Governance", icon: "\uD83D\uDEE1\uFE0F", enabled: true },
     // Industry command centers
     { id: "cybersecurity", label: "Security Command", icon: "\uD83D\uDEE1\uFE0F", enabled: true },
@@ -67,7 +72,12 @@ export const defaultThemeConfig: ThemeConfig = {
     { id: "transport", label: "Transport Command", icon: "\uD83D\uDE8C", enabled: true },
     { id: "manufacturing", label: "Factory Command", icon: "\uD83C\uDFED", enabled: true },
     { id: "tourism", label: "Hospitality Command", icon: "\uD83C\uDFE8", enabled: true },
-    { id: "cultural_heritage", label: "Cultural Command", icon: "\uD83C\uDFDB\uFE0F", enabled: true },
+    {
+      id: "cultural_heritage",
+      label: "Cultural Command",
+      icon: "\uD83C\uDFDB\uFE0F",
+      enabled: true,
+    },
     { id: "professional", label: "Professional Hub", icon: "\uD83D\uDCCB", enabled: true },
     { id: "utilities", label: "Utilities Command", icon: "\uD83D\uDCA1", enabled: true },
     { id: "sme", label: "SME Business Suite", icon: "\uD83C\uDFE2", enabled: true },
@@ -116,9 +126,7 @@ export function isModuleEnabled(
  * Fetch the per-workspace branding from the Next.js API proxy.
  * This is public so it can be called on login/landing pages before auth.
  */
-export async function fetchWorkspaceBranding(
-  workspaceId: string
-): Promise<Partial<ThemeConfig>> {
+export async function fetchWorkspaceBranding(workspaceId: string): Promise<Partial<ThemeConfig>> {
   const res = await fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/branding`, {
     headers: { Accept: "application/json" },
   });

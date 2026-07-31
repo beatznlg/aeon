@@ -37,7 +37,7 @@ export interface LLMResponse {
 export async function callLLM(
   prompt: string,
   system?: string,
-  providerOverride?: LLMProvider | string,
+  providerOverride?: LLMProvider | string
 ): Promise<LLMResponse> {
   const provider = getProvider(providerOverride);
 
@@ -58,10 +58,7 @@ export async function callLLM(
 
 // ─── OpenAI ─────────────────────────────────────────────────────────────
 
-async function callOpenAI(
-  prompt: string,
-  system?: string,
-): Promise<LLMResponse> {
+async function callOpenAI(prompt: string, system?: string): Promise<LLMResponse> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error("OPENAI_API_KEY is not set");
 
@@ -72,7 +69,7 @@ async function callOpenAI(
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
-      "Authorization": `Bearer ${apiKey}`,
+      Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
@@ -95,10 +92,7 @@ async function callOpenAI(
 
 // ─── Anthropic ──────────────────────────────────────────────────────────
 
-async function callAnthropic(
-  prompt: string,
-  system?: string,
-): Promise<LLMResponse> {
+async function callAnthropic(prompt: string, system?: string): Promise<LLMResponse> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not set");
 
@@ -127,24 +121,18 @@ async function callAnthropic(
   const json = await res.json();
   const text =
     json.content
-      ?.map((c: { type: string; text: string }) =>
-        c.type === "text" ? c.text : "",
-      )
+      ?.map((c: { type: string; text: string }) => (c.type === "text" ? c.text : ""))
       .join("") || "";
   return { text, backend: "anthropic" };
 }
 
 // ─── HuggingFace ───────────────────────────────────────────────────────
 
-async function callHuggingFace(
-  prompt: string,
-  _system?: string,
-): Promise<LLMResponse> {
+async function callHuggingFace(prompt: string, _system?: string): Promise<LLMResponse> {
   const token = process.env.HUGGINGFACE_TOKEN;
   if (!token) throw new Error("HUGGINGFACE_TOKEN is not set");
 
-  const model =
-    process.env.HF_MODEL || "microsoft/Phi-3-mini-4k-instruct";
+  const model = process.env.HF_MODEL || "microsoft/Phi-3-mini-4k-instruct";
 
   const res = await fetch(
     `https://api-inference.huggingface.co/models/${model}/v1/chat/completions`,
@@ -160,7 +148,7 @@ async function callHuggingFace(
         max_tokens: 512,
         temperature: 0.7,
       }),
-    },
+    }
   );
 
   if (!res.ok) {
@@ -175,16 +163,11 @@ async function callHuggingFace(
 
 // ─── OpenRouter ─────────────────────────────────────────────────────────
 
-async function callOpenRouter(
-  prompt: string,
-  system?: string,
-): Promise<LLMResponse> {
+async function callOpenRouter(prompt: string, system?: string): Promise<LLMResponse> {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) throw new Error("OPENROUTER_API_KEY is not set");
 
-  const model =
-    process.env.OPENROUTER_MODEL ||
-    "meta-llama/llama-3.1-8b-instruct:free";
+  const model = process.env.OPENROUTER_MODEL || "meta-llama/llama-3.1-8b-instruct:free";
 
   const messages: Array<{ role: string; content: string }> = [];
   if (system) messages.push({ role: "system", content: system });
@@ -193,7 +176,7 @@ async function callOpenRouter(
   const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: {
-      "Authorization": `Bearer ${apiKey}`,
+      Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
       "HTTP-Referer": process.env.OPENROUTER_REFERER || "https://aeon-os.vercel.app",
       "X-Title": "AEON OS",
@@ -229,8 +212,7 @@ async function callStub(prompt: string): Promise<LLMResponse> {
 
   const lower = prompt.toLowerCase().trim();
   const text =
-    Object.entries(responses).find(([key]) => lower.includes(key))?.[1] ||
-    responses.default;
+    Object.entries(responses).find(([key]) => lower.includes(key))?.[1] || responses.default;
 
   return { text, backend: "stub" };
 }

@@ -9,7 +9,10 @@ export async function GET(req: Request) {
 
   const url = pythonUrl();
   if (!url) {
-    return NextResponse.json({ ok: true, metrics: { period_days: days, total_events: 0, by_day: {} } });
+    return NextResponse.json({
+      ok: true,
+      metrics: { period_days: days, total_events: 0, by_day: {} },
+    });
   }
 
   try {

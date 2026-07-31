@@ -94,9 +94,7 @@ export default function AnomaliesPageClient() {
       });
       const data = await res.json();
       if (data.ok) {
-        setAnomalies((prev) =>
-          prev.map((a) => (a.id === id ? { ...a, dismissed: true } : a))
-        );
+        setAnomalies((prev) => prev.map((a) => (a.id === id ? { ...a, dismissed: true } : a)));
       } else {
         setError(data.error || "dismiss failed");
       }
@@ -166,11 +164,10 @@ export default function AnomaliesPageClient() {
               >
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-base font-semibold text-aeon-fg">
-                      {a.title}
-                    </div>
+                    <div className="truncate text-base font-semibold text-aeon-fg">{a.title}</div>
                     <div className="mt-1 text-xs text-aeon-fg-mute">
-                      {a.anomaly_type} · score {a.score ?? "n/a"} · {new Date(a.created_at).toLocaleString()}
+                      {a.anomaly_type} · score {a.score ?? "n/a"} ·{" "}
+                      {new Date(a.created_at).toLocaleString()}
                     </div>
                     {a.description && (
                       <p className="mt-2 text-sm text-aeon-fg-soft">{a.description}</p>

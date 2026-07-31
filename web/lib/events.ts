@@ -26,12 +26,14 @@ interface Client {
 }
 
 declare global {
-  var __AEON_EVENT_BUS__: {
-    clients: Map<string, Client>;
-    broadcast: (event: AeonEvent) => void;
-    addClient: (userId: string, controller: ReadableStreamDefaultController) => string;
-    removeClient: (id: string) => void;
-  } | undefined;
+  var __AEON_EVENT_BUS__:
+    | {
+        clients: Map<string, Client>;
+        broadcast: (event: AeonEvent) => void;
+        addClient: (userId: string, controller: ReadableStreamDefaultController) => string;
+        removeClient: (id: string) => void;
+      }
+    | undefined;
 }
 
 function createBus() {

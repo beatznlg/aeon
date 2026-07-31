@@ -69,7 +69,8 @@ export function AnimatedKPICard({
   color?: string;
   refreshKey: number;
 }) {
-  const numericValue = typeof value === "string" ? parseFloat(value.replace(/[^0-9.-]/g, "")) : value;
+  const numericValue =
+    typeof value === "string" ? parseFloat(value.replace(/[^0-9.-]/g, "")) : value;
 
   return (
     <motion.div
@@ -129,10 +130,7 @@ export function AnimatedWidget({
       transition={{ type: "spring", stiffness: 150, damping: 20 }}
       {...rest}
     >
-      <motion.div
-        className="flex items-center justify-between"
-        initial={false}
-      >
+      <motion.div className="flex items-center justify-between" initial={false}>
         <motion.h3
           key={`title-${refreshKey}`}
           initial={{ opacity: 0.7 }}

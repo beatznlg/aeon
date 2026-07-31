@@ -94,10 +94,19 @@ export default function SwarmPage() {
     <div className="os-page">
       <header className="os-header">
         <div>
-          <h1 style={{ background: "var(--grad)", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>
+          <h1
+            style={{
+              background: "var(--grad)",
+              WebkitBackgroundClip: "text",
+              backgroundClip: "text",
+              color: "transparent",
+            }}
+          >
             🕸️ Swarm Orchestration
           </h1>
-          <p className="dashboard-subtitle">Coordinate multiple autonomous agents in a unified workflow</p>
+          <p className="dashboard-subtitle">
+            Coordinate multiple autonomous agents in a unified workflow
+          </p>
         </div>
         <Link href="/os" className="btn btn-secondary">
           ← OS Launcher
@@ -181,10 +190,7 @@ export default function SwarmPage() {
               disabled={running}
             />
           </label>
-          <div
-            className="span-2"
-            style={{ display: "flex", justifyContent: "flex-end" }}
-          >
+          <div className="span-2" style={{ display: "flex", justifyContent: "flex-end" }}>
             <button
               type="submit"
               className="btn btn-primary"

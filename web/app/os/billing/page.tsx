@@ -37,14 +37,27 @@ type StripeConfig = {
   prices_configured: boolean;
 };
 
-const PLANS: { id: string; name: string; icon: string; color: string; price: string; features: string[] }[] = [
+const PLANS: {
+  id: string;
+  name: string;
+  icon: string;
+  color: string;
+  price: string;
+  features: string[];
+}[] = [
   {
     id: "free",
     name: "Free",
     icon: "🌱",
     color: "#94a3b8",
     price: "$0/mo",
-    features: ["1,000 requests/mo", "100K tokens", "10 workflows", "5 integrations", "Community support"],
+    features: [
+      "1,000 requests/mo",
+      "100K tokens",
+      "10 workflows",
+      "5 integrations",
+      "Community support",
+    ],
   },
   {
     id: "team",
@@ -52,7 +65,14 @@ const PLANS: { id: string; name: string; icon: string; color: string; price: str
     icon: "🚀",
     color: "#6366f1",
     price: "$49/mo",
-    features: ["50,000 requests/mo", "5M tokens", "500 workflows", "50 integrations", "Priority support", "Team workspace"],
+    features: [
+      "50,000 requests/mo",
+      "5M tokens",
+      "500 workflows",
+      "50 integrations",
+      "Priority support",
+      "Team workspace",
+    ],
   },
   {
     id: "enterprise",
@@ -60,7 +80,15 @@ const PLANS: { id: string; name: string; icon: string; color: string; price: str
     icon: "🏢",
     color: "#f59e0b",
     price: "Custom",
-    features: ["1M+ requests/mo", "100M+ tokens", "Unlimited workflows", "Unlimited integrations", "Dedicated support", "SLA guarantee", "Custom deployment"],
+    features: [
+      "1M+ requests/mo",
+      "100M+ tokens",
+      "Unlimited workflows",
+      "Unlimited integrations",
+      "Dedicated support",
+      "SLA guarantee",
+      "Custom deployment",
+    ],
   },
 ];
 
@@ -165,7 +193,10 @@ export default function BillingPage() {
       if (data.ok && data.url) {
         window.location.href = data.url;
       } else if (data.simulated) {
-        setMessage({ ok: true, text: "Portal not available — Stripe not configured. Use simulated upgrade instead." });
+        setMessage({
+          ok: true,
+          text: "Portal not available — Stripe not configured. Use simulated upgrade instead.",
+        });
       } else {
         setMessage({ ok: false, text: data.error || "Portal failed" });
       }
@@ -214,7 +245,9 @@ export default function BillingPage() {
   if (loading) {
     return (
       <div className="os-page">
-        <div style={{ padding: 40, textAlign: "center", color: "var(--fg-mute)" }}>Loading billing data…</div>
+        <div style={{ padding: 40, textAlign: "center", color: "var(--fg-mute)" }}>
+          Loading billing data…
+        </div>
       </div>
     );
   }
@@ -224,7 +257,9 @@ export default function BillingPage() {
       <header className="os-header">
         <div>
           <h1>💰 Billing & Plans</h1>
-          <p className="dashboard-subtitle">Manage your subscription, payment method, and usage credits</p>
+          <p className="dashboard-subtitle">
+            Manage your subscription, payment method, and usage credits
+          </p>
         </div>
       </header>
 
@@ -240,7 +275,9 @@ export default function BillingPage() {
           <span className="stripe-banner-icon">⚡</span>
           <span>
             Stripe {stripeMode === "test" ? "test mode" : "live"} is active.
-            {stripeSubStatus === "active" ? " You have an active subscription." : " Use checkout to subscribe."}
+            {stripeSubStatus === "active"
+              ? " You have an active subscription."
+              : " Use checkout to subscribe."}
           </span>
           {stripeSubStatus === "active" && (
             <button className="btn btn-sm stripe-portal-btn" onClick={openBillingPortal}>
@@ -253,7 +290,8 @@ export default function BillingPage() {
         <div className="stripe-banner simulated" style={{ marginBottom: 20 }}>
           <span className="stripe-banner-icon">🔄</span>
           <span>
-            Simulated billing active. Set <code>STRIPE_API_KEY</code> in your environment to enable real payment processing.
+            Simulated billing active. Set <code>STRIPE_API_KEY</code> in your environment to enable
+            real payment processing.
           </span>
         </div>
       )}
@@ -262,7 +300,10 @@ export default function BillingPage() {
       <section className="billing-status-bar">
         <div className="billing-status-item">
           <span className="billing-status-label">Current Plan</span>
-          <span className="billing-status-value" style={{ color: PLANS.find((p) => p.id === currentPlanId)?.color }}>
+          <span
+            className="billing-status-value"
+            style={{ color: PLANS.find((p) => p.id === currentPlanId)?.color }}
+          >
             {PLANS.find((p) => p.id === currentPlanId)?.icon} {billing?.plan?.name || "Free"}
           </span>
         </div>
@@ -276,13 +317,19 @@ export default function BillingPage() {
         </div>
         <div className="billing-status-item">
           <span className="billing-status-label">Remaining</span>
-          <span className="billing-status-value" style={{ color: (billing?.remaining_credits ?? 0) > 0 ? "#22c55e" : "#ef4444" }}>
+          <span
+            className="billing-status-value"
+            style={{ color: (billing?.remaining_credits ?? 0) > 0 ? "#22c55e" : "#ef4444" }}
+          >
             ${(billing?.remaining_credits ?? 0).toFixed(2)}
           </span>
         </div>
         <div className="billing-status-item">
           <span className="billing-status-label">Payment</span>
-          <span className="billing-status-value" style={{ fontSize: "0.8rem", color: stripeActive ? "#22c55e" : "#94a3b8" }}>
+          <span
+            className="billing-status-value"
+            style={{ fontSize: "0.8rem", color: stripeActive ? "#22c55e" : "#94a3b8" }}
+          >
             {stripeActive ? "Stripe" : "Simulated"}
           </span>
         </div>
@@ -300,8 +347,14 @@ export default function BillingPage() {
                 className={`billing-plan-card ${isCurrent ? "current" : ""}`}
                 style={{ borderColor: isCurrent ? plan.color : "var(--border)" }}
               >
-                {isCurrent && <div className="billing-plan-badge" style={{ background: plan.color }}>CURRENT</div>}
-                <div className="billing-plan-icon" style={{ fontSize: "2.5rem" }}>{plan.icon}</div>
+                {isCurrent && (
+                  <div className="billing-plan-badge" style={{ background: plan.color }}>
+                    CURRENT
+                  </div>
+                )}
+                <div className="billing-plan-icon" style={{ fontSize: "2.5rem" }}>
+                  {plan.icon}
+                </div>
                 <h3 className="billing-plan-name">{plan.name}</h3>
                 <div className="billing-plan-price">{plan.price}</div>
                 <ul className="billing-plan-features">
@@ -326,7 +379,13 @@ export default function BillingPage() {
                     disabled={isCurrent || upgrading === plan.id}
                     style={{ width: "100%", marginTop: "auto" }}
                   >
-                    {isCurrent ? "Current Plan" : upgrading === plan.id ? "Processing..." : plan.id === "free" ? "Downgrade" : "Subscribe"}
+                    {isCurrent
+                      ? "Current Plan"
+                      : upgrading === plan.id
+                        ? "Processing..."
+                        : plan.id === "free"
+                          ? "Downgrade"
+                          : "Subscribe"}
                   </button>
                 )}
               </div>
@@ -411,15 +470,17 @@ export default function BillingPage() {
         <section className="billing-section">
           <h2 className="billing-section-title">Recent Activity</h2>
           <div className="billing-activity-list">
-            {Object.entries(usage.by_action || {}).slice(0, 8).map(([action, data]) => (
-              <div key={action} className="billing-activity-item">
-                <div className="billing-activity-info">
-                  <span className="billing-activity-action">{action}</span>
-                  <span className="billing-activity-count">{data.count} calls</span>
+            {Object.entries(usage.by_action || {})
+              .slice(0, 8)
+              .map(([action, data]) => (
+                <div key={action} className="billing-activity-item">
+                  <div className="billing-activity-info">
+                    <span className="billing-activity-action">{action}</span>
+                    <span className="billing-activity-count">{data.count} calls</span>
+                  </div>
+                  <div className="billing-activity-cost">${data.cost.toFixed(4)}</div>
                 </div>
-                <div className="billing-activity-cost">${data.cost.toFixed(4)}</div>
-              </div>
-            ))}
+              ))}
           </div>
         </section>
       )}

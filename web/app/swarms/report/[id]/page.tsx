@@ -14,7 +14,8 @@ class PdfCancelledError extends Error {
 
 // ── Types (mirrored from swarm page) ─────────────────────────────────────
 
-type SwarmPhase = "pending" | "planning" | "executing" | "reflecting" | "summarizing" | "done" | "failed";
+type SwarmPhase =
+  "pending" | "planning" | "executing" | "reflecting" | "summarizing" | "done" | "failed";
 
 interface SwarmTaskResult {
   id: string;
@@ -165,8 +166,8 @@ async function downloadPDF(
     if (page > 0) pdf.addPage();
 
     const pageH = Math.min(usableH, remainingH);
-    const srcY = (yOffset / ratio);
-    const srcH = (pageH / ratio);
+    const srcY = yOffset / ratio;
+    const srcH = pageH / ratio;
 
     const pageCanvas = document.createElement("canvas");
     pageCanvas.width = canvas.width;
@@ -181,7 +182,7 @@ async function downloadPDF(
     yOffset += pageH;
     page++;
 
-    const progress = 35 + Math.round(((page) / totalPages) * 45);
+    const progress = 35 + Math.round((page / totalPages) * 45);
     onProgress?.(progress);
   }
 
@@ -265,7 +266,9 @@ export default function SwarmReportPage() {
           <div className="report-empty-icon">🐝</div>
           <h2>No Swarm Specified</h2>
           <p>Please provide a valid swarm ID in the URL.</p>
-          <a href="/swarms" className="report-back-link">← Back to Swarms</a>
+          <a href="/swarms" className="report-back-link">
+            ← Back to Swarms
+          </a>
         </div>
       </div>
     );
@@ -288,7 +291,9 @@ export default function SwarmReportPage() {
         <div className="report-empty">
           <h2>Error Loading Report</h2>
           <p>{error}</p>
-          <a href="/swarms" className="report-back-link">← Back to Swarms</a>
+          <a href="/swarms" className="report-back-link">
+            ← Back to Swarms
+          </a>
         </div>
       </div>
     );
@@ -300,7 +305,12 @@ export default function SwarmReportPage() {
 
   // Build timeline events from messages
   const timelineEvents = [
-    { ts: Date.now() / 1000 - 100, label: "Swarm Created", icon: "🐝", desc: `Swarm #${id} initialized` },
+    {
+      ts: Date.now() / 1000 - 100,
+      label: "Swarm Created",
+      icon: "🐝",
+      desc: `Swarm #${id} initialized`,
+    },
     ...messages.slice(-10).map((m) => ({
       ts: m.timestamp,
       label: `${m.sender} → ${m.recipient}`,
@@ -313,7 +323,9 @@ export default function SwarmReportPage() {
     <div className={`report-page ${darkMode ? "report-dark" : ""}`}>
       {/* ── Report Toolbar ── */}
       <div className="report-toolbar no-print">
-        <a href="/swarms" className="report-back-btn">← Back to Swarms</a>
+        <a href="/swarms" className="report-back-btn">
+          ← Back to Swarms
+        </a>
         <div className="report-toolbar-center">
           <span className="report-toolbar-id">Swarm Report #{id}</span>
         </div>
@@ -323,7 +335,16 @@ export default function SwarmReportPage() {
           title={darkMode ? "Switch to light mode" : "Switch to dark mode"}
         >
           {darkMode ? (
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <circle cx="12" cy="12" r="5" />
               <line x1="12" y1="1" x2="12" y2="3" />
               <line x1="12" y1="21" x2="12" y2="23" />
@@ -335,7 +356,16 @@ export default function SwarmReportPage() {
               <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
             </svg>
           ) : (
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
             </svg>
           )}
@@ -349,7 +379,13 @@ export default function SwarmReportPage() {
             setPdfCancelled(false);
             cancelPdfRef.current.current = false;
             try {
-              await downloadPDF(contentRef.current, `swarm-report-${id}.pdf`, darkMode, cancelPdfRef.current, setPdfProgress);
+              await downloadPDF(
+                contentRef.current,
+                `swarm-report-${id}.pdf`,
+                darkMode,
+                cancelPdfRef.current,
+                setPdfProgress
+              );
             } catch (err) {
               if (err instanceof PdfCancelledError) {
                 setPdfCancelled(true);
@@ -368,14 +404,16 @@ export default function SwarmReportPage() {
           {generatingPDF ? (
             <div className="report-pdf-progress">
               <div className="report-pdf-progress-bar-wrap">
-                <div
-                  className="report-pdf-progress-bar"
-                  style={{ width: `${pdfProgress}%` }}
-                />
+                <div className="report-pdf-progress-bar" style={{ width: `${pdfProgress}%` }} />
               </div>
               <div className="report-pdf-progress-row">
                 <span className="report-pdf-progress-label">
-                  {pdfProgress < 35 ? "Capturing page…" : pdfProgress < 80 ? "Building PDF…" : "Finalizing…"} {pdfProgress}%
+                  {pdfProgress < 35
+                    ? "Capturing page…"
+                    : pdfProgress < 80
+                      ? "Building PDF…"
+                      : "Finalizing…"}{" "}
+                  {pdfProgress}%
                 </span>
                 <button
                   className="report-pdf-cancel-btn"
@@ -406,14 +444,29 @@ export default function SwarmReportPage() {
             <div className="report-logo">🐝 AEON OS</div>
             <div className="report-title">Swarm Execution Report</div>
             <div className="report-meta-row">
-              <span className="report-meta-item">ID: <strong>#{id}</strong></span>
-              <span className="report-meta-item">Date: <strong>{formatAbsoluteTime(Date.now() / 1000)}</strong></span>
-              <span className="report-meta-item">Status: <strong style={{ color: phaseCfg.color }}>{phaseCfg.icon} {phaseCfg.label}</strong></span>
+              <span className="report-meta-item">
+                ID: <strong>#{id}</strong>
+              </span>
+              <span className="report-meta-item">
+                Date: <strong>{formatAbsoluteTime(Date.now() / 1000)}</strong>
+              </span>
+              <span className="report-meta-item">
+                Status:{" "}
+                <strong style={{ color: phaseCfg.color }}>
+                  {phaseCfg.icon} {phaseCfg.label}
+                </strong>
+              </span>
             </div>
             <div className="report-meta-row">
-              <span className="report-meta-item">Agents: <strong>{agentCount}</strong></span>
-              <span className="report-meta-item">Tasks: <strong>{taskCount}</strong></span>
-              <span className="report-meta-item">Messages: <strong>{msgCount}</strong></span>
+              <span className="report-meta-item">
+                Agents: <strong>{agentCount}</strong>
+              </span>
+              <span className="report-meta-item">
+                Tasks: <strong>{taskCount}</strong>
+              </span>
+              <span className="report-meta-item">
+                Messages: <strong>{msgCount}</strong>
+              </span>
             </div>
           </div>
           <div className="report-header-right">
@@ -435,11 +488,19 @@ export default function SwarmReportPage() {
               const color = ROLE_COLORS[role] || "#6366f1";
               const icon = ROLE_ICONS[role] || "🤖";
               return (
-                <div key={agent} className="report-agent-card" style={{ borderLeft: `3px solid ${color}` }}>
-                  <div className="report-agent-icon" style={{ color }}>{icon}</div>
+                <div
+                  key={agent}
+                  className="report-agent-card"
+                  style={{ borderLeft: `3px solid ${color}` }}
+                >
+                  <div className="report-agent-icon" style={{ color }}>
+                    {icon}
+                  </div>
                   <div className="report-agent-info">
                     <div className="report-agent-name">{agent}</div>
-                    <div className="report-agent-role" style={{ color }}>{role}</div>
+                    <div className="report-agent-role" style={{ color }}>
+                      {role}
+                    </div>
                   </div>
                 </div>
               );
@@ -450,7 +511,7 @@ export default function SwarmReportPage() {
         {/* ── Task Breakdown ── */}
         <div className="report-section">
           <h2 className="report-section-title">📋 Task Breakdown</h2>
-          {(!swarmData?.tasks || swarmData.tasks.length === 0) ? (
+          {!swarmData?.tasks || swarmData.tasks.length === 0 ? (
             <div className="report-empty-data">No tasks recorded</div>
           ) : (
             <div className="report-tasks-table">
@@ -471,7 +532,7 @@ export default function SwarmReportPage() {
                   </span>
                   <span className="report-tasks-col-output report-mono">
                     {task.output
-                      ? (task.output.slice(0, 120) + (task.output.length > 120 ? "..." : ""))
+                      ? task.output.slice(0, 120) + (task.output.length > 120 ? "..." : "")
                       : "—"}
                   </span>
                 </div>
@@ -492,10 +553,14 @@ export default function SwarmReportPage() {
                 return (
                   <div key={i} className="report-msg-item">
                     <div className="report-msg-line">
-                      <span className="report-msg-sender" style={{ color }}>{msg.sender}</span>
+                      <span className="report-msg-sender" style={{ color }}>
+                        {msg.sender}
+                      </span>
                       <span className="report-msg-arrow">→</span>
                       <span className="report-msg-recipient">{msg.recipient}</span>
-                      <span className="report-msg-type" style={{ color }}>[{msg.msg_type}]</span>
+                      <span className="report-msg-type" style={{ color }}>
+                        [{msg.msg_type}]
+                      </span>
                       <span className="report-msg-time">{formatAbsoluteTime(msg.timestamp)}</span>
                     </div>
                     <div className="report-msg-content">{msg.content}</div>
@@ -522,9 +587,7 @@ export default function SwarmReportPage() {
                   {result.output && (
                     <pre className="report-result-output">{result.output.slice(0, 300)}</pre>
                   )}
-                  {result.error && (
-                    <div className="report-result-error">{result.error}</div>
-                  )}
+                  {result.error && <div className="report-result-error">{result.error}</div>}
                 </div>
               ))}
             </div>
@@ -590,7 +653,9 @@ export default function SwarmReportPage() {
 
         {/* ── Footer ── */}
         <div className="report-footer">
-          <p>AEON OS — Swarm Execution Report — Generated {formatAbsoluteTime(Date.now() / 1000)}</p>
+          <p>
+            AEON OS — Swarm Execution Report — Generated {formatAbsoluteTime(Date.now() / 1000)}
+          </p>
         </div>
       </div>
     </div>

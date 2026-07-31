@@ -11,13 +11,24 @@ export async function GET() {
   if (!url) {
     return NextResponse.json({
       ok: true,
-      usage: { total_calls: 0, errors: 0, error_rate: 0, total_keys: 0, active_keys: 0, by_key: [], by_endpoint: {} },
+      usage: {
+        total_calls: 0,
+        errors: 0,
+        error_rate: 0,
+        total_keys: 0,
+        active_keys: 0,
+        by_key: [],
+        by_endpoint: {},
+      },
     });
   }
   try {
-    const res = await fetch(`${url}/api-keys/usage/summary?workspace_id=${encodeURIComponent(workspaceId)}`, {
-      cache: "no-store",
-    });
+    const res = await fetch(
+      `${url}/api-keys/usage/summary?workspace_id=${encodeURIComponent(workspaceId)}`,
+      {
+        cache: "no-store",
+      }
+    );
     const data = await res.json();
     return NextResponse.json(data);
   } catch (e: any) {

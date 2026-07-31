@@ -7,9 +7,7 @@ export default auth((req) => {
   const role = getRole(req.auth);
 
   const isProtectedRoute =
-    pathname.startsWith("/os") ||
-    pathname.startsWith("/settings") ||
-    pathname.startsWith("/chat");
+    pathname.startsWith("/os") || pathname.startsWith("/settings") || pathname.startsWith("/chat");
 
   if (isProtectedRoute && !isLoggedIn) {
     return Response.redirect(new URL("/login", req.nextUrl));
@@ -21,10 +19,7 @@ export default auth((req) => {
   }
 
   // Operator-level write routes (API only)
-  if (
-    pathname.startsWith("/api/admin") &&
-    role !== "ADMIN"
-  ) {
+  if (pathname.startsWith("/api/admin") && role !== "ADMIN") {
     return Response.json({ ok: false, error: "forbidden" }, { status: 403 });
   }
 });

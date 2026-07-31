@@ -12,10 +12,7 @@ export default function AdminSectorsLoading() {
           className="skeleton-shimmer"
           style={{ height: "1.5rem", width: 240, borderRadius: "var(--aeon-radius)" }}
         />
-        <div
-          className="skeleton-shimmer"
-          style={{ height: "0.8rem", width: 320 }}
-        />
+        <div className="skeleton-shimmer" style={{ height: "0.8rem", width: 320 }} />
       </div>
 
       {/* Controls bar */}
@@ -45,7 +42,11 @@ export default function AdminSectorsLoading() {
       {/* Sector cards grid */}
       <div className="space-y-4">
         {[1, 2, 3].map((i) => (
-          <div key={i} className="skeleton-card" style={{ flexDirection: "column", padding: "1.25rem" }}>
+          <div
+            key={i}
+            className="skeleton-card"
+            style={{ flexDirection: "column", padding: "1.25rem" }}
+          >
             <div className="flex items-center gap-3 mb-3">
               <div
                 className="skeleton-shimmer"

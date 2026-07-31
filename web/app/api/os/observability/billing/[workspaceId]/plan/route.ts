@@ -4,10 +4,7 @@ import { pythonUrl } from "@/lib/kernel";
 
 export const dynamic = "force-dynamic";
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: { workspaceId: string } }
-) {
+export async function POST(req: NextRequest, { params }: { params: { workspaceId: string } }) {
   const session = await auth();
   const url = pythonUrl();
   if (!url) {
@@ -16,14 +13,11 @@ export async function POST(
 
   try {
     const body = await req.json();
-    const res = await fetch(
-      `${url}/billing/${encodeURIComponent(params.workspaceId)}/plan`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      }
-    );
+    const res = await fetch(`${url}/billing/${encodeURIComponent(params.workspaceId)}/plan`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
     const data = await res.json();
     return NextResponse.json(data);
   } catch (e: any) {

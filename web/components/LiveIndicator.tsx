@@ -13,11 +13,12 @@ export function LiveIndicator() {
   const { isLive, nextRefreshIn, lastRefreshed, loading, refresh } = useSectorDataContext();
 
   const REFRESH_INTERVAL_MS = 30_000;
-  const progressPct = isLive ? ((nextRefreshIn / REFRESH_INTERVAL_MS) * 100) : 0;
+  const progressPct = isLive ? (nextRefreshIn / REFRESH_INTERVAL_MS) * 100 : 0;
   const secondsLeft = Math.ceil(nextRefreshIn / 1000);
 
   return (
-    <motion.div className="live-indicator-row"
+    <motion.div
+      className="live-indicator-row"
       initial={{ opacity: 0, y: -8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
@@ -72,7 +73,9 @@ export function LiveIndicator() {
         <motion.span
           className="live-refresh-icon"
           animate={loading ? { rotate: 360 } : { rotate: 0 }}
-          transition={loading ? { repeat: Infinity, duration: 0.8, ease: "linear" } : { duration: 0.3 }}
+          transition={
+            loading ? { repeat: Infinity, duration: 0.8, ease: "linear" } : { duration: 0.3 }
+          }
         >
           ↻
         </motion.span>
@@ -99,7 +102,7 @@ export function LiveIndicatorBar({
   onRefresh?: () => void;
 }) {
   const REFRESH_INTERVAL_MS = 30_000;
-  const progressPct = isLive ? ((nextRefreshIn / REFRESH_INTERVAL_MS) * 100) : 0;
+  const progressPct = isLive ? (nextRefreshIn / REFRESH_INTERVAL_MS) * 100 : 0;
   const secondsLeft = Math.ceil(nextRefreshIn / 1000);
 
   return (

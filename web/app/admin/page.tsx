@@ -172,9 +172,13 @@ export default function AdminPage() {
     <div className="os-page">
       <header className="os-header">
         <div>
-          <Link href="/os" className="os-back">← OS Launcher</Link>
+          <Link href="/os" className="os-back">
+            ← OS Launcher
+          </Link>
           <h1>⚙️ Admin Panel</h1>
-          <p className="dashboard-subtitle">System administration, user management, and multi-tenant oversight</p>
+          <p className="dashboard-subtitle">
+            System administration, user management, and multi-tenant oversight
+          </p>
         </div>
       </header>
 
@@ -185,7 +189,16 @@ export default function AdminPage() {
       )}
 
       {/* ── Tab Bar ── */}
-      <div className="admin-tabs" style={{ display: "flex", gap: 4, marginBottom: 24, borderBottom: "1px solid var(--border)", paddingBottom: 0 }}>
+      <div
+        className="admin-tabs"
+        style={{
+          display: "flex",
+          gap: 4,
+          marginBottom: 24,
+          borderBottom: "1px solid var(--border)",
+          paddingBottom: 0,
+        }}
+      >
         {tabs.map((t) => (
           <button
             key={t.id}
@@ -198,7 +211,9 @@ export default function AdminPage() {
       </div>
 
       {loading ? (
-        <div style={{ color: "var(--fg-mute)", padding: 40, textAlign: "center" }}>Loading admin data…</div>
+        <div style={{ color: "var(--fg-mute)", padding: 40, textAlign: "center" }}>
+          Loading admin data…
+        </div>
       ) : (
         <>
           {/* ═══════════════════════ OVERVIEW ═══════════════════════ */}
@@ -227,7 +242,11 @@ export default function AdminPage() {
                 </div>
                 <div
                   className="admin-stat-card"
-                  style={{ cursor: "pointer", position: "relative", opacity: notifSending ? 0.6 : 1 }}
+                  style={{
+                    cursor: "pointer",
+                    position: "relative",
+                    opacity: notifSending ? 0.6 : 1,
+                  }}
                   onClick={async () => {
                     if (notifSending) return;
                     setNotifSending(true);
@@ -247,26 +266,52 @@ export default function AdminPage() {
                       });
                       const data = await res.json();
                       if (data.ok) {
-                        setMessage({ ok: true, text: "Test notification sent! Check your notification bell. \uD83E\uDDEA" });
+                        setMessage({
+                          ok: true,
+                          text: "Test notification sent! Check your notification bell. \uD83E\uDDEA",
+                        });
                       } else {
-                        setMessage({ ok: false, text: data.error || "Failed to send test notification" });
+                        setMessage({
+                          ok: false,
+                          text: data.error || "Failed to send test notification",
+                        });
                       }
                     } catch (e: any) {
-                      setMessage({ ok: false, text: e?.message || "Network error sending test notification" });
+                      setMessage({
+                        ok: false,
+                        text: e?.message || "Network error sending test notification",
+                      });
                     } finally {
                       setNotifSending(false);
                     }
                   }}
                 >
                   <div className="admin-stat-icon">{notifSending ? "\u23F3" : "\uD83E\uDDEA"}</div>
-                  <div className="admin-stat-value" style={{ fontSize: "0.85rem" }}>{notifSending ? "Sending..." : "Send Test"}</div>
+                  <div className="admin-stat-value" style={{ fontSize: "0.85rem" }}>
+                    {notifSending ? "Sending..." : "Send Test"}
+                  </div>
                   <div className="admin-stat-label">Test Notification</div>
                 </div>
               </section>
 
-              <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 24, marginTop: 24 }}>
+              <section
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
+                  gap: 24,
+                  marginTop: 24,
+                }}
+              >
                 <div className="os-card" style={{ padding: 20 }}>
-                  <h3 style={{ marginBottom: 16, fontSize: "0.85rem", textTransform: "uppercase", letterSpacing: 1, color: "var(--fg-mute)" }}>
+                  <h3
+                    style={{
+                      marginBottom: 16,
+                      fontSize: "0.85rem",
+                      textTransform: "uppercase",
+                      letterSpacing: 1,
+                      color: "var(--fg-mute)",
+                    }}
+                  >
                     Role Distribution
                   </h3>
                   {Object.entries(stats.role_distribution).map(([role, count]) => (
@@ -277,7 +322,12 @@ export default function AdminPage() {
                           className="admin-bar-fill"
                           style={{
                             width: `${stats.total_users > 0 ? (count / stats.total_users) * 100 : 0}%`,
-                            background: role === "ADMIN" ? "#6366f1" : role === "OPERATOR" ? "#f59e0b" : "#22c55e",
+                            background:
+                              role === "ADMIN"
+                                ? "#6366f1"
+                                : role === "OPERATOR"
+                                  ? "#f59e0b"
+                                  : "#22c55e",
                           }}
                         />
                       </div>
@@ -287,7 +337,15 @@ export default function AdminPage() {
                 </div>
 
                 <div className="os-card" style={{ padding: 20 }}>
-                  <h3 style={{ marginBottom: 16, fontSize: "0.85rem", textTransform: "uppercase", letterSpacing: 1, color: "var(--fg-mute)" }}>
+                  <h3
+                    style={{
+                      marginBottom: 16,
+                      fontSize: "0.85rem",
+                      textTransform: "uppercase",
+                      letterSpacing: 1,
+                      color: "var(--fg-mute)",
+                    }}
+                  >
                     Plan Distribution
                   </h3>
                   {Object.entries(stats.plan_distribution).map(([plan, count]) => (
@@ -298,7 +356,12 @@ export default function AdminPage() {
                           className="admin-bar-fill"
                           style={{
                             width: `${stats.total_workspaces > 0 ? (count / stats.total_workspaces) * 100 : 0}%`,
-                            background: plan === "enterprise" ? "#6366f1" : plan === "team" ? "#f59e0b" : "#22c55e",
+                            background:
+                              plan === "enterprise"
+                                ? "#6366f1"
+                                : plan === "team"
+                                  ? "#f59e0b"
+                                  : "#22c55e",
                           }}
                         />
                       </div>
@@ -329,14 +392,20 @@ export default function AdminPage() {
                   <tbody>
                     {users.map((user) => (
                       <tr key={user.id}>
-                        <td><strong>{user.name || "—"}</strong></td>
+                        <td>
+                          <strong>{user.name || "—"}</strong>
+                        </td>
                         <td>{user.email}</td>
                         <td>
                           {editingRole === user.id ? (
                             <select
                               value={user.role}
                               onChange={(e) => {
-                                setUsers((prev) => prev.map((u) => u.id === user.id ? { ...u, role: e.target.value } : u));
+                                setUsers((prev) =>
+                                  prev.map((u) =>
+                                    u.id === user.id ? { ...u, role: e.target.value } : u
+                                  )
+                                );
                               }}
                               className="input"
                               style={{ width: 130, fontSize: "0.8rem", padding: "2px 6px" }}
@@ -347,7 +416,9 @@ export default function AdminPage() {
                               <option value="ADMIN">ADMIN</option>
                             </select>
                           ) : (
-                            <span className={`admin-role-badge role-${user.role.toLowerCase()}`}>{user.role}</span>
+                            <span className={`admin-role-badge role-${user.role.toLowerCase()}`}>
+                              {user.role}
+                            </span>
                           )}
                         </td>
                         <td style={{ color: "var(--fg-soft)" }}>{user.member_count}</td>
@@ -358,13 +429,30 @@ export default function AdminPage() {
                           <div style={{ display: "flex", gap: 4 }}>
                             {editingRole === user.id ? (
                               <>
-                                <button className="btn btn-sm btn-primary" onClick={() => updateRole(user.id, user.role)}>Save</button>
-                                <button className="btn btn-sm" onClick={() => setEditingRole(null)}>Cancel</button>
+                                <button
+                                  className="btn btn-sm btn-primary"
+                                  onClick={() => updateRole(user.id, user.role)}
+                                >
+                                  Save
+                                </button>
+                                <button className="btn btn-sm" onClick={() => setEditingRole(null)}>
+                                  Cancel
+                                </button>
                               </>
                             ) : (
-                              <button className="btn btn-sm" onClick={() => setEditingRole(user.id)}>Role</button>
+                              <button
+                                className="btn btn-sm"
+                                onClick={() => setEditingRole(user.id)}
+                              >
+                                Role
+                              </button>
                             )}
-                            <button className="btn btn-sm btn-danger" onClick={() => deleteUser(user.id, user.email)}>Del</button>
+                            <button
+                              className="btn btn-sm btn-danger"
+                              onClick={() => deleteUser(user.id, user.email)}
+                            >
+                              Del
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -382,13 +470,35 @@ export default function AdminPage() {
               <div style={{ marginBottom: 16 }}>
                 {showCreate ? (
                   <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                    <input className="os-input" placeholder="Workspace name" value={newName} onChange={(e) => setNewName(e.target.value)} autoFocus />
-                    <input className="os-input" placeholder="slug (e.g., my-team)" value={newSlug} onChange={(e) => setNewSlug(e.target.value)} style={{ width: 160 }} />
-                    <button className="btn btn-primary" onClick={createWorkspace} disabled={!newName.trim() || !newSlug.trim()}>Create</button>
-                    <button className="btn btn-sm" onClick={() => setShowCreate(false)}>Cancel</button>
+                    <input
+                      className="os-input"
+                      placeholder="Workspace name"
+                      value={newName}
+                      onChange={(e) => setNewName(e.target.value)}
+                      autoFocus
+                    />
+                    <input
+                      className="os-input"
+                      placeholder="slug (e.g., my-team)"
+                      value={newSlug}
+                      onChange={(e) => setNewSlug(e.target.value)}
+                      style={{ width: 160 }}
+                    />
+                    <button
+                      className="btn btn-primary"
+                      onClick={createWorkspace}
+                      disabled={!newName.trim() || !newSlug.trim()}
+                    >
+                      Create
+                    </button>
+                    <button className="btn btn-sm" onClick={() => setShowCreate(false)}>
+                      Cancel
+                    </button>
                   </div>
                 ) : (
-                  <button className="btn btn-primary" onClick={() => setShowCreate(true)}>+ New Workspace</button>
+                  <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
+                    + New Workspace
+                  </button>
                 )}
               </div>
               <div style={{ overflowX: "auto" }}>
@@ -406,8 +516,12 @@ export default function AdminPage() {
                   <tbody>
                     {workspaces.map((ws) => (
                       <tr key={ws.id}>
-                        <td><strong>{ws.name}</strong></td>
-                        <td><code style={{ color: "var(--fg-soft)" }}>{ws.slug}</code></td>
+                        <td>
+                          <strong>{ws.name}</strong>
+                        </td>
+                        <td>
+                          <code style={{ color: "var(--fg-soft)" }}>{ws.slug}</code>
+                        </td>
                         <td>
                           <span className={`admin-plan-badge plan-${ws.plan}`}>{ws.plan}</span>
                         </td>
@@ -416,7 +530,12 @@ export default function AdminPage() {
                           {new Date(ws.created_at).toLocaleDateString()}
                         </td>
                         <td>
-                          <button className="btn btn-sm btn-danger" onClick={() => deleteWorkspace(ws.id, ws.name)}>Delete</button>
+                          <button
+                            className="btn btn-sm btn-danger"
+                            onClick={() => deleteWorkspace(ws.id, ws.name)}
+                          >
+                            Delete
+                          </button>
                         </td>
                       </tr>
                     ))}
@@ -482,7 +601,10 @@ function AuditLogViewer() {
           type="text"
           placeholder="Filter by action"
           value={actionFilter}
-          onChange={(e) => { setActionFilter(e.target.value); setOffset(0); }}
+          onChange={(e) => {
+            setActionFilter(e.target.value);
+            setOffset(0);
+          }}
           className="input"
           style={{ flex: 1 }}
         />
@@ -506,11 +628,20 @@ function AuditLogViewer() {
               </thead>
               <tbody>
                 {rows.length === 0 ? (
-                  <tr><td colSpan={6} style={{ textAlign: "center", color: "var(--fg-mute)", padding: 24 }}>No audit entries found</td></tr>
+                  <tr>
+                    <td
+                      colSpan={6}
+                      style={{ textAlign: "center", color: "var(--fg-mute)", padding: 24 }}
+                    >
+                      No audit entries found
+                    </td>
+                  </tr>
                 ) : (
                   rows.map((row) => (
                     <tr key={row.id} style={{ borderBottom: "1px solid var(--border)" }}>
-                      <td><code>{row.action}</code></td>
+                      <td>
+                        <code>{row.action}</code>
+                      </td>
                       <td>{row.module}</td>
                       <td>{row.email || "—"}</td>
                       <td style={{ fontSize: "0.8rem", color: "var(--fg-mute)" }}>
@@ -519,7 +650,14 @@ function AuditLogViewer() {
                       <td style={{ fontSize: "0.8rem", color: "var(--fg-mute)" }}>
                         {new Date(row.timestamp).toLocaleString()}
                       </td>
-                      <td style={{ maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      <td
+                        style={{
+                          maxWidth: 200,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
                         {JSON.stringify(row.metadata).substring(0, 60)}
                       </td>
                     </tr>
@@ -530,7 +668,11 @@ function AuditLogViewer() {
           </div>
 
           <div style={{ display: "flex", justifyContent: "space-between", marginTop: 16 }}>
-            <button onClick={() => setOffset((o) => Math.max(0, o - 50))} disabled={offset === 0} className="btn btn-sm">
+            <button
+              onClick={() => setOffset((o) => Math.max(0, o - 50))}
+              disabled={offset === 0}
+              className="btn btn-sm"
+            >
               ← Previous
             </button>
             <span style={{ fontSize: "0.8rem", color: "var(--fg-mute)" }}>

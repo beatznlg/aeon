@@ -4,10 +4,7 @@ const AEON_URL = process.env.AEON_PYTHON_URL || "http://127.0.0.1:5000";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const headers: Record<string, string> = {};
     const authHeader = req.headers.get("authorization");
@@ -30,10 +27,7 @@ export async function GET(
   }
 }
 
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const body = await req.json();
     const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -58,10 +52,7 @@ export async function PATCH(
   }
 }
 
-export async function DELETE(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const headers: Record<string, string> = {};
     const authHeader = req.headers.get("authorization");

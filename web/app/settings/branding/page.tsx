@@ -3,11 +3,7 @@
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
-import {
-  defaultThemeConfig,
-  BrandModule,
-  ThemeConfig,
-} from "@/lib/theme-config";
+import { defaultThemeConfig, BrandModule, ThemeConfig } from "@/lib/theme-config";
 import DashboardEditor from "@/components/DashboardEditor";
 import { getDefaultEnabledIds } from "@/lib/dashboard-registry";
 
@@ -18,8 +14,7 @@ function isAdmin(role?: string) {
 export default function BrandingSettingsPage() {
   const { data: session, status } = useSession();
   const user = session?.user as
-    | { id?: string; email?: string; role?: string; workspaceId?: string }
-    | undefined;
+    { id?: string; email?: string; role?: string; workspaceId?: string } | undefined;
   const workspaceId = user?.workspaceId;
 
   const [loading, setLoading] = useState(true);
@@ -33,7 +28,9 @@ export default function BrandingSettingsPage() {
   const [primaryColor, setPrimaryColor] = useState("");
   const [logoUrl, setLogoUrl] = useState("");
   const [modules, setModules] = useState<BrandModule[]>([]);
-  const [dashboardComponents, setDashboardComponents] = useState<string[]>(() => getDefaultEnabledIds());
+  const [dashboardComponents, setDashboardComponents] = useState<string[]>(() =>
+    getDefaultEnabledIds()
+  );
 
   useEffect(() => {
     if (status === "loading") return;
@@ -75,9 +72,7 @@ export default function BrandingSettingsPage() {
   }, [status, workspaceId]);
 
   const toggleModule = (id: string) => {
-    setModules((prev) =>
-      prev.map((m) => (m.id === id ? { ...m, enabled: !m.enabled } : m))
-    );
+    setModules((prev) => prev.map((m) => (m.id === id ? { ...m, enabled: !m.enabled } : m)));
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -99,14 +94,11 @@ export default function BrandingSettingsPage() {
     };
 
     try {
-      const res = await fetch(
-        `/api/workspaces/${encodeURIComponent(workspaceId)}/branding`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        }
-      );
+      const res = await fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/branding`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data.error || `Save failed (${res.status})`);
@@ -132,9 +124,7 @@ export default function BrandingSettingsPage() {
       <div className="settings-page">
         <h1>🎨 Workspace Branding</h1>
         <div className="settings-section">
-          <p className="text-aeon-fg-mute">
-            You must be a workspace admin to edit branding.
-          </p>
+          <p className="text-aeon-fg-mute">You must be a workspace admin to edit branding.</p>
         </div>
       </div>
     );
@@ -319,7 +309,10 @@ export default function BrandingSettingsPage() {
             <span style={{ fontSize: "1.2rem" }}>📋</span>
             <div>
               <h2>Dashboard Components</h2>
-              <p>Toggle which widgets appear on the main dashboard. Changes apply to all workspace members.</p>
+              <p>
+                Toggle which widgets appear on the main dashboard. Changes apply to all workspace
+                members.
+              </p>
             </div>
           </div>
           <DashboardEditor
@@ -332,11 +325,7 @@ export default function BrandingSettingsPage() {
         {/* Actions */}
         <div className="settings-section" style={{ border: "none" }}>
           <div className="flex items-center gap-3">
-            <button
-              type="submit"
-              className="btn btn-primary"
-              disabled={saving}
-            >
+            <button type="submit" className="btn btn-primary" disabled={saving}>
               {saving ? "Saving…" : "Save Branding"}
             </button>
             <Link href="/settings" className="btn">

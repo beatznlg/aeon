@@ -45,7 +45,7 @@ export async function getDefaultWorkspace(userId: string): Promise<Workspace | n
 export async function createWorkspace(
   ownerId: string,
   name: string,
-  slug: string,
+  slug: string
 ): Promise<Workspace | null> {
   const sb = getSupabaseServerClient();
   if (!sb) return null;

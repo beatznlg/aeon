@@ -3,10 +3,7 @@ import { pythonUrl } from "@/lib/kernel";
 
 export const dynamic = "force-dynamic";
 
-export async function DELETE(
-  _req: NextRequest,
-  { params }: { params: { keyId: string } }
-) {
+export async function DELETE(_req: NextRequest, { params }: { params: { keyId: string } }) {
   const url = pythonUrl();
   if (!url) {
     return NextResponse.json({ ok: false, error: "AEON_PYTHON_URL not set" }, { status: 503 });
@@ -22,10 +19,7 @@ export async function DELETE(
   }
 }
 
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: { keyId: string } }
-) {
+export async function PATCH(req: NextRequest, { params }: { params: { keyId: string } }) {
   const url = pythonUrl();
   if (!url) {
     return NextResponse.json({ ok: false, error: "AEON_PYTHON_URL not set" }, { status: 503 });

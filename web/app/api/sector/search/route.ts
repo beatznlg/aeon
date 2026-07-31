@@ -136,9 +136,7 @@ export async function GET(req: NextRequest) {
   const results: SearchResultItem[] = [];
 
   // Filter by sector if specified
-  const toolsToSearch = sector
-    ? allTools.filter((t) => t.sector === sector)
-    : allTools;
+  const toolsToSearch = sector ? allTools.filter((t) => t.sector === sector) : allTools;
 
   // Generate data for each tool and search
   for (const { sector: s, tool: t } of toolsToSearch) {

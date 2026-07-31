@@ -49,9 +49,7 @@ export default function DashboardEditor({
   const enableAll = () => onChange(all.map((c) => c.id));
   const disableAll = () => onChange([]);
 
-  const filtered = filter
-    ? all.filter((c) => c.category === filter)
-    : all;
+  const filtered = filter ? all.filter((c) => c.category === filter) : all;
 
   return (
     <div>
@@ -98,8 +96,7 @@ export default function DashboardEditor({
                   .filter((c) => !filter || c.id === "placeholder")
                   .map((comp) => {
                     const enabled = enabledComponents.includes(comp.id);
-                    const accessDenied =
-                      comp.minRole === "admin" && !isAdmin;
+                    const accessDenied = comp.minRole === "admin" && !isAdmin;
                     return (
                       <label
                         key={comp.id}
@@ -125,29 +122,23 @@ export default function DashboardEditor({
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
                             <span className="text-sm">{comp.icon}</span>
-                            <span className="text-sm font-medium text-aeon-fg">
-                              {comp.label}
-                            </span>
+                            <span className="text-sm font-medium text-aeon-fg">{comp.label}</span>
                           </div>
-                          <div className="text-xs text-aeon-fg-mute mt-0.5">
-                            {comp.description}
-                          </div>
+                          <div className="text-xs text-aeon-fg-mute mt-0.5">{comp.description}</div>
                           <div className="flex items-center gap-2 mt-1">
                             <span
                               className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[0.6rem] font-semibold uppercase tracking-wider ${
                                 comp.minRole === "admin"
                                   ? "bg-amber-400/10 text-amber-400"
                                   : comp.minRole === "operator"
-                                  ? "bg-blue-400/10 text-blue-400"
-                                  : "bg-green-400/10 text-green-400"
+                                    ? "bg-blue-400/10 text-blue-400"
+                                    : "bg-green-400/10 text-green-400"
                               }`}
                             >
                               {comp.minRole}
                             </span>
                             {accessDenied && (
-                              <span className="text-[0.6rem] text-aeon-fg-mute">
-                                Admin only
-                              </span>
+                              <span className="text-[0.6rem] text-aeon-fg-mute">Admin only</span>
                             )}
                           </div>
                         </div>

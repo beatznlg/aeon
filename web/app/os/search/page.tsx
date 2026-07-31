@@ -115,7 +115,9 @@ export default function SearchPage() {
                     href={item.href || "#"}
                     className="search-page-item"
                   >
-                    <span className="search-page-item-icon">{item.icon || TYPE_ICONS[type] || "•"}</span>
+                    <span className="search-page-item-icon">
+                      {item.icon || TYPE_ICONS[type] || "•"}
+                    </span>
                     <div className="search-page-item-body">
                       <div className="search-page-item-title">{item.title}</div>
                       {item.subtitle && (

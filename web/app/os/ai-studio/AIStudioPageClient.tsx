@@ -61,7 +61,10 @@ export default function AIStudioPageClient() {
           system,
           provider,
           model,
-          tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
+          tags: tags
+            .split(",")
+            .map((t) => t.trim())
+            .filter(Boolean),
         }),
       });
       const data = await res.json();
@@ -98,12 +101,23 @@ export default function AIStudioPageClient() {
     <div className="os-page">
       <header className="os-header">
         <div>
-          <h1 style={{ background: "var(--grad)", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>
+          <h1
+            style={{
+              background: "var(--grad)",
+              WebkitBackgroundClip: "text",
+              backgroundClip: "text",
+              color: "transparent",
+            }}
+          >
             AI Studio
           </h1>
-          <p className="dashboard-subtitle">Prompt registry, model selection, and RAG orchestration</p>
+          <p className="dashboard-subtitle">
+            Prompt registry, model selection, and RAG orchestration
+          </p>
         </div>
-        <Link href="/os" className="btn btn-secondary">← OS Launcher</Link>
+        <Link href="/os" className="btn btn-secondary">
+          ← OS Launcher
+        </Link>
       </header>
 
       {error && <div className="module-alert danger">{error}</div>}
@@ -113,27 +127,47 @@ export default function AIStudioPageClient() {
         <form onSubmit={savePrompt} className="form-grid">
           <label>
             Name
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. customer-support" required />
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. customer-support"
+              required
+            />
           </label>
           <label>
             Provider
             <select value={provider} onChange={(e) => setProvider(e.target.value)}>
               {providers.map((p) => (
-                <option key={p.value} value={p.value}>{p.label}</option>
+                <option key={p.value} value={p.value}>
+                  {p.label}
+                </option>
               ))}
             </select>
           </label>
           <label>
             Model (optional)
-            <input value={model} onChange={(e) => setModel(e.target.value)} placeholder="e.g. gpt-4o-mini" />
+            <input
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              placeholder="e.g. gpt-4o-mini"
+            />
           </label>
           <label>
             Tags (comma separated)
-            <input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="support, rag" />
+            <input
+              value={tags}
+              onChange={(e) => setTags(e.target.value)}
+              placeholder="support, rag"
+            />
           </label>
           <label className="span-2">
             System message
-            <textarea value={system} onChange={(e) => setSystem(e.target.value)} rows={3} placeholder="You are a helpful AEON assistant..." />
+            <textarea
+              value={system}
+              onChange={(e) => setSystem(e.target.value)}
+              rows={3}
+              placeholder="You are a helpful AEON assistant..."
+            />
           </label>
           <label className="span-2">
             Template
@@ -145,7 +179,9 @@ export default function AIStudioPageClient() {
               required
             />
           </label>
-          <button type="submit" className="btn btn-primary">Save Prompt</button>
+          <button type="submit" className="btn btn-primary">
+            Save Prompt
+          </button>
         </form>
       </section>
 
@@ -165,7 +201,9 @@ export default function AIStudioPageClient() {
                 </div>
                 <p className="os-desc">ID: {p.id}</p>
                 <p className="os-desc">Updated: {new Date(p.updated_at * 1000).toLocaleString()}</p>
-                <button className="btn btn-sm" onClick={() => deletePrompt(p.id)}>Delete</button>
+                <button className="btn btn-sm" onClick={() => deletePrompt(p.id)}>
+                  Delete
+                </button>
               </div>
             ))}
           </div>

@@ -158,7 +158,9 @@ export function getAllComponents(): DashboardComponent[] {
   return ALL_COMPONENTS;
 }
 
-export function getComponentsBySection(section: DashboardComponent["section"]): DashboardComponent[] {
+export function getComponentsBySection(
+  section: DashboardComponent["section"]
+): DashboardComponent[] {
   return ALL_COMPONENTS.filter((c) => c.section === section);
 }
 
@@ -170,7 +172,9 @@ export function getDefaultEnabledIds(): string[] {
   return ALL_COMPONENTS.filter((c) => c.defaultEnabled).map((c) => c.id);
 }
 
-export function getComponentsByCategory(category: DashboardComponent["category"]): DashboardComponent[] {
+export function getComponentsByCategory(
+  category: DashboardComponent["category"]
+): DashboardComponent[] {
   return ALL_COMPONENTS.filter((c) => c.category === category);
 }
 

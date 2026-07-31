@@ -158,9 +158,7 @@ export default function WorkflowBuilderPage() {
 
   const handleBlur = () => {
     if (!focusStartState.current) return;
-    if (
-      JSON.stringify(focusStartState.current) !== JSON.stringify(currentStateRef.current)
-    ) {
+    if (JSON.stringify(focusStartState.current) !== JSON.stringify(currentStateRef.current)) {
       setPast((prev) => [...prev, focusStartState.current!].slice(-50));
       setFuture([]);
     }
@@ -305,7 +303,8 @@ export default function WorkflowBuilderPage() {
     const onKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
       const tag = target?.tagName?.toLowerCase();
-      const isTyping = tag === "input" || tag === "textarea" || tag === "select" || target?.isContentEditable;
+      const isTyping =
+        tag === "input" || tag === "textarea" || tag === "select" || target?.isContentEditable;
 
       if (isTyping) {
         if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
@@ -397,7 +396,9 @@ export default function WorkflowBuilderPage() {
 
     // Set all nodes to "running" state
     const runningTrace: Record<string, "running"> = {};
-    nodes.forEach((n) => { runningTrace[n.id] = "running"; });
+    nodes.forEach((n) => {
+      runningTrace[n.id] = "running";
+    });
     setNodeTrace(runningTrace);
 
     const res = await fetch(`/api/os/workflows/${workflowId}/run`, {
@@ -419,10 +420,7 @@ export default function WorkflowBuilderPage() {
     setRunning(false);
   };
 
-  const selected = useMemo(
-    () => nodes.find((n) => n.id === selectedNode),
-    [nodes, selectedNode]
-  );
+  const selected = useMemo(() => nodes.find((n) => n.id === selectedNode), [nodes, selectedNode]);
 
   if (loading) {
     return (
@@ -526,7 +524,12 @@ export default function WorkflowBuilderPage() {
               </option>
             ))}
           </select>
-          <button className="btn btn-sm" onClick={addEdge} disabled={nodes.length < 2} style={{ marginTop: 8 }}>
+          <button
+            className="btn btn-sm"
+            onClick={addEdge}
+            disabled={nodes.length < 2}
+            style={{ marginTop: 8 }}
+          >
             Connect first two nodes
           </button>
         </div>
@@ -540,7 +543,11 @@ export default function WorkflowBuilderPage() {
               {workflows.map((w) => (
                 <li key={w.id} style={{ display: "flex", gap: 8, alignItems: "center" }}>
                   <span style={{ flex: 1 }}>{w.name}</span>
-                  <button className="btn btn-sm" onClick={() => runWorkflow(w.id)} disabled={running}>
+                  <button
+                    className="btn btn-sm"
+                    onClick={() => runWorkflow(w.id)}
+                    disabled={running}
+                  >
                     {running ? "Running…" : "Run"}
                   </button>
                 </li>
@@ -604,11 +611,7 @@ export default function WorkflowBuilderPage() {
                 const oldNodes = dragStartSnapshot.current.nodes;
                 const nodeOld = oldNodes.find((n) => n.id === draggingId);
                 const nodeNew = nodes.find((n) => n.id === draggingId);
-                if (
-                  nodeOld &&
-                  nodeNew &&
-                  (nodeOld.x !== nodeNew.x || nodeOld.y !== nodeNew.y)
-                ) {
+                if (nodeOld && nodeNew && (nodeOld.x !== nodeNew.x || nodeOld.y !== nodeNew.y)) {
                   setPast((prev) => [...prev, dragStartSnapshot.current!].slice(-50));
                   setFuture([]);
                 }
@@ -628,60 +631,71 @@ export default function WorkflowBuilderPage() {
               className="workflow-world"
               style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}
             >
-            {nodes.map((node) => {
-              const app = apps.find((a) => a.id === node.app_id);
-              const integration = integrations.find((i) => i.id === node.integration_id);
-              const isIntegration = node.type === "integration";
-              const traceStatus = nodeTrace[node.id];
-              let traceBorderColor = app?.color || "var(--accent, #6366f1)";
-              if (traceStatus === "ok") traceBorderColor = "#22c55e";
-              else if (traceStatus === "fail") traceBorderColor = "#ef4444";
-              else if (traceStatus === "running") traceBorderColor = "#f59e0b";
-              return (
-                <div
-                  key={node.id}
-                  className={`workflow-node ${selectedNode === node.id ? "selected" : ""} ${isIntegration ? "integration" : ""} ${traceStatus ? "traced" : ""}`}
-                  style={{
-                    left: node.x,
-                    top: node.y,
-                    borderColor: traceBorderColor,
-                    boxShadow: traceStatus === "running" ? "0 0 16px rgba(245, 158, 11, 0.5)" : traceStatus === "ok" ? "0 0 12px rgba(34, 197, 94, 0.3)" : undefined,
-                  }}
-                  onClick={() => setSelectedNode(node.id)}
-                  onMouseDown={(e) => {
-                    e.stopPropagation();
-                    dragStartSnapshot.current = cloneState(currentStateRef.current);
-                    setDraggingId(node.id);
-                    if (!canvasRef.current) return;
-                    const rect = canvasRef.current.getBoundingClientRect();
-                    const mx = e.clientX - rect.left;
-                    const my = e.clientY - rect.top;
-                    const wx = (mx - pan.x) / zoom;
-                    const wy = (my - pan.y) / zoom;
-                    dragOffset.current = { x: wx - node.x, y: wy - node.y };
-                  }}
-                  onMouseUp={(e) => {
-                    if (edgeDraggingSource && edgeDraggingSource !== node.id) {
-                      const exists = edges.some((edge) => edge.source === edgeDraggingSource && edge.target === node.id);
-                      if (!exists) {
-                        saveSnapshot();
-                        setEdges((prev) => [...prev, { source: edgeDraggingSource, target: node.id, condition: "always" }]);
-                      }
-                    }
-                    setEdgeDraggingSource(null);
-                    e.stopPropagation();
-                  }}
-                >
-                  <button
-                    className="workflow-node-delete"
-                    title="Remove node"
-                    onClick={(e) => {
+              {nodes.map((node) => {
+                const app = apps.find((a) => a.id === node.app_id);
+                const integration = integrations.find((i) => i.id === node.integration_id);
+                const isIntegration = node.type === "integration";
+                const traceStatus = nodeTrace[node.id];
+                let traceBorderColor = app?.color || "var(--accent, #6366f1)";
+                if (traceStatus === "ok") traceBorderColor = "#22c55e";
+                else if (traceStatus === "fail") traceBorderColor = "#ef4444";
+                else if (traceStatus === "running") traceBorderColor = "#f59e0b";
+                return (
+                  <div
+                    key={node.id}
+                    className={`workflow-node ${selectedNode === node.id ? "selected" : ""} ${isIntegration ? "integration" : ""} ${traceStatus ? "traced" : ""}`}
+                    style={{
+                      left: node.x,
+                      top: node.y,
+                      borderColor: traceBorderColor,
+                      boxShadow:
+                        traceStatus === "running"
+                          ? "0 0 16px rgba(245, 158, 11, 0.5)"
+                          : traceStatus === "ok"
+                            ? "0 0 12px rgba(34, 197, 94, 0.3)"
+                            : undefined,
+                    }}
+                    onClick={() => setSelectedNode(node.id)}
+                    onMouseDown={(e) => {
                       e.stopPropagation();
-                      removeNode(node.id);
+                      dragStartSnapshot.current = cloneState(currentStateRef.current);
+                      setDraggingId(node.id);
+                      if (!canvasRef.current) return;
+                      const rect = canvasRef.current.getBoundingClientRect();
+                      const mx = e.clientX - rect.left;
+                      const my = e.clientY - rect.top;
+                      const wx = (mx - pan.x) / zoom;
+                      const wy = (my - pan.y) / zoom;
+                      dragOffset.current = { x: wx - node.x, y: wy - node.y };
+                    }}
+                    onMouseUp={(e) => {
+                      if (edgeDraggingSource && edgeDraggingSource !== node.id) {
+                        const exists = edges.some(
+                          (edge) => edge.source === edgeDraggingSource && edge.target === node.id
+                        );
+                        if (!exists) {
+                          saveSnapshot();
+                          setEdges((prev) => [
+                            ...prev,
+                            { source: edgeDraggingSource, target: node.id, condition: "always" },
+                          ]);
+                        }
+                      }
+                      setEdgeDraggingSource(null);
+                      e.stopPropagation();
                     }}
                   >
-                    ×
-                  </button>                    <div
+                    <button
+                      className="workflow-node-delete"
+                      title="Remove node"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        removeNode(node.id);
+                      }}
+                    >
+                      ×
+                    </button>{" "}
+                    <div
                       className="workflow-node-handle"
                       title="Drag to connect"
                       onMouseDown={(e) => {
@@ -696,125 +710,179 @@ export default function WorkflowBuilderPage() {
                         setMousePos({ x: wx, y: wy });
                       }}
                     />
-                  <div className="workflow-node-title">
-                    {isIntegration ? `🔌 ${integration?.name || node.integration_id}` : `${app?.icon || ""} ${app?.name || node.app_id}`}
-                  </div>
-                  <div className="workflow-node-id">{node.id.slice(0, 6)}</div>
-                  {traceStatus && (
-                    <div className="workflow-node-trace" title={`Status: ${traceStatus}`}>
-                      {traceStatus === "ok" ? "✓" : traceStatus === "fail" ? "✗" : "⟳"}
+                    <div className="workflow-node-title">
+                      {isIntegration
+                        ? `🔌 ${integration?.name || node.integration_id}`
+                        : `${app?.icon || ""} ${app?.name || node.app_id}`}
                     </div>
-                  )}
-                </div>
-              );
-            })}
-            <svg className="workflow-edges">
-              {edges.map((edge, i) => {
-                const source = nodes.find((n) => n.id === edge.source);
-                const target = nodes.find((n) => n.id === edge.target);
-                if (!source || !target) return null;
-                const x1 = source.x + 90;
-                const y1 = source.y + 35;
-                const x2 = target.x + 90;
-                const y2 = target.y + 35;
-                const mx = (x1 + x2) / 2;
-                const my = (y1 + y2) / 2;
-                const edgeColor =
-                  edge.condition === "success"
-                    ? "#22c55e"
-                    : edge.condition === "failure"
-                    ? "#ef4444"
-                    : "var(--accent, #6366f1)";
-                const markerId = `arrow-${edge.condition || "always"}`;
-                return (
-                  <g key={i}>
-                    <line
-                      x1={x1}
-                      y1={y1}
-                      x2={x2}
-                      y2={y2}
-                      stroke="transparent"
-                      strokeWidth={12}
-                      pointerEvents="all"
-                      className="workflow-edge-hit"
-                    />
-                    <line
-                      x1={x1}
-                      y1={y1}
-                      x2={x2}
-                      y2={y2}
-                      stroke={edgeColor}
-                      strokeWidth={2}
-                      markerEnd={`url(#${markerId})`}
-                      pointerEvents="none"
-                    />
-                    <g
-                      className="workflow-edge-label"
-                      transform={`translate(${mx}, ${my - 14})`}
-                      pointerEvents="all"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        saveSnapshot();
-                        const nextCond =
-                          edge.condition === "always" ? "success" : edge.condition === "success" ? "failure" : "always";
-                        updateEdge(i, { condition: nextCond });
-                      }}
-                    >
-                      <rect x="-25" y="-10" width="50" height="20" rx="10" fill={edgeColor} />
-                      <text x={0} y={3} textAnchor="middle" fontSize={10} fill="white" fontWeight="bold" pointerEvents="none">
-                        {edge.condition}
-                      </text>
-                    </g>
-                    <g
-                      className="workflow-edge-delete"
-                      transform={`translate(${mx}, ${my + 14})`}
-                      pointerEvents="all"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        removeEdge(i);
-                      }}
-                    >
-                      <circle r={8} fill="var(--danger, #ef4444)" />
-                      <text x={0} y={3} textAnchor="middle" fontSize={10} fill="white" pointerEvents="none">
-                        ×
-                      </text>
-                    </g>
-                  </g>
+                    <div className="workflow-node-id">{node.id.slice(0, 6)}</div>
+                    {traceStatus && (
+                      <div className="workflow-node-trace" title={`Status: ${traceStatus}`}>
+                        {traceStatus === "ok" ? "✓" : traceStatus === "fail" ? "✗" : "⟳"}
+                      </div>
+                    )}
+                  </div>
                 );
               })}
-              {(() => {
-                if (!edgeDraggingSource) return null;
-                const source = nodes.find((n) => n.id === edgeDraggingSource);
-                if (!source) return null;
-                return (
-                  <line
-                    x1={source.x + 90}
-                    y1={source.y + 35}
-                    x2={mousePos.x}
-                    y2={mousePos.y}
-                    stroke="var(--accent)"
-                    strokeWidth={2}
-                    strokeDasharray="5,5"
-                    markerEnd="url(#arrow)"
-                  />
-                );
-              })()}
-              <defs>
-                <marker id="arrow-always" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
-                  <path d="M0,0 L0,6 L9,3 z" fill="var(--accent, #6366f1)" />
-                </marker>
-                <marker id="arrow-success" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
-                  <path d="M0,0 L0,6 L9,3 z" fill="#22c55e" />
-                </marker>
-                <marker id="arrow-failure" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
-                  <path d="M0,0 L0,6 L9,3 z" fill="#ef4444" />
-                </marker>
-                <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
-                  <path d="M0,0 L0,6 L9,3 z" fill="var(--accent, #6366f1)" />
-                </marker>
-              </defs>
-            </svg>
-            </div>            <div className="workflow-shortcuts">
+              <svg className="workflow-edges">
+                {edges.map((edge, i) => {
+                  const source = nodes.find((n) => n.id === edge.source);
+                  const target = nodes.find((n) => n.id === edge.target);
+                  if (!source || !target) return null;
+                  const x1 = source.x + 90;
+                  const y1 = source.y + 35;
+                  const x2 = target.x + 90;
+                  const y2 = target.y + 35;
+                  const mx = (x1 + x2) / 2;
+                  const my = (y1 + y2) / 2;
+                  const edgeColor =
+                    edge.condition === "success"
+                      ? "#22c55e"
+                      : edge.condition === "failure"
+                        ? "#ef4444"
+                        : "var(--accent, #6366f1)";
+                  const markerId = `arrow-${edge.condition || "always"}`;
+                  return (
+                    <g key={i}>
+                      <line
+                        x1={x1}
+                        y1={y1}
+                        x2={x2}
+                        y2={y2}
+                        stroke="transparent"
+                        strokeWidth={12}
+                        pointerEvents="all"
+                        className="workflow-edge-hit"
+                      />
+                      <line
+                        x1={x1}
+                        y1={y1}
+                        x2={x2}
+                        y2={y2}
+                        stroke={edgeColor}
+                        strokeWidth={2}
+                        markerEnd={`url(#${markerId})`}
+                        pointerEvents="none"
+                      />
+                      <g
+                        className="workflow-edge-label"
+                        transform={`translate(${mx}, ${my - 14})`}
+                        pointerEvents="all"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          saveSnapshot();
+                          const nextCond =
+                            edge.condition === "always"
+                              ? "success"
+                              : edge.condition === "success"
+                                ? "failure"
+                                : "always";
+                          updateEdge(i, { condition: nextCond });
+                        }}
+                      >
+                        <rect x="-25" y="-10" width="50" height="20" rx="10" fill={edgeColor} />
+                        <text
+                          x={0}
+                          y={3}
+                          textAnchor="middle"
+                          fontSize={10}
+                          fill="white"
+                          fontWeight="bold"
+                          pointerEvents="none"
+                        >
+                          {edge.condition}
+                        </text>
+                      </g>
+                      <g
+                        className="workflow-edge-delete"
+                        transform={`translate(${mx}, ${my + 14})`}
+                        pointerEvents="all"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removeEdge(i);
+                        }}
+                      >
+                        <circle r={8} fill="var(--danger, #ef4444)" />
+                        <text
+                          x={0}
+                          y={3}
+                          textAnchor="middle"
+                          fontSize={10}
+                          fill="white"
+                          pointerEvents="none"
+                        >
+                          ×
+                        </text>
+                      </g>
+                    </g>
+                  );
+                })}
+                {(() => {
+                  if (!edgeDraggingSource) return null;
+                  const source = nodes.find((n) => n.id === edgeDraggingSource);
+                  if (!source) return null;
+                  return (
+                    <line
+                      x1={source.x + 90}
+                      y1={source.y + 35}
+                      x2={mousePos.x}
+                      y2={mousePos.y}
+                      stroke="var(--accent)"
+                      strokeWidth={2}
+                      strokeDasharray="5,5"
+                      markerEnd="url(#arrow)"
+                    />
+                  );
+                })()}
+                <defs>
+                  <marker
+                    id="arrow-always"
+                    markerWidth="10"
+                    markerHeight="10"
+                    refX="9"
+                    refY="3"
+                    orient="auto"
+                    markerUnits="strokeWidth"
+                  >
+                    <path d="M0,0 L0,6 L9,3 z" fill="var(--accent, #6366f1)" />
+                  </marker>
+                  <marker
+                    id="arrow-success"
+                    markerWidth="10"
+                    markerHeight="10"
+                    refX="9"
+                    refY="3"
+                    orient="auto"
+                    markerUnits="strokeWidth"
+                  >
+                    <path d="M0,0 L0,6 L9,3 z" fill="#22c55e" />
+                  </marker>
+                  <marker
+                    id="arrow-failure"
+                    markerWidth="10"
+                    markerHeight="10"
+                    refX="9"
+                    refY="3"
+                    orient="auto"
+                    markerUnits="strokeWidth"
+                  >
+                    <path d="M0,0 L0,6 L9,3 z" fill="#ef4444" />
+                  </marker>
+                  <marker
+                    id="arrow"
+                    markerWidth="10"
+                    markerHeight="10"
+                    refX="9"
+                    refY="3"
+                    orient="auto"
+                    markerUnits="strokeWidth"
+                  >
+                    <path d="M0,0 L0,6 L9,3 z" fill="var(--accent, #6366f1)" />
+                  </marker>
+                </defs>
+              </svg>
+            </div>{" "}
+            <div className="workflow-shortcuts">
               <strong>Shortcuts</strong>
               <div>Undo: ⌘Z / Ctrl+Z</div>
               <div>Redo: ⌘⇧Z / Ctrl+Shift+Z</div>
@@ -824,7 +892,8 @@ export default function WorkflowBuilderPage() {
               <div>Save: ⌘S / Ctrl+S</div>
               <div>Reset: 0</div>
             </div>
-            <div style={{
+            <div
+              style={{
                 position: "absolute",
                 bottom: 16,
                 right: 16,
@@ -835,10 +904,20 @@ export default function WorkflowBuilderPage() {
                 alignItems: "center",
               }}
             >
-              <button className="btn btn-sm" onClick={undo} disabled={past.length === 0} title="Undo (⌘Z / Ctrl+Z)">
+              <button
+                className="btn btn-sm"
+                onClick={undo}
+                disabled={past.length === 0}
+                title="Undo (⌘Z / Ctrl+Z)"
+              >
                 ⟲ Undo
               </button>
-              <button className="btn btn-sm" onClick={redo} disabled={future.length === 0} title="Redo (⌘⇧Z / Ctrl+Shift+Z)">
+              <button
+                className="btn btn-sm"
+                onClick={redo}
+                disabled={future.length === 0}
+                title="Redo (⌘⇧Z / Ctrl+Shift+Z)"
+              >
                 ⟳ Redo
               </button>
               <button className="btn btn-sm" onClick={clearDraft} title="Clear draft">
@@ -848,7 +927,13 @@ export default function WorkflowBuilderPage() {
               <button className="btn btn-sm" onClick={() => setZoom((z) => Math.max(0.2, z - 0.2))}>
                 −
               </button>
-              <button className="btn btn-sm" onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }}>
+              <button
+                className="btn btn-sm"
+                onClick={() => {
+                  setZoom(1);
+                  setPan({ x: 0, y: 0 });
+                }}
+              >
                 Reset
               </button>
               <button className="btn btn-sm" onClick={() => setZoom((z) => Math.min(3, z + 0.2))}>
@@ -877,7 +962,10 @@ export default function WorkflowBuilderPage() {
               const maxY = Math.max(...ys);
               const contentW = Math.max(mapW, maxX - minX + 180);
               const contentH = Math.max(mapH, maxY - minY + 70);
-              const scale = Math.min((mapW - padding * 2) / contentW, (mapH - padding * 2) / contentH);
+              const scale = Math.min(
+                (mapW - padding * 2) / contentW,
+                (mapH - padding * 2) / contentH
+              );
               const offsetX = (mapW - (maxX - minX + 180) * scale) / 2;
               const offsetY = (mapH - (maxY - minY + 70) * scale) / 2;
               const toMiniX = (x: number) => (x - minX + 90) * scale + offsetX;
@@ -901,7 +989,15 @@ export default function WorkflowBuilderPage() {
                   }}
                 >
                   <svg width={mapW} height={mapH}>
-                    <rect x={0} y={0} width={mapW} height={mapH} fill="var(--bg, #1e293b)" opacity={0.8} rx={8} />
+                    <rect
+                      x={0}
+                      y={0}
+                      width={mapW}
+                      height={mapH}
+                      fill="var(--bg, #1e293b)"
+                      opacity={0.8}
+                      rx={8}
+                    />
                     {edges.map((edge, i) => {
                       const source = nodes.find((n) => n.id === edge.source);
                       const target = nodes.find((n) => n.id === edge.target);
@@ -988,7 +1084,7 @@ export default function WorkflowBuilderPage() {
                     <option>DELETE</option>
                   </select>
                   <label className="os-label" style={{ marginTop: 8 }}>
-                    JSON Payload (use {'{input}'} for previous output)
+                    JSON Payload (use {"{input}"} for previous output)
                   </label>
                   <textarea
                     className="os-input"
@@ -1051,7 +1147,11 @@ export default function WorkflowBuilderPage() {
                 onFocus={handleFocus}
                 onBlur={handleBlur}
               />
-              <button className="btn btn-danger" onClick={() => removeNode(selected.id)} style={{ marginTop: 12 }}>
+              <button
+                className="btn btn-danger"
+                onClick={() => removeNode(selected.id)}
+                style={{ marginTop: 12 }}
+              >
                 Remove Node
               </button>
             </>
@@ -1067,7 +1167,8 @@ export default function WorkflowBuilderPage() {
               <div key={i} className="module-alert" style={{ marginBottom: 8 }}>
                 <small>
                   {edge.source.slice(0, 6)} → {edge.target.slice(0, 6)}
-                </small>                  <select
+                </small>{" "}
+                <select
                   className="os-input"
                   value={edge.condition}
                   onChange={(e) => {
@@ -1076,12 +1177,15 @@ export default function WorkflowBuilderPage() {
                   }}
                   style={{ marginTop: 4 }}
                 >
-
                   <option value="always">always</option>
                   <option value="success">success</option>
                   <option value="failure">failure</option>
                 </select>
-                <button className="btn btn-sm" onClick={() => removeEdge(i)} style={{ marginTop: 4 }}>
+                <button
+                  className="btn btn-sm"
+                  onClick={() => removeEdge(i)}
+                  style={{ marginTop: 4 }}
+                >
                   Remove
                 </button>
               </div>
@@ -1098,7 +1202,9 @@ export default function WorkflowBuilderPage() {
               <div className="run-summary-bar">
                 <span className="run-summary-ok">✓ {runResult.summary.ok_nodes} succeeded</span>
                 {runResult.summary.failed_nodes > 0 && (
-                  <span className="run-summary-fail">✗ {runResult.summary.failed_nodes} failed</span>
+                  <span className="run-summary-fail">
+                    ✗ {runResult.summary.failed_nodes} failed
+                  </span>
                 )}
                 <span className="run-summary-total">{runResult.summary.total_nodes} nodes</span>
                 <span className="run-summary-latency">
@@ -1108,7 +1214,9 @@ export default function WorkflowBuilderPage() {
                   <span className="run-summary-provider">Provider: {runResult.provider}</span>
                 )}
                 {runResult.workspace_id && (
-                  <span className="run-summary-workspace">Workspace: {runResult.workspace_id.slice(0, 8)}</span>
+                  <span className="run-summary-workspace">
+                    Workspace: {runResult.workspace_id.slice(0, 8)}
+                  </span>
                 )}
               </div>
               {runResult.results && (
@@ -1125,9 +1233,7 @@ export default function WorkflowBuilderPage() {
                           <span className="run-result-latency">{r.latency_s.toFixed(2)}s</span>
                         )}
                       </div>
-                      {!r.ok && r.error && (
-                        <div className="run-result-error">{r.error}</div>
-                      )}
+                      {!r.ok && r.error && <div className="run-result-error">{r.error}</div>}
                     </div>
                   ))}
                 </div>

@@ -53,7 +53,9 @@ export default function IntegrationsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [activeTab, setActiveTab] = useState<"connectors" | "marketplace" | "webhooks">("connectors");
+  const [activeTab, setActiveTab] = useState<"connectors" | "marketplace" | "webhooks">(
+    "connectors"
+  );
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
   const [healthResults, setHealthResults] = useState<Record<string, any>>({});
   const [healthChecking, setHealthChecking] = useState(false);
@@ -238,7 +240,9 @@ export default function IntegrationsPage() {
   if (loading) {
     return (
       <div className="os-page">
-        <div style={{ padding: 40, textAlign: "center", color: "var(--fg-mute)" }}>Loading integrations…</div>
+        <div style={{ padding: 40, textAlign: "center", color: "var(--fg-mute)" }}>
+          Loading integrations…
+        </div>
       </div>
     );
   }
@@ -247,9 +251,13 @@ export default function IntegrationsPage() {
     <div className="os-page">
       <header className="os-header">
         <div>
-          <Link href="/os" className="os-back">← OS Launcher</Link>
+          <Link href="/os" className="os-back">
+            ← OS Launcher
+          </Link>
           <h1>🔗 API Gateway & Integrations</h1>
-          <p className="dashboard-subtitle">Connect AEON to external REST APIs, webhooks, and third-party services</p>
+          <p className="dashboard-subtitle">
+            Connect AEON to external REST APIs, webhooks, and third-party services
+          </p>
         </div>
       </header>
 
@@ -257,13 +265,22 @@ export default function IntegrationsPage() {
 
       {/* ── Tabs ── */}
       <div className="login-tabs" style={{ marginBottom: 20 }}>
-        <button className={`login-tab ${activeTab === "connectors" ? "active" : ""}`} onClick={() => setActiveTab("connectors")}>
+        <button
+          className={`login-tab ${activeTab === "connectors" ? "active" : ""}`}
+          onClick={() => setActiveTab("connectors")}
+        >
           🔌 Connectors ({integrations.length})
         </button>
-        <button className={`login-tab ${activeTab === "marketplace" ? "active" : ""}`} onClick={() => setActiveTab("marketplace")}>
+        <button
+          className={`login-tab ${activeTab === "marketplace" ? "active" : ""}`}
+          onClick={() => setActiveTab("marketplace")}
+        >
           🏪 Marketplace
         </button>
-        <button className={`login-tab ${activeTab === "webhooks" ? "active" : ""}`} onClick={() => setActiveTab("webhooks")}>
+        <button
+          className={`login-tab ${activeTab === "webhooks" ? "active" : ""}`}
+          onClick={() => setActiveTab("webhooks")}
+        >
           📡 Webhooks
         </button>
       </div>
@@ -287,7 +304,9 @@ export default function IntegrationsPage() {
                 style={{ marginTop: 8 }}
               >
                 {TYPES.map((t) => (
-                  <option key={t} value={t}>{ICONS[t] || "🔌"} {t}</option>
+                  <option key={t} value={t}>
+                    {ICONS[t] || "🔌"} {t}
+                  </option>
                 ))}
               </select>
               <input
@@ -297,7 +316,15 @@ export default function IntegrationsPage() {
                 onChange={(e) => setForm({ ...form, base_url: e.target.value })}
                 style={{ marginTop: 8 }}
               />
-              <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, color: "var(--fg-soft)" }}>
+              <label
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  marginTop: 8,
+                  color: "var(--fg-soft)",
+                }}
+              >
                 <input
                   type="checkbox"
                   checked={form.enabled}
@@ -308,27 +335,66 @@ export default function IntegrationsPage() {
 
               <h4 style={{ marginTop: 16 }}>🔐 Secrets</h4>
               <div style={{ display: "flex", gap: 8 }}>
-                <input className="os-input" placeholder="key" value={secretKey} onChange={(e) => setSecretKey(e.target.value)} />
-                <input className="os-input" placeholder="value" value={secretValue} onChange={(e) => setSecretValue(e.target.value)} type="password" />
-                <button className="btn btn-sm" onClick={addSecret}>Add</button>
+                <input
+                  className="os-input"
+                  placeholder="key"
+                  value={secretKey}
+                  onChange={(e) => setSecretKey(e.target.value)}
+                />
+                <input
+                  className="os-input"
+                  placeholder="value"
+                  value={secretValue}
+                  onChange={(e) => setSecretValue(e.target.value)}
+                  type="password"
+                />
+                <button className="btn btn-sm" onClick={addSecret}>
+                  Add
+                </button>
               </div>
               {Object.entries(form.secrets).map(([k, v]) => (
-                <div key={k} className="module-alert" style={{ marginTop: 8, display: "flex", justifyContent: "space-between" }}>
+                <div
+                  key={k}
+                  className="module-alert"
+                  style={{ marginTop: 8, display: "flex", justifyContent: "space-between" }}
+                >
                   <code>{k}</code>
-                  <button className="btn btn-sm" onClick={() => removeSecret(k)}>×</button>
+                  <button className="btn btn-sm" onClick={() => removeSecret(k)}>
+                    ×
+                  </button>
                 </div>
               ))}
 
               <h4 style={{ marginTop: 16 }}>⚙️ Options</h4>
               <div style={{ display: "flex", gap: 8 }}>
-                <input className="os-input" placeholder="key" value={optionKey} onChange={(e) => setOptionKey(e.target.value)} />
-                <input className="os-input" placeholder="value" value={optionValue} onChange={(e) => setOptionValue(e.target.value)} />
-                <button className="btn btn-sm" onClick={addOption}>Add</button>
+                <input
+                  className="os-input"
+                  placeholder="key"
+                  value={optionKey}
+                  onChange={(e) => setOptionKey(e.target.value)}
+                />
+                <input
+                  className="os-input"
+                  placeholder="value"
+                  value={optionValue}
+                  onChange={(e) => setOptionValue(e.target.value)}
+                />
+                <button className="btn btn-sm" onClick={addOption}>
+                  Add
+                </button>
               </div>
               {Object.entries(form.options).map(([k, v]) => (
-                <div key={k} className="module-alert" style={{ marginTop: 8, display: "flex", justifyContent: "space-between" }}>
-                  <code>{k}: {String(v)}</code>
-                  <button className="btn btn-sm" onClick={() => removeOption(k)}>×</button>
+                <div
+                  key={k}
+                  className="module-alert"
+                  style={{ marginTop: 8, display: "flex", justifyContent: "space-between" }}
+                >
+                  <code>
+                    {k}: {String(v)}
+                  </code>
+                  <button className="btn btn-sm" onClick={() => removeOption(k)}>
+                    ×
+                  </button>
                 </div>
               ))}
 
@@ -342,42 +408,92 @@ export default function IntegrationsPage() {
               />
 
               <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
-                <button className="btn btn-primary" onClick={save}>💾 Save</button>
-                {form.id && <button className="btn btn-sm" onClick={resetForm}>New</button>}
+                <button className="btn btn-primary" onClick={save}>
+                  💾 Save
+                </button>
+                {form.id && (
+                  <button className="btn btn-sm" onClick={resetForm}>
+                    New
+                  </button>
+                )}
               </div>
             </div>
 
             <div className="module-widget">
               <h3>🔌 Configured Connectors ({integrations.length})</h3>
               {integrations.length === 0 ? (
-                <p className="module-empty">No integrations yet. Browse the Marketplace tab to add one.</p>
+                <p className="module-empty">
+                  No integrations yet. Browse the Marketplace tab to add one.
+                </p>
               ) : (
                 <>
-                  <button className="btn btn-sm" onClick={runHealthCheck} disabled={healthChecking} style={{ marginBottom: 12 }}>
+                  <button
+                    className="btn btn-sm"
+                    onClick={runHealthCheck}
+                    disabled={healthChecking}
+                    style={{ marginBottom: 12 }}
+                  >
                     {healthChecking ? "Checking..." : "🩺 Run Health Check"}
                   </button>
                   <ul className="os-goal-list">
                     {integrations.map((item) => {
                       const health = healthResults[item.id];
                       return (
-                        <li key={item.id} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", padding: "8px 0", borderBottom: "1px solid var(--border, #1e293b)" }}>
-                          <span className="integration-status-dot" style={{
-                            width: 10, height: 10, borderRadius: "50%", flexShrink: 0,
-                            background: health ? (health.ok ? "#22c55e" : "#ef4444") : item.enabled ? "#6366f1" : "#71717a",
-                            boxShadow: health?.ok ? "0 0 6px rgba(34,197,94,0.5)" : "none",
-                          }} />
+                        <li
+                          key={item.id}
+                          style={{
+                            display: "flex",
+                            gap: 8,
+                            alignItems: "center",
+                            flexWrap: "wrap",
+                            padding: "8px 0",
+                            borderBottom: "1px solid var(--border, #1e293b)",
+                          }}
+                        >
+                          <span
+                            className="integration-status-dot"
+                            style={{
+                              width: 10,
+                              height: 10,
+                              borderRadius: "50%",
+                              flexShrink: 0,
+                              background: health
+                                ? health.ok
+                                  ? "#22c55e"
+                                  : "#ef4444"
+                                : item.enabled
+                                  ? "#6366f1"
+                                  : "#71717a",
+                              boxShadow: health?.ok ? "0 0 6px rgba(34,197,94,0.5)" : "none",
+                            }}
+                          />
                           <span style={{ flex: 1 }}>
                             <strong>{item.name}</strong>
-                            <span className="os-status-pill active" style={{ marginLeft: 6 }}>{item.type}</span>
+                            <span className="os-status-pill active" style={{ marginLeft: 6 }}>
+                              {item.type}
+                            </span>
                             <br />
-                            <small style={{ color: item.enabled ? "var(--fg-soft)" : "var(--fg-mute)" }}>
+                            <small
+                              style={{ color: item.enabled ? "var(--fg-soft)" : "var(--fg-mute)" }}
+                            >
                               {item.enabled ? "active" : "disabled"}
-                              {health?.latency_s !== undefined && ` · ${(health.latency_s * 1000).toFixed(0)}ms`}
+                              {health?.latency_s !== undefined &&
+                                ` · ${(health.latency_s * 1000).toFixed(0)}ms`}
                             </small>
                           </span>
-                          <button className="btn btn-sm" onClick={() => selectForEdit(item)}>Edit</button>
-                          <button className="btn btn-sm" onClick={() => run(item.id)} disabled={runLoading}>Run</button>
-                          <button className="btn btn-sm btn-danger" onClick={() => remove(item.id)}>×</button>
+                          <button className="btn btn-sm" onClick={() => selectForEdit(item)}>
+                            Edit
+                          </button>
+                          <button
+                            className="btn btn-sm"
+                            onClick={() => run(item.id)}
+                            disabled={runLoading}
+                          >
+                            Run
+                          </button>
+                          <button className="btn btn-sm btn-danger" onClick={() => remove(item.id)}>
+                            ×
+                          </button>
                         </li>
                       );
                     })}
@@ -400,7 +516,8 @@ export default function IntegrationsPage() {
       {activeTab === "marketplace" && (
         <section>
           <p style={{ marginBottom: 16, color: "var(--fg-soft)" }}>
-            Browse available integration types. Click &quot;Add&quot; to create a new connector pre-configured for that type.
+            Browse available integration types. Click &quot;Add&quot; to create a new connector
+            pre-configured for that type.
           </p>
           <div className="integration-marketplace">
             {catalog.map((item) => (
@@ -435,22 +552,45 @@ export default function IntegrationsPage() {
               <h3>📡 Webhook Endpoints</h3>
               {integrations.filter((i) => i.webhook_secret).length === 0 ? (
                 <p className="module-empty">
-                  No webhook endpoints configured. Edit a connector and add a <strong>webhook_secret</strong> to enable webhook verification.
+                  No webhook endpoints configured. Edit a connector and add a{" "}
+                  <strong>webhook_secret</strong> to enable webhook verification.
                 </p>
               ) : (
                 <ul className="os-goal-list">
-                  {integrations.filter((i) => i.webhook_secret).map((item) => (
-                    <li key={item.id} style={{ padding: "12px 0", borderBottom: "1px solid var(--border, #1e293b)" }}>
-                      <strong>{item.name}</strong>
-                      <span className="os-status-pill active" style={{ marginLeft: 8 }}>{item.type}</span>
-                      <div style={{ marginTop: 8, fontSize: "0.8rem", color: "var(--fg-soft)" }}>
-                        <div>Receive URL: <code style={{ fontSize: "0.75rem", background: "var(--bg)", padding: "2px 6px", borderRadius: 4 }}>
-                          POST /webhooks/receive/{item.id}
-                        </code></div>
-                        <div style={{ marginTop: 4 }}>Signing secret: <code style={{ fontSize: "0.75rem" }}>********</code></div>
-                      </div>
-                    </li>
-                  ))}
+                  {integrations
+                    .filter((i) => i.webhook_secret)
+                    .map((item) => (
+                      <li
+                        key={item.id}
+                        style={{
+                          padding: "12px 0",
+                          borderBottom: "1px solid var(--border, #1e293b)",
+                        }}
+                      >
+                        <strong>{item.name}</strong>
+                        <span className="os-status-pill active" style={{ marginLeft: 8 }}>
+                          {item.type}
+                        </span>
+                        <div style={{ marginTop: 8, fontSize: "0.8rem", color: "var(--fg-soft)" }}>
+                          <div>
+                            Receive URL:{" "}
+                            <code
+                              style={{
+                                fontSize: "0.75rem",
+                                background: "var(--bg)",
+                                padding: "2px 6px",
+                                borderRadius: 4,
+                              }}
+                            >
+                              POST /webhooks/receive/{item.id}
+                            </code>
+                          </div>
+                          <div style={{ marginTop: 4 }}>
+                            Signing secret: <code style={{ fontSize: "0.75rem" }}>********</code>
+                          </div>
+                        </div>
+                      </li>
+                    ))}
                 </ul>
               )}
             </div>
@@ -463,18 +603,33 @@ export default function IntegrationsPage() {
                   {deliveries.slice(0, 30).map((d) => (
                     <details key={d.id} className="module-alert" style={{ marginBottom: 2 }}>
                       <summary style={{ cursor: "pointer", fontSize: "0.8rem" }}>
-                        <span style={{ color: d.response_status < 400 ? "#22c55e" : "#ef4444", fontWeight: 600 }}>
+                        <span
+                          style={{
+                            color: d.response_status < 400 ? "#22c55e" : "#ef4444",
+                            fontWeight: 600,
+                          }}
+                        >
                           [{d.response_status}]
-                        </span>{' '}
-                        {d.integration_id}{' '}
+                        </span>{" "}
+                        {d.integration_id}{" "}
                         <span style={{ color: "var(--fg-mute)" }}>
                           {new Date(d.timestamp * 1000).toLocaleString()}
                         </span>
                       </summary>
-                      <pre className="os-pre" style={{ fontSize: "0.72rem", maxHeight: 150, overflow: "auto" }}>
+                      <pre
+                        className="os-pre"
+                        style={{ fontSize: "0.72rem", maxHeight: 150, overflow: "auto" }}
+                      >
                         {JSON.stringify(d.payload, null, 2)}
                       </pre>
-                      {d.error_message && <div className="module-alert danger" style={{ fontSize: "0.8rem", padding: 6 }}>{d.error_message}</div>}
+                      {d.error_message && (
+                        <div
+                          className="module-alert danger"
+                          style={{ fontSize: "0.8rem", padding: 6 }}
+                        >
+                          {d.error_message}
+                        </div>
+                      )}
                     </details>
                   ))}
                 </div>

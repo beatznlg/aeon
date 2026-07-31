@@ -22,16 +22,18 @@ import {
   SectorDashboardProvider,
   useSectorDataContext,
 } from "../../../components/SectorDashboardProvider";
-import {
-  LiveMonitorBar,
-  LiveMonitorWidget,
-  AlertBanner,
-} from "../../../components/LiveMonitor";
+import { LiveMonitorBar, LiveMonitorWidget, AlertBanner } from "../../../components/LiveMonitor";
 import { ModuleChat } from "../../../components/ModuleChat";
 import SectorDashboardEditor from "../../../components/SectorDashboardEditor";
 import { LiveIndicator } from "../../../components/LiveIndicator";
 import { AnimatedWidget, AnimatedKPICard } from "../../../components/RefreshAnimations";
-import { motion, FadeIn, StaggerContainer, StaggerItem, ScaleOnHover } from "@/components/animations";
+import {
+  motion,
+  FadeIn,
+  StaggerContainer,
+  StaggerItem,
+  ScaleOnHover,
+} from "@/components/animations";
 
 /**
  * Inner component that reads assembled sector data from SectorDashboardProvider
@@ -45,19 +47,33 @@ function SectorDashboardInner({ sectorId }: { sectorId: string | undefined }) {
       <div className="skeleton-page" role="status" aria-label="Loading sector intelligence">
         <span className="sr-only">Loading sector data…</span>
         <div className="dashboard-grid mb-6">
-          {[1,2,3,4].map(i => (
+          {[1, 2, 3, 4].map((i) => (
             <div key={i} className="skeleton-stat">
-              <div className="skeleton-shimmer" style={{ height: "1.75rem", width: "40%", borderRadius: "var(--aeon-radius)" }} />
+              <div
+                className="skeleton-shimmer"
+                style={{ height: "1.75rem", width: "40%", borderRadius: "var(--aeon-radius)" }}
+              />
               <div className="skeleton-shimmer" style={{ height: "0.7rem", width: "50%" }} />
             </div>
           ))}
         </div>
         <div className="skeleton-grid" style={{ "--skeleton-cols": 2 } as React.CSSProperties}>
-          {[1,2].map(i => (
-            <div key={i} className="skeleton-card" style={{ flexDirection: "column", padding: "1rem" }}>
-              <div className="skeleton-shimmer" style={{ height: "0.9rem", width: "40%", marginBottom: "0.75rem" }} />
-              {[1,2,3].map(j => (
-                <div key={j} className="skeleton-shimmer" style={{ height: "0.7rem", width: "100%", marginBottom: "0.5rem" }} />
+          {[1, 2].map((i) => (
+            <div
+              key={i}
+              className="skeleton-card"
+              style={{ flexDirection: "column", padding: "1rem" }}
+            >
+              <div
+                className="skeleton-shimmer"
+                style={{ height: "0.9rem", width: "40%", marginBottom: "0.75rem" }}
+              />
+              {[1, 2, 3].map((j) => (
+                <div
+                  key={j}
+                  className="skeleton-shimmer"
+                  style={{ height: "0.7rem", width: "100%", marginBottom: "0.5rem" }}
+                />
               ))}
             </div>
           ))}
@@ -73,17 +89,28 @@ function SectorDashboardInner({ sectorId }: { sectorId: string | undefined }) {
   // Wrap the dashboard with a layout animation container that animates on data refreshes
   const dashboardContent = (() => {
     switch (sectorId) {
-      case "cybersecurity": return <CyberSecurityDashboard data={data} />;
-      case "health": return <HealthDashboard data={data} />;
-      case "finance": return <FinanceDashboard data={data} />;
-      case "retail": return <RetailDashboard data={data} />;
-      case "transport": return <TransportDashboard data={data} />;
-      case "manufacturing": return <ManufacturingDashboard data={data} />;
-      case "tourism": return <TourismDashboard data={data} />;
-      case "utilities": return <UtilitiesDashboard data={data} />;
-      case "cultural_heritage": return <CulturalHeritageDashboard data={data} />;
-      case "sme": return <SMEDashboard data={data} />;
-      default: return null;
+      case "cybersecurity":
+        return <CyberSecurityDashboard data={data} />;
+      case "health":
+        return <HealthDashboard data={data} />;
+      case "finance":
+        return <FinanceDashboard data={data} />;
+      case "retail":
+        return <RetailDashboard data={data} />;
+      case "transport":
+        return <TransportDashboard data={data} />;
+      case "manufacturing":
+        return <ManufacturingDashboard data={data} />;
+      case "tourism":
+        return <TourismDashboard data={data} />;
+      case "utilities":
+        return <UtilitiesDashboard data={data} />;
+      case "cultural_heritage":
+        return <CulturalHeritageDashboard data={data} />;
+      case "sme":
+        return <SMEDashboard data={data} />;
+      default:
+        return null;
     }
   })();
 
@@ -140,9 +167,12 @@ export default function AppPageClient() {
         <div className="skeleton-page" role="status" aria-label="Loading module">
           <span className="sr-only">Loading module data…</span>
           <div className="skeleton-grid" style={{ "--skeleton-cols": 3 } as React.CSSProperties}>
-            {[1,2,3].map(i => (
+            {[1, 2, 3].map((i) => (
               <div key={i} className="skeleton-card" style={{ flexDirection: "column" }}>
-                <div className="skeleton-shimmer" style={{ height: "1.2rem", width: "50%", marginBottom: "0.75rem" }} />
+                <div
+                  className="skeleton-shimmer"
+                  style={{ height: "1.2rem", width: "50%", marginBottom: "0.75rem" }}
+                />
                 <div className="skeleton-shimmer" style={{ height: "0.7rem", width: "80%" }} />
                 <div className="skeleton-shimmer" style={{ height: "0.7rem", width: "60%" }} />
               </div>
@@ -153,8 +183,16 @@ export default function AppPageClient() {
     }
 
     const sectorAppIds = [
-      "cybersecurity", "health", "finance", "retail", "transport",
-      "manufacturing", "tourism", "utilities", "cultural_heritage", "sme",
+      "cybersecurity",
+      "health",
+      "finance",
+      "retail",
+      "transport",
+      "manufacturing",
+      "tourism",
+      "utilities",
+      "cultural_heritage",
+      "sme",
     ];
 
     if (!sectorAppIds.includes(appId || "")) {
@@ -177,78 +215,120 @@ export default function AppPageClient() {
 
   function renderSectorDashboard(id: string | undefined, data: DashboardData) {
     switch (id) {
-      case "cybersecurity": return <CyberSecurityDashboard data={data} />;
-      case "retail": return <RetailDashboard data={data} />;
-      case "manufacturing": return <ManufacturingDashboard data={data} />;
-      case "professional": return <ProfessionalDashboard data={data} />;
-      case "tourism": return <TourismDashboard data={data} />;
-      case "health": return <HealthDashboard data={data} />;
-      case "transport": return <TransportDashboard data={data} />;
-      case "finance": return <FinanceDashboard data={data} />;
-      case "cultural_heritage": return <CulturalHeritageDashboard data={data} />;
-      case "utilities": return <UtilitiesDashboard data={data} />;
-      case "sme": return <SMEDashboard data={data} />;
-      default: return null;
+      case "cybersecurity":
+        return <CyberSecurityDashboard data={data} />;
+      case "retail":
+        return <RetailDashboard data={data} />;
+      case "manufacturing":
+        return <ManufacturingDashboard data={data} />;
+      case "professional":
+        return <ProfessionalDashboard data={data} />;
+      case "tourism":
+        return <TourismDashboard data={data} />;
+      case "health":
+        return <HealthDashboard data={data} />;
+      case "transport":
+        return <TransportDashboard data={data} />;
+      case "finance":
+        return <FinanceDashboard data={data} />;
+      case "cultural_heritage":
+        return <CulturalHeritageDashboard data={data} />;
+      case "utilities":
+        return <UtilitiesDashboard data={data} />;
+      case "sme":
+        return <SMEDashboard data={data} />;
+      default:
+        return null;
     }
   }
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }}>
-    <div className="os-app-page">
-      <FadeIn y={10} delay={0}>
-      <header className="os-app-header">
-        <div>
-          <Link href="/os" className="os-back">← OS Launcher</Link>
-          <h1>{app?.icon} {app?.name}</h1>
-          <p>{app?.description}</p>
-        </div>
-        <div className="os-app-meta">
-          {vitals && (
-            <>
-              <span>Balance: {vitals.ledger_balance?.toFixed?.(4) ?? vitals.ledger_balance} ETH</span>
-              <span>Goals: {vitals.open_goals?.length ?? 0}</span>
-              <span>Uptime: {vitals?.vitals?.uptime_s}s</span>
-            </>
-          )}
-        </div>
-      </header>
-      </FadeIn>
+      <div className="os-app-page">
+        <FadeIn y={10} delay={0}>
+          <header className="os-app-header">
+            <div>
+              <Link href="/os" className="os-back">
+                ← OS Launcher
+              </Link>
+              <h1>
+                {app?.icon} {app?.name}
+              </h1>
+              <p>{app?.description}</p>
+            </div>
+            <div className="os-app-meta">
+              {vitals && (
+                <>
+                  <span>
+                    Balance: {vitals.ledger_balance?.toFixed?.(4) ?? vitals.ledger_balance} ETH
+                  </span>
+                  <span>Goals: {vitals.open_goals?.length ?? 0}</span>
+                  <span>Uptime: {vitals?.vitals?.uptime_s}s</span>
+                </>
+              )}
+            </div>
+          </header>
+        </FadeIn>
 
-      {/* ── Alerts ──────────────────────────────────── */}
-      <FadeIn y={10} delay={0.05}><AlertBanner /></FadeIn>
+        {/* ── Alerts ──────────────────────────────────── */}
+        <FadeIn y={10} delay={0.05}>
+          <AlertBanner />
+        </FadeIn>
 
-      {/* ── Live Monitoring Bar ──────────────────────── */}
-      <FadeIn y={10} delay={0.1}><LiveMonitorBar appId={appId} /></FadeIn>
+        {/* ── Live Monitoring Bar ──────────────────────── */}
+        <FadeIn y={10} delay={0.1}>
+          <LiveMonitorBar appId={appId} />
+        </FadeIn>
 
-      {renderDashboard()}
+        {renderDashboard()}
 
-      {/* ── Inline Editor for sector apps ────────────── */}
-      {appId && ["cybersecurity","health","finance","retail","transport","manufacturing","tourism","utilities","cultural_heritage","sme"].includes(appId) && <SectorDashboardEditor sectorId={appId} />}
+        {/* ── Inline Editor for sector apps ────────────── */}
+        {appId &&
+          [
+            "cybersecurity",
+            "health",
+            "finance",
+            "retail",
+            "transport",
+            "manufacturing",
+            "tourism",
+            "utilities",
+            "cultural_heritage",
+            "sme",
+          ].includes(appId) && <SectorDashboardEditor sectorId={appId} />}
 
-      {/* ── Live Metrics Widget ──────────────────────── */}
-      <FadeIn y={10} delay={0.15}><LiveMonitorWidget appId={appId} title="Real-Time Module Metrics" /></FadeIn>
+        {/* ── Live Metrics Widget ──────────────────────── */}
+        <FadeIn y={10} delay={0.15}>
+          <LiveMonitorWidget appId={appId} title="Real-Time Module Metrics" />
+        </FadeIn>
 
-      <FadeIn y={10} delay={0.2}>
-      <section className="os-app-workspace">
-        <ModuleChat appId={appId} appName={app?.name} />
+        <FadeIn y={10} delay={0.2}>
+          <section className="os-app-workspace">
+            <ModuleChat appId={appId} appName={app?.name} />
 
-        <aside className="os-app-sidebar">
-          <h4>Allowed Tools</h4>
-          <StaggerContainer><ul className="os-tool-list">
-            {app?.allowed_tools?.map((t: string) => (
-              <StaggerItem key={t}><li>{t}</li></StaggerItem>
-            ))}
-          </ul></StaggerContainer>
-          <h4>Default Goals</h4>
-          <ul className="os-goal-list">
-            {app?.default_goals?.map((g: any, i: number) => (
-              <StaggerItem key={i}><li>{g.title}</li></StaggerItem>
-            ))}
-          </ul>
-        </aside>
-      </section>
-      </FadeIn>
-    </div>
+            <aside className="os-app-sidebar">
+              <h4>Allowed Tools</h4>
+              <StaggerContainer>
+                <ul className="os-tool-list">
+                  {app?.allowed_tools?.map((t: string) => (
+                    <StaggerItem key={t}>
+                      <li>{t}</li>
+                    </StaggerItem>
+                  ))}
+                </ul>
+              </StaggerContainer>
+              <h4>Default Goals</h4>
+              <ul className="os-goal-list">
+                {app?.default_goals?.map((g: any, i: number) => (
+                  <StaggerItem key={i}>
+                    <li>{g.title}</li>
+                  </StaggerItem>
+                ))}
+              </ul>
+            </aside>
+          </section>
+        </FadeIn>
+      </div>
     </motion.div>
   );
 }

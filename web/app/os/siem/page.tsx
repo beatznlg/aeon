@@ -230,10 +230,7 @@ export default function SiemPage() {
       )}
 
       {formOpen && (
-        <Card
-          title={editing ? "Edit SIEM integration" : "New SIEM integration"}
-          className="mb-6"
-        >
+        <Card title={editing ? "Edit SIEM integration" : "New SIEM integration"} className="mb-6">
           <form onSubmit={handleSave} className="flex flex-col gap-5">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
               <Input
@@ -266,9 +263,7 @@ export default function SiemPage() {
                 min={1}
                 max={1000}
                 value={form.batch_size}
-                onChange={(e) =>
-                  setForm({ ...form, batch_size: Number(e.target.value) })
-                }
+                onChange={(e) => setForm({ ...form, batch_size: Number(e.target.value) })}
               />
               <Select
                 label="Auth type"
@@ -334,7 +329,10 @@ export default function SiemPage() {
           {loading ? (
             <LoadingState />
           ) : integrations.length === 0 ? (
-            <EmptyState title="No SIEM integrations yet" description="Add a destination to start forwarding events." />
+            <EmptyState
+              title="No SIEM integrations yet"
+              description="Add a destination to start forwarding events."
+            />
           ) : (
             <div className="flex flex-col gap-3">
               {integrations.map((i) => (
@@ -344,9 +342,7 @@ export default function SiemPage() {
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0 flex-1">
-                      <div className="text-base font-semibold text-aeon-fg">
-                        {i.name}
-                      </div>
+                      <div className="text-base font-semibold text-aeon-fg">{i.name}</div>
                       <div className="mt-1 text-xs capitalize text-aeon-fg-mute">
                         {i.provider} · {i.event_filters.join(", ")}
                       </div>
@@ -359,21 +355,13 @@ export default function SiemPage() {
                     </Badge>
                   </div>
                   <div className="mt-3 flex gap-2">
-                    <Button
-                      size="sm"
-                      onClick={() => handleTest(i.id)}
-                      loading={testing === i.id}
-                    >
+                    <Button size="sm" onClick={() => handleTest(i.id)} loading={testing === i.id}>
                       Test
                     </Button>
                     <Button size="sm" variant="secondary" onClick={() => startEdit(i)}>
                       Edit
                     </Button>
-                    <Button
-                      size="sm"
-                      variant="danger"
-                      onClick={() => handleDelete(i.id)}
-                    >
+                    <Button size="sm" variant="danger" onClick={() => handleDelete(i.id)}>
                       Delete
                     </Button>
                   </div>
@@ -401,14 +389,10 @@ export default function SiemPage() {
                       {new Date(log.created_at).toLocaleString()}
                     </div>
                     {log.response_text && (
-                      <div className="mt-1 text-xs text-aeon-fg-mute">
-                        {log.response_text}
-                      </div>
+                      <div className="mt-1 text-xs text-aeon-fg-mute">{log.response_text}</div>
                     )}
                   </div>
-                  <Badge
-                    variant={log.status === "delivered" ? "success" : "danger"}
-                  >
+                  <Badge variant={log.status === "delivered" ? "success" : "danger"}>
                     {log.status} {log.http_status ? `· ${log.http_status}` : ""}
                   </Badge>
                 </div>

@@ -91,7 +91,14 @@ export default function OSPage() {
     <div className="os-page">
       <header className="os-header">
         <div>
-          <h1 style={{ background: "var(--grad)", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>
+          <h1
+            style={{
+              background: "var(--grad)",
+              WebkitBackgroundClip: "text",
+              backgroundClip: "text",
+              color: "transparent",
+            }}
+          >
             ⊞ OS Module Launcher
           </h1>
           <p className="dashboard-subtitle">
@@ -104,7 +111,11 @@ export default function OSPage() {
               {link.label}
             </Link>
           ))}
-          <Link href="/admin" className="btn btn-primary" style={{ borderColor: "#6366f1", color: "#6366f1" }}>
+          <Link
+            href="/admin"
+            className="btn btn-primary"
+            style={{ borderColor: "#6366f1", color: "#6366f1" }}
+          >
             ⚙️ Admin
           </Link>
         </div>
@@ -120,91 +131,114 @@ export default function OSPage() {
       {error && <div className="module-alert danger">{error}</div>}
 
       <FadeIn key="content" delay={0.1}>
-      {loading ? (
-        <div className="skeleton-page" role="status" aria-label="Loading modules">
-          <span className="sr-only">Loading available modules…</span>
-          <div className="skeleton-grid" style={{ "--skeleton-cols": 3 } as React.CSSProperties}>
-            {[1,2,3,4,5,6].map(i => (
-              <div key={i} className="skeleton-card" style={{ flexDirection: "column", padding: "1.25rem" }}>
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="skeleton-shimmer" style={{ width: "2.5rem", height: "2.5rem", borderRadius: "var(--aeon-radius-sm)", flexShrink: 0 }} />
-                  <div className="flex-1 space-y-1.5">
-                    <div className="skeleton-shimmer" style={{ height: "0.9rem", width: "60%" }} />
-                    <div className="skeleton-shimmer" style={{ height: "0.7rem", width: "40%" }} />
+        {loading ? (
+          <div className="skeleton-page" role="status" aria-label="Loading modules">
+            <span className="sr-only">Loading available modules…</span>
+            <div className="skeleton-grid" style={{ "--skeleton-cols": 3 } as React.CSSProperties}>
+              {[1, 2, 3, 4, 5, 6].map((i) => (
+                <div
+                  key={i}
+                  className="skeleton-card"
+                  style={{ flexDirection: "column", padding: "1.25rem" }}
+                >
+                  <div className="flex items-center gap-3 mb-3">
+                    <div
+                      className="skeleton-shimmer"
+                      style={{
+                        width: "2.5rem",
+                        height: "2.5rem",
+                        borderRadius: "var(--aeon-radius-sm)",
+                        flexShrink: 0,
+                      }}
+                    />
+                    <div className="flex-1 space-y-1.5">
+                      <div
+                        className="skeleton-shimmer"
+                        style={{ height: "0.9rem", width: "60%" }}
+                      />
+                      <div
+                        className="skeleton-shimmer"
+                        style={{ height: "0.7rem", width: "40%" }}
+                      />
+                    </div>
                   </div>
+                  <div className="skeleton-shimmer" style={{ height: "0.7rem", width: "90%" }} />
+                  <div
+                    className="skeleton-shimmer"
+                    style={{ height: "0.7rem", width: "70%", marginTop: "0.4rem" }}
+                  />
                 </div>
-                <div className="skeleton-shimmer" style={{ height: "0.7rem", width: "90%" }} />
-                <div className="skeleton-shimmer" style={{ height: "0.7rem", width: "70%", marginTop: "0.4rem" }} />
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
-      ) : (
-        <section className="os-grid">
-          {visibleApps.map((app) => {
-            const isInstalled = installed.includes(app.id);
-            const enabled = isModuleEnabled(config, app.id, true);
-            return (
-              <div
-                key={app.id}
-                className={`os-card ${app.status} ${isInstalled ? "installed" : ""} ${!enabled && admin ? "opacity-60" : ""}`}
-                style={{ borderTopColor: app.color || "var(--accent)" }}
-              >
-                <div className="os-card-header">
-                  <span className="os-icon" style={{ background: app.color ? `${app.color}20` : "var(--bg-elevated)" }}>
-                    {app.icon}
-                  </span>
-                  <span className={`os-status-pill ${app.status}`}>
-                    {app.status}
-                  </span>
+        ) : (
+          <section className="os-grid">
+            {visibleApps.map((app) => {
+              const isInstalled = installed.includes(app.id);
+              const enabled = isModuleEnabled(config, app.id, true);
+              return (
+                <div
+                  key={app.id}
+                  className={`os-card ${app.status} ${isInstalled ? "installed" : ""} ${!enabled && admin ? "opacity-60" : ""}`}
+                  style={{ borderTopColor: app.color || "var(--accent)" }}
+                >
+                  <div className="os-card-header">
+                    <span
+                      className="os-icon"
+                      style={{ background: app.color ? `${app.color}20` : "var(--bg-elevated)" }}
+                    >
+                      {app.icon}
+                    </span>
+                    <span className={`os-status-pill ${app.status}`}>{app.status}</span>
+                  </div>
+                  <h3>{app.name}</h3>
+                  <p className="os-category">{app.category}</p>
+                  <p className="os-desc">{app.description}</p>
+                  <div className="os-card-actions">
+                    <Link href={`/os/${app.id}`} className="btn btn-sm btn-primary">
+                      Open
+                    </Link>
+                    <button
+                      className={`btn btn-sm ${isInstalled ? "btn-success" : ""}`}
+                      onClick={() => install(app.id)}
+                      disabled={app.status !== "active"}
+                    >
+                      {isInstalled
+                        ? "✓ Installed"
+                        : app.status === "active"
+                          ? "Install"
+                          : "Planned"}
+                    </button>
+                  </div>
+                  {!enabled && admin && (
+                    <div className="text-xs text-aeon-fg-mute mt-2">Disabled</div>
+                  )}
                 </div>
-                <h3>{app.name}</h3>
-                <p className="os-category">{app.category}</p>
-                <p className="os-desc">{app.description}</p>
+              );
+            })}
+
+            {isVisible("automations") && (
+              <div className="os-card active" style={{ borderTopColor: "#6366f1" }}>
+                <div className="os-card-header">
+                  <span className="os-icon" style={{ background: "#6366f120" }}>
+                    📊
+                  </span>
+                  <span className="os-status-pill active">active</span>
+                </div>
+                <h3>Automation Metrics</h3>
+                <p className="os-category">Observability</p>
+                <p className="os-desc">
+                  Execution health, success rates, and daily trends for automation rules.
+                </p>
                 <div className="os-card-actions">
-                  <Link href={`/os/${app.id}`} className="btn btn-sm btn-primary">
+                  <Link href="/os/automations/metrics" className="btn btn-sm btn-primary">
                     Open
                   </Link>
-                  <button
-                    className={`btn btn-sm ${isInstalled ? "btn-success" : ""}`}
-                    onClick={() => install(app.id)}
-                    disabled={app.status !== "active"}
-                  >
-                    {isInstalled ? "✓ Installed" : app.status === "active" ? "Install" : "Planned"}
-                  </button>
                 </div>
-                {!enabled && admin && (
-                  <div className="text-xs text-aeon-fg-mute mt-2">Disabled</div>
-                )}
               </div>
-            );
-          })}
-
-          {isVisible("automations") && (
-            <div
-              className="os-card active"
-              style={{ borderTopColor: "#6366f1" }}
-            >
-              <div className="os-card-header">
-                <span className="os-icon" style={{ background: "#6366f120" }}>
-                  📊
-                </span>
-                <span className="os-status-pill active">active</span>
-              </div>
-              <h3>Automation Metrics</h3>
-              <p className="os-category">Observability</p>
-              <p className="os-desc">
-                Execution health, success rates, and daily trends for automation rules.
-              </p>
-              <div className="os-card-actions">
-                <Link href="/os/automations/metrics" className="btn btn-sm btn-primary">
-                  Open
-                </Link>
-              </div>
-            </div>
-          )}
-        </section>
-      )}
+            )}
+          </section>
+        )}
       </FadeIn>
     </div>
   );

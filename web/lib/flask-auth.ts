@@ -6,8 +6,7 @@
 
 const FLASK_TOKEN_KEY = "aeon_flask_token";
 const FLASK_USER_KEY = "aeon_flask_user";
-const AEON_URL =
-  process.env.NEXT_PUBLIC_AEON_PYTHON_URL || "http://127.0.0.1:5000";
+const AEON_URL = process.env.NEXT_PUBLIC_AEON_PYTHON_URL || "http://127.0.0.1:5000";
 
 export interface FlaskUser {
   id: string;

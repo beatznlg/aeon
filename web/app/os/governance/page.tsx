@@ -53,10 +53,30 @@ function useFetch<T>(url: string) {
   return { data, loading, error };
 }
 
-function Card({ title, children, className = "" }: { title?: string; children: React.ReactNode; className?: string }) {
+function Card({
+  title,
+  children,
+  className = "",
+}: {
+  title?: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
   return (
     <div className={`os-card ${className}`} style={{ padding: 20 }}>
-      {title && <h3 style={{ margin: "0 0 16px", fontSize: "0.95rem", textTransform: "uppercase", letterSpacing: 1, color: "var(--fg-mute)" }}>{title}</h3>}
+      {title && (
+        <h3
+          style={{
+            margin: "0 0 16px",
+            fontSize: "0.95rem",
+            textTransform: "uppercase",
+            letterSpacing: 1,
+            color: "var(--fg-mute)",
+          }}
+        >
+          {title}
+        </h3>
+      )}
       {children}
     </div>
   );
@@ -84,17 +104,26 @@ export default function GovernancePage() {
   const [retentionMsg, setRetentionMsg] = useState("");
 
   const auditUrl = useMemo(() => {
-    const params = new URLSearchParams({ workspace_id: workspaceId, limit: "50", offset: String(offset) });
+    const params = new URLSearchParams({
+      workspace_id: workspaceId,
+      limit: "50",
+      offset: String(offset),
+    });
     if (actionFilter) params.set("action", actionFilter);
     if (moduleFilter) params.set("module", moduleFilter);
     return `/api/governance/audit?${params.toString()}`;
   }, [workspaceId, offset, actionFilter, moduleFilter]);
 
-  const { data: audit, loading: auditLoading, error: auditError } = useFetch<{ ok: boolean; rows: AuditRow[]; count: number }>(auditUrl);
+  const {
+    data: audit,
+    loading: auditLoading,
+    error: auditError,
+  } = useFetch<{ ok: boolean; rows: AuditRow[]; count: number }>(auditUrl);
 
-  const { data: retention } = useFetch<{ ok: boolean; policy: { retention_days: number; action: "archive" | "delete" } }>(
-    `/api/governance/retention?workspace_id=${encodeURIComponent(workspaceId)}`
-  );
+  const { data: retention } = useFetch<{
+    ok: boolean;
+    policy: { retention_days: number; action: "archive" | "delete" };
+  }>(`/api/governance/retention?workspace_id=${encodeURIComponent(workspaceId)}`);
 
   useEffect(() => {
     if (retention?.policy) {
@@ -115,7 +144,12 @@ export default function GovernancePage() {
       const data = await res.json();
       setComplianceResult(data);
     } catch (e: any) {
-      setComplianceResult({ ok: false, check_type: selectedCheck, status: "failed", findings: [e?.message || String(e)] });
+      setComplianceResult({
+        ok: false,
+        check_type: selectedCheck,
+        status: "failed",
+        findings: [e?.message || String(e)],
+      });
     } finally {
       setCheckLoading(false);
     }
@@ -127,7 +161,11 @@ export default function GovernancePage() {
       const res = await fetch("/api/governance/retention", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workspace_id: workspaceId, retention_days: retentionDays, action: retentionAction }),
+        body: JSON.stringify({
+          workspace_id: workspaceId,
+          retention_days: retentionDays,
+          action: retentionAction,
+        }),
       });
       const data = await res.json();
       setRetentionMsg(data.ok ? "Retention policy saved." : data.error || "Failed to save.");
@@ -140,18 +178,39 @@ export default function GovernancePage() {
     <div className="os-page">
       <header className="os-header">
         <div>
-          <h1 style={{ background: "var(--grad)", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>
+          <h1
+            style={{
+              background: "var(--grad)",
+              WebkitBackgroundClip: "text",
+              backgroundClip: "text",
+              color: "transparent",
+            }}
+          >
             🛡️ Governance & Compliance
           </h1>
-          <p className="dashboard-subtitle">Audit logs, PII scanning, retention policy, and compliance posture</p>
+          <p className="dashboard-subtitle">
+            Audit logs, PII scanning, retention policy, and compliance posture
+          </p>
         </div>
-        <Link href="/os" className="btn btn-sm">← OS Launcher</Link>
+        <Link href="/os" className="btn btn-sm">
+          ← OS Launcher
+        </Link>
       </header>
 
-      <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 24 }}>
+      <section
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+          gap: 24,
+        }}
+      >
         <Card title="Compliance Check">
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <select value={selectedCheck} onChange={(e) => setSelectedCheck(e.target.value)} className="input">
+            <select
+              value={selectedCheck}
+              onChange={(e) => setSelectedCheck(e.target.value)}
+              className="input"
+            >
               {checkTypes.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.label}
@@ -166,12 +225,19 @@ export default function GovernancePage() {
                 style={{
                   padding: 12,
                   borderRadius: 8,
-                  background: complianceResult.status === "success" ? "#064e3b" : complianceResult.status === "warning" ? "#713f12" : "#7f1d1d",
+                  background:
+                    complianceResult.status === "success"
+                      ? "#064e3b"
+                      : complianceResult.status === "warning"
+                        ? "#713f12"
+                        : "#7f1d1d",
                   fontSize: "0.9rem",
                 }}
               >
                 <strong>{complianceResult.check_type}</strong> — {complianceResult.status}
-                {complianceResult.scanned !== undefined && <div>Scanned: {complianceResult.scanned}</div>}
+                {complianceResult.scanned !== undefined && (
+                  <div>Scanned: {complianceResult.scanned}</div>
+                )}
                 {complianceResult.findings && complianceResult.findings.length > 0 && (
                   <ul style={{ margin: 0, paddingLeft: 16, marginTop: 8 }}>
                     {complianceResult.findings.map((f, i) => (
@@ -179,7 +245,9 @@ export default function GovernancePage() {
                     ))}
                   </ul>
                 )}
-                {complianceResult.note && <div style={{ marginTop: 8 }}>{complianceResult.note}</div>}
+                {complianceResult.note && (
+                  <div style={{ marginTop: 8 }}>{complianceResult.note}</div>
+                )}
               </div>
             )}
           </div>
@@ -187,7 +255,9 @@ export default function GovernancePage() {
 
         <Card title="Retention Policy">
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <label style={{ fontSize: "0.85rem", color: "var(--fg-mute)" }}>Keep audit logs for (days)</label>
+            <label style={{ fontSize: "0.85rem", color: "var(--fg-mute)" }}>
+              Keep audit logs for (days)
+            </label>
             <input
               type="number"
               min={1}
@@ -195,15 +265,23 @@ export default function GovernancePage() {
               onChange={(e) => setRetentionDays(Number(e.target.value))}
               className="input"
             />
-            <label style={{ fontSize: "0.85rem", color: "var(--fg-mute)" }}>After retention period</label>
-            <select value={retentionAction} onChange={(e) => setRetentionAction(e.target.value as any)} className="input">
+            <label style={{ fontSize: "0.85rem", color: "var(--fg-mute)" }}>
+              After retention period
+            </label>
+            <select
+              value={retentionAction}
+              onChange={(e) => setRetentionAction(e.target.value as any)}
+              className="input"
+            >
               <option value="archive">Archive</option>
               <option value="delete">Delete</option>
             </select>
             <button onClick={saveRetention} className="btn btn-primary">
               Save Policy
             </button>
-            {retentionMsg && <div style={{ fontSize: "0.85rem", color: "var(--fg-mute)" }}>{retentionMsg}</div>}
+            {retentionMsg && (
+              <div style={{ fontSize: "0.85rem", color: "var(--fg-mute)" }}>{retentionMsg}</div>
+            )}
           </div>
         </Card>
       </section>
@@ -250,12 +328,24 @@ export default function GovernancePage() {
                     <td style={{ padding: "8px 12px" }}>{row.action}</td>
                     <td style={{ padding: "8px 12px" }}>{row.module}</td>
                     <td style={{ padding: "8px 12px" }}>{row.email || "—"}</td>
-                    <td style={{ padding: "8px 12px" }}>{new Date(row.timestamp).toLocaleString()}</td>
+                    <td style={{ padding: "8px 12px" }}>
+                      {new Date(row.timestamp).toLocaleString()}
+                    </td>
                     <td style={{ padding: "8px 12px" }}>
                       {row.pii_redacted && <span style={{ color: "#f59e0b" }}>PII redacted</span>}
-                      <span style={{ color: "var(--fg-mute)", marginLeft: 4 }}>{row.review_status}</span>
+                      <span style={{ color: "var(--fg-mute)", marginLeft: 4 }}>
+                        {row.review_status}
+                      </span>
                     </td>
-                    <td style={{ padding: "8px 12px", maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    <td
+                      style={{
+                        padding: "8px 12px",
+                        maxWidth: 260,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
                       {JSON.stringify(row.metadata)}
                     </td>
                   </tr>
@@ -265,7 +355,11 @@ export default function GovernancePage() {
           </div>
 
           <div style={{ display: "flex", justifyContent: "space-between", marginTop: 16 }}>
-            <button onClick={() => setOffset((o) => Math.max(0, o - 50))} disabled={offset === 0} className="btn btn-sm">
+            <button
+              onClick={() => setOffset((o) => Math.max(0, o - 50))}
+              disabled={offset === 0}
+              className="btn btn-sm"
+            >
               Previous
             </button>
             <button onClick={() => setOffset((o) => o + 50)} className="btn btn-sm">

@@ -1,9 +1,25 @@
 "use client";
 
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  LineChart, Line, AreaChart, Area, PieChart, Pie, Cell,
-  RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  AreaChart,
+  Area,
+  PieChart,
+  Pie,
+  Cell,
+  RadarChart,
+  PolarGrid,
+  PolarAngleAxis,
+  PolarRadiusAxis,
+  Radar,
 } from "recharts";
 import { motion } from "framer-motion";
 
@@ -23,8 +39,16 @@ export const COLORS = {
 };
 
 const CHART_COLORS = [
-  "#6366f1", "#10b981", "#f59e0b", "#ef4444", "#06b6d4",
-  "#8b5cf6", "#ec4899", "#14b8a6", "#eab308", "#3b82f6",
+  "#6366f1",
+  "#10b981",
+  "#f59e0b",
+  "#ef4444",
+  "#06b6d4",
+  "#8b5cf6",
+  "#ec4899",
+  "#14b8a6",
+  "#eab308",
+  "#3b82f6",
 ];
 
 // ════════════════════════════════════════════════════════════════
@@ -45,7 +69,8 @@ export function GaugeChart({
   color?: string;
 }) {
   const pct = Math.min(value / max, 1);
-  const strokeColor = color || (pct > 0.75 ? COLORS.danger : pct > 0.5 ? COLORS.warning : COLORS.success);
+  const strokeColor =
+    color || (pct > 0.75 ? COLORS.danger : pct > 0.5 ? COLORS.warning : COLORS.success);
   const cx = size / 2;
   const cy = size / 2 + 8;
   const r = size / 2 - 16;
@@ -62,8 +87,12 @@ export function GaugeChart({
       <svg width={size} height={size} style={{ overflow: "visible" }}>
         <circle cx={cx} cy={cy} r={r} fill="none" stroke="var(--aeon-border)" strokeWidth={8} />
         <motion.circle
-          cx={cx} cy={cy} r={r}
-          fill="none" stroke={strokeColor} strokeWidth={8}
+          cx={cx}
+          cy={cy}
+          r={r}
+          fill="none"
+          stroke={strokeColor}
+          strokeWidth={8}
           strokeLinecap="round"
           strokeDasharray={circumference}
           initial={{ strokeDashoffset: circumference }}
@@ -71,7 +100,14 @@ export function GaugeChart({
           transition={{ duration: 1.2, ease: "easeOut" }}
           transform={`rotate(-90 ${cx} ${cy})`}
         />
-        <text x={cx} y={cy - 4} textAnchor="middle" fill="var(--aeon-fg)" fontSize={18} fontWeight={700}>
+        <text
+          x={cx}
+          y={cy - 4}
+          textAnchor="middle"
+          fill="var(--aeon-fg)"
+          fontSize={18}
+          fontWeight={700}
+        >
           {Math.round(pct * 100)}%
         </text>
         <text x={cx} y={cy + 14} textAnchor="middle" fill="var(--aeon-fg-mute)" fontSize={10}>
@@ -94,16 +130,13 @@ export function SeverityPieChart({
   size?: number;
 }) {
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.5 }}
-    >
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5 }}>
       <ResponsiveContainer width="100%" height={size}>
         <PieChart>
           <Pie
             data={data}
-            cx="50%" cy="50%"
+            cx="50%"
+            cy="50%"
             innerRadius={30}
             outerRadius={60}
             paddingAngle={3}
@@ -128,7 +161,15 @@ export function SeverityPieChart({
       <div className="flex flex-wrap justify-center gap-3 mt-1">
         {data.map((d) => (
           <div key={d.name} className="flex items-center gap-1 text-xs text-aeon-fg-mute">
-            <span style={{ width: 8, height: 8, borderRadius: "50%", background: d.color, display: "inline-block" }} />
+            <span
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                background: d.color,
+                display: "inline-block",
+              }}
+            />
             {d.name} ({d.value})
           </div>
         ))}
@@ -161,8 +202,17 @@ export function TrendLineChart({
       <ResponsiveContainer width="100%" height={height}>
         <LineChart data={data} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="var(--aeon-border)" opacity={0.3} />
-          <XAxis dataKey={xKey} tick={{ fill: "var(--aeon-fg-mute)", fontSize: 10 }} axisLine={false} tickLine={false} />
-          <YAxis tick={{ fill: "var(--aeon-fg-mute)", fontSize: 10 }} axisLine={false} tickLine={false} />
+          <XAxis
+            dataKey={xKey}
+            tick={{ fill: "var(--aeon-fg-mute)", fontSize: 10 }}
+            axisLine={false}
+            tickLine={false}
+          />
+          <YAxis
+            tick={{ fill: "var(--aeon-fg-mute)", fontSize: 10 }}
+            axisLine={false}
+            tickLine={false}
+          />
           <Tooltip
             contentStyle={{
               background: "var(--aeon-bg-1)",
@@ -188,7 +238,15 @@ export function TrendLineChart({
       <div className="flex gap-4 mt-1 justify-center text-xs text-aeon-fg-mute">
         {lines.map((l) => (
           <span key={l.key} className="flex items-center gap-1">
-            <span style={{ width: 12, height: 3, borderRadius: 2, background: l.color, display: "inline-block" }} />
+            <span
+              style={{
+                width: 12,
+                height: 3,
+                borderRadius: 2,
+                background: l.color,
+                display: "inline-block",
+              }}
+            />
             {l.label}
           </span>
         ))}
@@ -225,13 +283,33 @@ export function BarComparisonChart({
           <CartesianGrid strokeDasharray="3 3" stroke="var(--aeon-border)" opacity={0.3} />
           {layout === "vertical" ? (
             <>
-              <XAxis dataKey={xKey} tick={{ fill: "var(--aeon-fg-mute)", fontSize: 10 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fill: "var(--aeon-fg-mute)", fontSize: 10 }} axisLine={false} tickLine={false} />
+              <XAxis
+                dataKey={xKey}
+                tick={{ fill: "var(--aeon-fg-mute)", fontSize: 10 }}
+                axisLine={false}
+                tickLine={false}
+              />
+              <YAxis
+                tick={{ fill: "var(--aeon-fg-mute)", fontSize: 10 }}
+                axisLine={false}
+                tickLine={false}
+              />
             </>
           ) : (
             <>
-              <YAxis dataKey={xKey} type="category" tick={{ fill: "var(--aeon-fg-mute)", fontSize: 10 }} axisLine={false} tickLine={false} />
-              <XAxis type="number" tick={{ fill: "var(--aeon-fg-mute)", fontSize: 10 }} axisLine={false} tickLine={false} />
+              <YAxis
+                dataKey={xKey}
+                type="category"
+                tick={{ fill: "var(--aeon-fg-mute)", fontSize: 10 }}
+                axisLine={false}
+                tickLine={false}
+              />
+              <XAxis
+                type="number"
+                tick={{ fill: "var(--aeon-fg-mute)", fontSize: 10 }}
+                axisLine={false}
+                tickLine={false}
+              />
             </>
           )}
           <Tooltip
@@ -318,8 +396,17 @@ export function AreaTrendChart({
       <ResponsiveContainer width="100%" height={height}>
         <AreaChart data={data} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="var(--aeon-border)" opacity={0.3} />
-          <XAxis dataKey={xKey} tick={{ fill: "var(--aeon-fg-mute)", fontSize: 10 }} axisLine={false} tickLine={false} />
-          <YAxis tick={{ fill: "var(--aeon-fg-mute)", fontSize: 10 }} axisLine={false} tickLine={false} />
+          <XAxis
+            dataKey={xKey}
+            tick={{ fill: "var(--aeon-fg-mute)", fontSize: 10 }}
+            axisLine={false}
+            tickLine={false}
+          />
+          <YAxis
+            tick={{ fill: "var(--aeon-fg-mute)", fontSize: 10 }}
+            axisLine={false}
+            tickLine={false}
+          />
           <Tooltip
             contentStyle={{
               background: "var(--aeon-bg-1)",
@@ -356,7 +443,12 @@ export function FunnelProgress({
   stages: { label: string; value: number; max: number; color: string }[];
 }) {
   return (
-    <motion.div className="space-y-2" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5 }}>
+    <motion.div
+      className="space-y-2"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.5 }}
+    >
       {stages.map((s, i) => (
         <div key={s.label} className="flex items-center gap-2">
           <span className="text-xs text-aeon-fg-mute w-24 shrink-0 text-right">{s.label}</span>
@@ -369,7 +461,9 @@ export function FunnelProgress({
               transition={{ duration: 0.8, delay: i * 0.1, ease: "easeOut" }}
             />
           </div>
-          <span className="text-xs text-aeon-fg-mute w-12 shrink-0">{s.value}/{s.max}</span>
+          <span className="text-xs text-aeon-fg-mute w-12 shrink-0">
+            {s.value}/{s.max}
+          </span>
         </div>
       ))}
     </motion.div>
@@ -407,7 +501,9 @@ export function MiniStatCard({
         <div className="text-sm font-semibold text-aeon-fg">{value}</div>
       </div>
       {trend && (
-        <span className={`text-xs ${trend === "up" ? "text-green-400" : trend === "down" ? "text-red-400" : "text-aeon-fg-mute"}`}>
+        <span
+          className={`text-xs ${trend === "up" ? "text-green-400" : trend === "down" ? "text-red-400" : "text-aeon-fg-mute"}`}
+        >
           {trend === "up" ? "↑" : trend === "down" ? "↓" : "→"}
         </span>
       )}
@@ -426,7 +522,12 @@ export function TimelineChart({
 }) {
   const typeColors = { ok: COLORS.success, warn: COLORS.warning, danger: COLORS.danger };
   return (
-    <motion.div className="space-y-2" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5 }}>
+    <motion.div
+      className="space-y-2"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.5 }}
+    >
       {events.map((e, i) => (
         <motion.div
           key={i}
@@ -435,7 +536,15 @@ export function TimelineChart({
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: i * 0.05, duration: 0.3 }}
         >
-          <div style={{ width: 8, height: 8, borderRadius: "50%", background: typeColors[e.type], flexShrink: 0 }} />
+          <div
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: "50%",
+              background: typeColors[e.type],
+              flexShrink: 0,
+            }}
+          />
           <span className="text-xs text-aeon-fg-mute w-16 shrink-0">{e.time}</span>
           <span className="text-xs text-aeon-fg">{e.label}</span>
         </motion.div>

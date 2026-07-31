@@ -18,7 +18,14 @@ interface TableProps<T> {
   emptyText?: string;
 }
 
-export default function Table<T>({ columns, data, keyExtractor, className = "", style, emptyText = "No data available." }: TableProps<T>) {
+export default function Table<T>({
+  columns,
+  data,
+  keyExtractor,
+  className = "",
+  style,
+  emptyText = "No data available.",
+}: TableProps<T>) {
   return (
     <div className={`overflow-x-auto ${className}`} style={style}>
       <table className="aeon-table">

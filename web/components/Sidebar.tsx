@@ -20,8 +20,8 @@ type Health = "checking" | "ok" | "warn" | "down";
 
 function dotFor(health: Health, h: { ok?: boolean; backend?: string } | null) {
   if (health === "checking") return { color: "#71717a", label: "checking…" };
-  if (health === "down")    return { color: "#dc2626", label: "down" };
-  if (health === "ok")      return { color: "#16a34a", label: "live · " + (h?.backend || "stub") };
+  if (health === "down") return { color: "#dc2626", label: "down" };
+  if (health === "ok") return { color: "#16a34a", label: "live · " + (h?.backend || "stub") };
   return { color: "#eab308", label: "live · partial env" };
 }
 
@@ -72,7 +72,10 @@ export default function Sidebar({
     }
     probe();
     const t = setInterval(probe, 30_000);
-    return () => { alive = false; clearInterval(t); };
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
   }, []);
 
   const dot = dotFor(health, setup);
@@ -88,26 +91,65 @@ export default function Sidebar({
           <span className="logo">⟁</span>
           <span>AEON</span>
         </div>
-        <button className="btn-primary" onClick={() => { onNewChat(); onCloseMobile?.(); }}>
+        <button
+          className="btn-primary"
+          onClick={() => {
+            onNewChat();
+            onCloseMobile?.();
+          }}
+        >
           + New chat
         </button>
         {mobileOpen && (
-          <button className="sidebar-close" onClick={onCloseMobile} title="Close menu">×</button>
+          <button className="sidebar-close" onClick={onCloseMobile} title="Close menu">
+            ×
+          </button>
         )}
       </div>
 
       <nav className="sidebar-section">
         <h3>Workspace</h3>
-        <a href="#" onClick={(e) => { e.preventDefault(); onOpenDeploy(); onCloseMobile?.(); }}>
+        <a
+          href="#"
+          onClick={(e) => {
+            e.preventDefault();
+            onOpenDeploy();
+            onCloseMobile?.();
+          }}
+        >
           Deploy guide
-          <span className={"deploy-badge " + (health === "ok" ? "ok" : health === "warn" ? "warn" : "down")}>
-            {health === "ok" ? "live" : health === "warn" ? "incomplete" : health === "down" ? "down" : "…"}
+          <span
+            className={
+              "deploy-badge " + (health === "ok" ? "ok" : health === "warn" ? "warn" : "down")
+            }
+          >
+            {health === "ok"
+              ? "live"
+              : health === "warn"
+                ? "incomplete"
+                : health === "down"
+                  ? "down"
+                  : "…"}
           </span>
         </a>
-        <a href="#" onClick={(e) => { e.preventDefault(); onOpenMemory(); onCloseMobile?.(); }}>
+        <a
+          href="#"
+          onClick={(e) => {
+            e.preventDefault();
+            onOpenMemory();
+            onCloseMobile?.();
+          }}
+        >
           Memory browser
         </a>
-        <a href="#" onClick={(e) => { e.preventDefault(); onOpenSettings(); onCloseMobile?.(); }}>
+        <a
+          href="#"
+          onClick={(e) => {
+            e.preventDefault();
+            onOpenSettings();
+            onCloseMobile?.();
+          }}
+        >
           Settings & keys
         </a>
         <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener noreferrer">
@@ -119,7 +161,11 @@ export default function Sidebar({
         <a href="https://huggingface.co/new-space" target="_blank" rel="noopener noreferrer">
           HF Space (kernel) ↗
         </a>
-        <a href="https://github.com/beatznlg/aeon/settings/security_analysis" target="_blank" rel="noopener noreferrer">
+        <a
+          href="https://github.com/beatznlg/aeon/settings/security_analysis"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
           GHAS settings ↗
         </a>
       </nav>
@@ -147,7 +193,9 @@ export default function Sidebar({
           title={setup ? `${dot.label}\n\nmissing: ${missing.join(" | ") || "none"}` : dot.label}
         ></span>
         <span style={{ display: "flex", flexDirection: "column", gap: "0.1rem" }}>
-          <span><span style={{ color: dot.color, fontWeight: 600 }}>{dot.label}</span></span>
+          <span>
+            <span style={{ color: dot.color, fontWeight: 600 }}>{dot.label}</span>
+          </span>
           <span style={{ fontSize: "0.72rem", opacity: 0.6 }}>
             kernel <code style={{ fontSize: "0.72rem" }}>v2.1</code>
             {setup?.backend ? " · " + setup.backend : ""}

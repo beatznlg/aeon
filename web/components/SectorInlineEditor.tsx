@@ -1,11 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import {
-  createToolItem,
-  updateToolItem,
-  deleteToolItem,
-} from "@/lib/sector-admin";
+import { createToolItem, updateToolItem, deleteToolItem } from "@/lib/sector-admin";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -153,7 +149,7 @@ function ItemEditorModal({
         handleSave();
       }
     },
-    [onClose, handleSave],
+    [onClose, handleSave]
   );
 
   return (
@@ -166,10 +162,15 @@ function ItemEditorModal({
       >
         <div className="sector-editor-header">
           <h2>{isCreate ? "➕ Add New Item" : "✏️ Edit Item"}</h2>
-          <div className="sector-editor-badge" style={{ background: `${accentColor}20`, color: accentColor }}>
+          <div
+            className="sector-editor-badge"
+            style={{ background: `${accentColor}20`, color: accentColor }}
+          >
             {sectorId}/{toolPath}
           </div>
-          <button className="sector-editor-close" onClick={onClose}>×</button>
+          <button className="sector-editor-close" onClick={onClose}>
+            ×
+          </button>
         </div>
 
         <div className="sector-editor-body">
@@ -291,7 +292,9 @@ function ConfirmDeleteModal({
       >
         <div className="sector-editor-header">
           <h2>🗑️ Confirm Delete</h2>
-          <button className="sector-editor-close" onClick={onClose}>×</button>
+          <button className="sector-editor-close" onClick={onClose}>
+            ×
+          </button>
         </div>
         <div className="sector-editor-body" style={{ textAlign: "center", padding: "24px" }}>
           <p style={{ fontSize: "1.1rem", marginBottom: 8, color: "var(--aeon-fg)" }}>
@@ -434,7 +437,9 @@ export default function SectorInlineEditor({
       {/* No items state */}
       {records.length === 0 && (
         <div className="sector-editor-empty">
-          <p>No items yet. Click <strong>Add</strong> to create one.</p>
+          <p>
+            No items yet. Click <strong>Add</strong> to create one.
+          </p>
         </div>
       )}
 

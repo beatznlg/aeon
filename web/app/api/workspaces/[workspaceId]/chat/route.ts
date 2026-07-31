@@ -2,10 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 const AEON_URL = process.env.AEON_PYTHON_URL || "http://127.0.0.1:5000";
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: { workspaceId: string } }
-) {
+export async function POST(req: NextRequest, { params }: { params: { workspaceId: string } }) {
   try {
     const body = await req.json();
     const { query, provider, ...rest } = body;

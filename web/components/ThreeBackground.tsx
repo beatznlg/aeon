@@ -19,7 +19,12 @@ function Shapes({ mouse }: { mouse: { x: number; y: number } }) {
   });
 
   const shapes = useMemo(() => {
-    const arr: { pos: [number, number, number]; scale: number; color: string; type: "octa" | "torus" | "icosa" | "cylinder" }[] = [];
+    const arr: {
+      pos: [number, number, number];
+      scale: number;
+      color: string;
+      type: "octa" | "torus" | "icosa" | "cylinder";
+    }[] = [];
     const colors = ["#6366f1", "#a855f7", "#06b6d4", "#8b5cf6", "#3b82f6"];
     for (let i = 0; i < 30; i++) {
       arr.push({
@@ -39,7 +44,12 @@ function Shapes({ mouse }: { mouse: { x: number; y: number } }) {
   return (
     <group ref={group}>
       {shapes.map((s, i) => (
-        <Float key={i} speed={0.4 + Math.random() * 0.6} rotationIntensity={0.8} floatIntensity={0.6}>
+        <Float
+          key={i}
+          speed={0.4 + Math.random() * 0.6}
+          rotationIntensity={0.8}
+          floatIntensity={0.6}
+        >
           <mesh position={s.pos} scale={s.scale}>
             {s.type === "octa" && <octahedronGeometry args={[1, 1]} />}
             {s.type === "torus" && <torusKnotGeometry args={[0.8, 0.3, 64, 8]} />}
@@ -110,12 +120,7 @@ function Particles({ count = 600 }) {
           array={positions}
           itemSize={3}
         />
-        <bufferAttribute
-          attach="attributes-color"
-          count={count}
-          array={colors}
-          itemSize={3}
-        />
+        <bufferAttribute attach="attributes-color" count={count} array={colors} itemSize={3} />
       </bufferGeometry>
       <pointsMaterial
         size={0.04}

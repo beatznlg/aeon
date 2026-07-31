@@ -21,7 +21,12 @@ const variantClasses: Record<BadgeVariant, string> = {
   neutral: "bg-aeon-bg-2 text-aeon-fg-soft",
 };
 
-export default function Badge({ children, variant = "default", className = "", title }: BadgeProps) {
+export default function Badge({
+  children,
+  variant = "default",
+  className = "",
+  title,
+}: BadgeProps) {
   return (
     <span
       title={title}

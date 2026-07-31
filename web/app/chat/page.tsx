@@ -36,10 +36,7 @@ function formatMessage(text: string) {
   return parts.map((part, index) => {
     if (part.startsWith("```") && part.endsWith("```")) {
       return (
-        <pre
-          key={index}
-          className="chat-code"
-        >
+        <pre key={index} className="chat-code">
           {part.slice(3, -3).replace(/^[\w]+\n/, "")}
         </pre>
       );
@@ -214,10 +211,7 @@ export default function ChatPage() {
 
       setMessages((prev) => [...prev, { role: "aeon", text: reply, backend }]);
     } catch (e: any) {
-      setMessages((prev) => [
-        ...prev,
-        { role: "aeon", text: `Error: ${e.message}` },
-      ]);
+      setMessages((prev) => [...prev, { role: "aeon", text: `Error: ${e.message}` }]);
     } finally {
       setLoading(false);
       inputRef.current?.focus();
@@ -314,17 +308,34 @@ export default function ChatPage() {
             <div className="chat-empty-icon">⟁</div>
             <h2>What can AEON help you with?</h2>
             <p className="chat-empty-hint">
-              Ask about mathematics, code, business analysis, or any topic.
-              AEON uses <strong>{activeProvider.name}</strong> to generate responses.
+              Ask about mathematics, code, business analysis, or any topic. AEON uses{" "}
+              <strong>{activeProvider.name}</strong> to generate responses.
             </p>
             <div className="chat-suggestions">
-              <button onClick={() => { setInput("What is the integral of x² dx?"); inputRef.current?.focus(); }}>
+              <button
+                onClick={() => {
+                  setInput("What is the integral of x² dx?");
+                  inputRef.current?.focus();
+                }}
+              >
                 ∫ x² dx
               </button>
-              <button onClick={() => { setInput("Explain causal credit assignment in reinforcement learning"); inputRef.current?.focus(); }}>
+              <button
+                onClick={() => {
+                  setInput("Explain causal credit assignment in reinforcement learning");
+                  inputRef.current?.focus();
+                }}
+              >
                 Causal credit
               </button>
-              <button onClick={() => { setInput("Write a Python function that retries an HTTP request 3 times with exponential backoff"); inputRef.current?.focus(); }}>
+              <button
+                onClick={() => {
+                  setInput(
+                    "Write a Python function that retries an HTTP request 3 times with exponential backoff"
+                  );
+                  inputRef.current?.focus();
+                }}
+              >
                 Retry pattern
               </button>
             </div>
@@ -332,11 +343,16 @@ export default function ChatPage() {
         )}
 
         {messages.map((m, i) => (
-          <div key={i} className={`chat-msg ${m.role === "user" ? "chat-msg-user" : "chat-msg-aeon"}`}>
+          <div
+            key={i}
+            className={`chat-msg ${m.role === "user" ? "chat-msg-user" : "chat-msg-aeon"}`}
+          >
             <div className={`chat-msg-label ${m.role === "user" ? "" : "bot"}`}>
               {m.role === "user" ? "You" : "AEON"}
             </div>
-            <div className={`chat-msg-bubble ${m.role === "user" ? "chat-bubble-user" : "chat-bubble-aeon"}`}>
+            <div
+              className={`chat-msg-bubble ${m.role === "user" ? "chat-bubble-user" : "chat-bubble-aeon"}`}
+            >
               <div className="chat-msg-text">{formatMessage(m.text)}</div>
               {m.backend && m.role === "aeon" && (
                 <div className="chat-msg-backend">via {m.backend}</div>
@@ -350,7 +366,9 @@ export default function ChatPage() {
             <div className="chat-msg-label bot">AEON</div>
             <div className="chat-msg-bubble chat-bubble-aeon">
               <div className="chat-typing">
-                <span></span><span></span><span></span>
+                <span></span>
+                <span></span>
+                <span></span>
               </div>
             </div>
           </div>

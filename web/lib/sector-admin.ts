@@ -20,7 +20,7 @@ export function useCrudWithToasts() {
     sector: string,
     tool: string,
     item: Record<string, unknown>,
-    label?: string,
+    label?: string
   ) => {
     const result = await createToolItem(sector, tool, item);
     if (result.ok) {
@@ -37,7 +37,7 @@ export function useCrudWithToasts() {
     idField: string,
     idValue: string,
     updates: Record<string, unknown>,
-    label?: string,
+    label?: string
   ) => {
     const result = await updateToolItem(sector, tool, idField, idValue, updates);
     if (result.ok) {
@@ -53,7 +53,7 @@ export function useCrudWithToasts() {
     tool: string,
     idField: string,
     idValue: string,
-    label?: string,
+    label?: string
   ) => {
     const result = await deleteToolItem(sector, tool, idField, idValue);
     if (result.ok) {
@@ -67,7 +67,6 @@ export function useCrudWithToasts() {
   return { create, update, remove };
 }
 
-
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export interface CrudResult {
@@ -80,7 +79,7 @@ export interface CrudResult {
 async function apiCall<T = Record<string, unknown>>(
   method: string,
   path: string,
-  body?: unknown,
+  body?: unknown
 ): Promise<T & CrudResult> {
   try {
     const res = await fetch(`/api/sector/${path}`, {
@@ -88,9 +87,13 @@ async function apiCall<T = Record<string, unknown>>(
       headers: { "Content-Type": "application/json" },
       body: body ? JSON.stringify(body) : undefined,
     });
-    const data = await res.json() as T;
+    const data = (await res.json()) as T;
     if (!res.ok) {
-      return { ...(data as unknown as Record<string, unknown>), ok: false, error: (data as unknown as Record<string, unknown>)?.error || `HTTP ${res.status}` } as T & CrudResult;
+      return {
+        ...(data as unknown as Record<string, unknown>),
+        ok: false,
+        error: (data as unknown as Record<string, unknown>)?.error || `HTTP ${res.status}`,
+      } as T & CrudResult;
     }
     return { ...data, ok: true } as T & CrudResult;
   } catch (err: unknown) {
@@ -108,7 +111,7 @@ async function apiCall<T = Record<string, unknown>>(
 export async function createToolItem(
   sector: string,
   tool: string,
-  item: Record<string, unknown>,
+  item: Record<string, unknown>
 ): Promise<CrudResult & { created?: Record<string, unknown> }> {
   return apiCall("POST", `${sector}/${tool}`, item);
 }
@@ -123,7 +126,7 @@ export async function updateToolItem(
   tool: string,
   idField: string,
   idValue: string,
-  updates: Record<string, unknown>,
+  updates: Record<string, unknown>
 ): Promise<CrudResult> {
   // Include the ID field so the backend can find the item
   const body: Record<string, unknown> = { ...updates, [idField]: idValue };
@@ -138,7 +141,7 @@ export async function updateToolItem(
 export async function replaceToolItem(
   sector: string,
   tool: string,
-  fullItem: Record<string, unknown>,
+  fullItem: Record<string, unknown>
 ): Promise<CrudResult> {
   return apiCall("PATCH", `${sector}/${tool}`, fullItem);
 }
@@ -151,7 +154,7 @@ export async function deleteToolItem(
   sector: string,
   tool: string,
   idField: string,
-  idValue: string,
+  idValue: string
 ): Promise<CrudResult> {
   return apiCall("DELETE", `${sector}/${tool}`, { [idField]: idValue });
 }
@@ -162,7 +165,7 @@ export async function deleteToolItem(
  */
 export async function fetchToolData<T = unknown>(
   sector: string,
-  tool: string,
+  tool: string
 ): Promise<T & CrudResult> {
   return apiCall<T>("GET", `${sector}/${tool}`);
 }

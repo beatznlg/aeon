@@ -8,13 +8,7 @@ interface SidebarContextValue {
 
 const SidebarContext = createContext<SidebarContextValue>({ close: () => {} });
 
-export function SidebarProvider({
-  children,
-  close,
-}: {
-  children: ReactNode;
-  close: () => void;
-}) {
+export function SidebarProvider({ children, close }: { children: ReactNode; close: () => void }) {
   return <SidebarContext.Provider value={{ close }}>{children}</SidebarContext.Provider>;
 }
 

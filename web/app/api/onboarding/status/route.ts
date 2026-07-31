@@ -48,7 +48,9 @@ export async function GET() {
 
   return NextResponse.json({
     ok: true,
-    backend: process.env.AEON_HF_SPACE_URL ? "aeon-kernel" : process.env.AEON_LLM_PROVIDER || "openrouter",
+    backend: process.env.AEON_HF_SPACE_URL
+      ? "aeon-kernel"
+      : process.env.AEON_LLM_PROVIDER || "openrouter",
     keys,
     notes,
   });

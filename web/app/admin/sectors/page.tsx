@@ -6,7 +6,13 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { KPICard, Badge, DataTable, Widget } from "@/components/AeonOSDashboard";
 import SectorInlineEditor from "@/components/SectorInlineEditor";
-import { FadeIn, StaggerContainer, StaggerItem, ScaleOnHover, motion } from "@/components/animations";
+import {
+  FadeIn,
+  StaggerContainer,
+  StaggerItem,
+  ScaleOnHover,
+  motion,
+} from "@/components/animations";
 
 // ─── Sector definitions ──────────────────────────────────────────────────────
 
@@ -21,7 +27,10 @@ interface SectorDef {
 
 const SECTORS: SectorDef[] = [
   {
-    id: "cybersecurity", name: "Cybersecurity", icon: "🛡️", color: "#ef4444",
+    id: "cybersecurity",
+    name: "Cybersecurity",
+    icon: "🛡️",
+    color: "#ef4444",
     description: "Threat intelligence, vulnerability scanning, compliance & IP reputation",
     tools: [
       { path: "threats", label: "Threat Intelligence", icon: "⚠️" },
@@ -32,7 +41,10 @@ const SECTORS: SectorDef[] = [
     ],
   },
   {
-    id: "health", name: "Healthcare", icon: "🏥", color: "#22c55e",
+    id: "health",
+    name: "Healthcare",
+    icon: "🏥",
+    color: "#22c55e",
     description: "AI diagnostics, patient vitals, drug interactions & telehealth",
     tools: [
       { path: "diagnostics", label: "Diagnostic Analysis", icon: "🔬" },
@@ -42,7 +54,10 @@ const SECTORS: SectorDef[] = [
     ],
   },
   {
-    id: "finance", name: "Finance", icon: "💰", color: "#f59e0b",
+    id: "finance",
+    name: "Finance",
+    icon: "💰",
+    color: "#f59e0b",
     description: "Risk analysis, market forecasting, fraud detection & credit scoring",
     tools: [
       { path: "risk", label: "Risk Assessment", icon: "📊" },
@@ -53,7 +68,10 @@ const SECTORS: SectorDef[] = [
     ],
   },
   {
-    id: "retail", name: "Retail & E-commerce", icon: "📦", color: "#a855f7",
+    id: "retail",
+    name: "Retail & E-commerce",
+    icon: "📦",
+    color: "#a855f7",
     description: "Demand forecasting, inventory optimization & supplier risk",
     tools: [
       { path: "forecast", label: "Demand Forecast", icon: "📊" },
@@ -63,7 +81,10 @@ const SECTORS: SectorDef[] = [
     ],
   },
   {
-    id: "transport", name: "Transport & Logistics", icon: "🚚", color: "#3b82f6",
+    id: "transport",
+    name: "Transport & Logistics",
+    icon: "🚚",
+    color: "#3b82f6",
     description: "Traffic management, fleet scheduling & route optimization",
     tools: [
       { path: "traffic", label: "Traffic Zones", icon: "🚦" },
@@ -72,7 +93,10 @@ const SECTORS: SectorDef[] = [
     ],
   },
   {
-    id: "manufacturing", name: "Manufacturing", icon: "🏭", color: "#f97316",
+    id: "manufacturing",
+    name: "Manufacturing",
+    icon: "🏭",
+    color: "#f97316",
     description: "Predictive maintenance, quality control & smart logistics",
     tools: [
       { path: "maintenance", label: "Machine Health", icon: "⚙️" },
@@ -81,7 +105,10 @@ const SECTORS: SectorDef[] = [
     ],
   },
   {
-    id: "tourism", name: "Tourism & Hospitality", icon: "🏨", color: "#ec4899",
+    id: "tourism",
+    name: "Tourism & Hospitality",
+    icon: "🏨",
+    color: "#ec4899",
     description: "Booking optimization, dynamic pricing & automated concierge",
     tools: [
       { path: "bookings", label: "Booking Optimization", icon: "📅" },
@@ -91,7 +118,10 @@ const SECTORS: SectorDef[] = [
     ],
   },
   {
-    id: "utilities", name: "Utilities & Public Sector", icon: "⚡", color: "#06b6d4",
+    id: "utilities",
+    name: "Utilities & Public Sector",
+    icon: "⚡",
+    color: "#06b6d4",
     description: "Resource optimization, public services, waste & energy grid",
     tools: [
       { path: "resources", label: "Resource Optimization", icon: "💧" },
@@ -101,7 +131,10 @@ const SECTORS: SectorDef[] = [
     ],
   },
   {
-    id: "cultural_heritage", name: "Cultural Heritage", icon: "🎭", color: "#14b8a6",
+    id: "cultural_heritage",
+    name: "Cultural Heritage",
+    icon: "🎭",
+    color: "#14b8a6",
     description: "Visitor engagement, heritage sites, exhibitions & virtual tours",
     tools: [
       { path: "visitors", label: "Visitor Engagement", icon: "👥" },
@@ -111,7 +144,10 @@ const SECTORS: SectorDef[] = [
     ],
   },
   {
-    id: "sme", name: "SME Business Suite", icon: "🏢", color: "#6366f1",
+    id: "sme",
+    name: "SME Business Suite",
+    icon: "🏢",
+    color: "#6366f1",
     description: "Workflow automation, document processing, AI support & supply chain",
     tools: [
       { path: "workflows", label: "Workflow Automation", icon: "🤖" },
@@ -147,13 +183,47 @@ function getRowCount(data: unknown): number {
   if (Array.isArray(data)) return data.length;
   if (data && typeof data === "object") {
     // Try common array keys
-    for (const key of ["threats", "vulnerabilities", "diagnostics", "vitals", "interactions",
-      "triage", "fraud_cases", "applications", "accounts", "forecast", "suppliers",
-      "zones", "fleet", "routes", "machines", "batches", "shipments", "bookings",
-      "pricing", "requests", "venues", "resources", "services", "districts",
-      "regions", "sites", "exhibitions", "tours", "workflows", "documents",
-      "tickets", "chains", "inventory", "risk", "market", "elasticity",
-      "compliance", "ip_reputation", "news"]) {
+    for (const key of [
+      "threats",
+      "vulnerabilities",
+      "diagnostics",
+      "vitals",
+      "interactions",
+      "triage",
+      "fraud_cases",
+      "applications",
+      "accounts",
+      "forecast",
+      "suppliers",
+      "zones",
+      "fleet",
+      "routes",
+      "machines",
+      "batches",
+      "shipments",
+      "bookings",
+      "pricing",
+      "requests",
+      "venues",
+      "resources",
+      "services",
+      "districts",
+      "regions",
+      "sites",
+      "exhibitions",
+      "tours",
+      "workflows",
+      "documents",
+      "tickets",
+      "chains",
+      "inventory",
+      "risk",
+      "market",
+      "elasticity",
+      "compliance",
+      "ip_reputation",
+      "news",
+    ]) {
       const val = (data as Record<string, unknown>)[key];
       if (Array.isArray(val)) return val.length;
     }
@@ -247,29 +317,36 @@ export default function AdminSectorsPage() {
           ...prev[sectorId],
           tools: {
             ...prev[sectorId].tools,
-            [toolPath]: { ...prev[sectorId].tools[toolPath], loading: false, error: err instanceof Error ? err.message : String(err) },
+            [toolPath]: {
+              ...prev[sectorId].tools[toolPath],
+              loading: false,
+              error: err instanceof Error ? err.message : String(err),
+            },
           },
         },
       }));
     }
   }, []);
 
-  const fetchSectorAll = useCallback(async (sectorId: string) => {
-    setSectors((prev) => ({
-      ...prev,
-      [sectorId]: { ...prev[sectorId], loading: true, expanded: true },
-    }));
+  const fetchSectorAll = useCallback(
+    async (sectorId: string) => {
+      setSectors((prev) => ({
+        ...prev,
+        [sectorId]: { ...prev[sectorId], loading: true, expanded: true },
+      }));
 
-    const sector = SECTORS.find((s) => s.id === sectorId);
-    if (!sector) return;
+      const sector = SECTORS.find((s) => s.id === sectorId);
+      if (!sector) return;
 
-    await Promise.all(sector.tools.map((tool) => fetchToolData(sectorId, tool.path)));
+      await Promise.all(sector.tools.map((tool) => fetchToolData(sectorId, tool.path)));
 
-    setSectors((prev) => ({
-      ...prev,
-      [sectorId]: { ...prev[sectorId], loading: false },
-    }));
-  }, [fetchToolData]);
+      setSectors((prev) => ({
+        ...prev,
+        [sectorId]: { ...prev[sectorId], loading: false },
+      }));
+    },
+    [fetchToolData]
+  );
 
   // Keep a live ref to sectors so the polling interval always sees current state
   // without resetting the interval whenever sectors updates.
@@ -359,7 +436,9 @@ export default function AdminSectorsPage() {
   if (!session) {
     return (
       <div className="os-page">
-        <div style={{ color: "var(--fg-mute)", padding: 40, textAlign: "center" }}>Sign in to access admin panel</div>
+        <div style={{ color: "var(--fg-mute)", padding: 40, textAlign: "center" }}>
+          Sign in to access admin panel
+        </div>
       </div>
     );
   }
@@ -369,15 +448,20 @@ export default function AdminSectorsPage() {
       {/* ── Header ── */}
       <header className="os-header">
         <div>
-          <Link href="/admin" className="os-back">← Admin Panel</Link>
+          <Link href="/admin" className="os-back">
+            ← Admin Panel
+          </Link>
           <h1>🏢 Sector Data Manager</h1>
           <p className="dashboard-subtitle">
-            Unified view of all 10 industry verticals — view threat intel, diagnostics, market data, and more from one dashboard
+            Unified view of all 10 industry verticals — view threat intel, diagnostics, market data,
+            and more from one dashboard
           </p>
         </div>
         <div className="os-app-meta">
           <span>📊 {globalStats.totalRows} data points</span>
-          <span>🔵 {globalStats.loadedSectors}/{SECTORS.length} sectors loaded</span>
+          <span>
+            🔵 {globalStats.loadedSectors}/{SECTORS.length} sectors loaded
+          </span>
         </div>
       </header>
 
@@ -393,7 +477,9 @@ export default function AdminSectorsPage() {
             onChange={(e) => setSearch(e.target.value)}
           />
           {search && (
-            <button className="admin-search-clear" onClick={() => setSearch("")}>×</button>
+            <button className="admin-search-clear" onClick={() => setSearch("")}>
+              ×
+            </button>
           )}
         </div>
         <div className="admin-controls-actions">
@@ -419,12 +505,16 @@ export default function AdminSectorsPage() {
               className={`admin-view-btn ${viewMode === "grid" ? "active" : ""}`}
               onClick={() => setViewMode("grid")}
               title="Grid view"
-            >⊞</button>
+            >
+              ⊞
+            </button>
             <button
               className={`admin-view-btn ${viewMode === "compact" ? "active" : ""}`}
               onClick={() => setViewMode("compact")}
               title="Compact view"
-            >≡</button>
+            >
+              ≡
+            </button>
           </div>
         </div>
       </div>
@@ -441,9 +531,16 @@ export default function AdminSectorsPage() {
           <span>📡</span> <strong>{40}</strong> API endpoints
         </div>
         <div className="admin-stat-pill">
-          <span>👁️</span> <strong>{filteredSectors.length}/{SECTORS.length}</strong> visible
+          <span>👁️</span>{" "}
+          <strong>
+            {filteredSectors.length}/{SECTORS.length}
+          </strong>{" "}
+          visible
         </div>
-        <div className="admin-stat-pill admin-refresh-indicator" title={lastRefreshed ? `Last refreshed: ${lastRefreshed.toLocaleTimeString()}` : ""}>
+        <div
+          className="admin-stat-pill admin-refresh-indicator"
+          title={lastRefreshed ? `Last refreshed: ${lastRefreshed.toLocaleTimeString()}` : ""}
+        >
           {autoRefresh ? (
             <>
               <span className="admin-refresh-spinner">↻</span>
@@ -467,10 +564,14 @@ export default function AdminSectorsPage() {
       ) : filteredSectors.length === 0 ? (
         <div className="empty-state">
           <p>🔍 No sectors match &quot;{search}&quot;</p>
-          <button className="btn btn-sm" onClick={() => setSearch("")}>Clear search</button>
+          <button className="btn btn-sm" onClick={() => setSearch("")}>
+            Clear search
+          </button>
         </div>
       ) : (
-        <StaggerContainer className={`admin-sector-grid ${viewMode === "compact" ? "compact" : ""}`}>
+        <StaggerContainer
+          className={`admin-sector-grid ${viewMode === "compact" ? "compact" : ""}`}
+        >
           {filteredSectors.map((sector) => {
             const state = sectors[sector.id];
             const isExpanded = state?.expanded ?? false;
@@ -492,112 +593,129 @@ export default function AdminSectorsPage() {
 
             return (
               <StaggerItem key={sector.id}>
-              <ScaleOnHover>
-              <div
-                className={`admin-sector-card ${isExpanded ? "expanded" : ""}`}
-                style={{ borderColor: sector.color }}
-              >
-                {/* ── Sector Header (collapsed view) ── */}
-                <button
-                  className="admin-sector-header"
-                  onClick={() => toggleSector(sector.id)}
-                  style={{ borderLeft: `4px solid ${sector.color}` }}
-                >
-                  <div className="admin-sector-icon-wrapper" style={{ background: `${sector.color}20`, color: sector.color }}>
-                    <span className="admin-sector-icon">{sector.icon}</span>
-                  </div>
-                  <div className="admin-sector-info">
-                    <div className="admin-sector-name">{sector.name}</div>
-                    <div className="admin-sector-desc">{sector.description}</div>
-                  </div>
-                  <div className="admin-sector-meta">
-                    {isSectorLoading ? (
-                      <span className="loading-dots">Loading</span>
-                    ) : (
-                      <>
-                        <span className="admin-sector-tool-count">{loadedTools}/{totalTools} tools</span>
-                        {sectorRows > 0 && <span className="admin-sector-row-count">{sectorRows} rows</span>}
-                      </>
-                    )}
-                    <span className={`admin-sector-chevron ${isExpanded ? "open" : ""}`}>▾</span>
-                  </div>
-                </button>
+                <ScaleOnHover>
+                  <div
+                    className={`admin-sector-card ${isExpanded ? "expanded" : ""}`}
+                    style={{ borderColor: sector.color }}
+                  >
+                    {/* ── Sector Header (collapsed view) ── */}
+                    <button
+                      className="admin-sector-header"
+                      onClick={() => toggleSector(sector.id)}
+                      style={{ borderLeft: `4px solid ${sector.color}` }}
+                    >
+                      <div
+                        className="admin-sector-icon-wrapper"
+                        style={{ background: `${sector.color}20`, color: sector.color }}
+                      >
+                        <span className="admin-sector-icon">{sector.icon}</span>
+                      </div>
+                      <div className="admin-sector-info">
+                        <div className="admin-sector-name">{sector.name}</div>
+                        <div className="admin-sector-desc">{sector.description}</div>
+                      </div>
+                      <div className="admin-sector-meta">
+                        {isSectorLoading ? (
+                          <span className="loading-dots">Loading</span>
+                        ) : (
+                          <>
+                            <span className="admin-sector-tool-count">
+                              {loadedTools}/{totalTools} tools
+                            </span>
+                            {sectorRows > 0 && (
+                              <span className="admin-sector-row-count">{sectorRows} rows</span>
+                            )}
+                          </>
+                        )}
+                        <span className={`admin-sector-chevron ${isExpanded ? "open" : ""}`}>
+                          ▾
+                        </span>
+                      </div>
+                    </button>
 
-                {/* ── Expanded Tool Data ── */}
-                {isExpanded && (
-                  <div className="admin-sector-body">
-                    {totalTools === 0 ? (
-                      <div className="empty-tools">No tools configured for this sector</div>
-                    ) : (
-                      <div className="admin-tools-grid">
-                        {sector.tools.map((tool) => {
-                          const toolState = state?.tools[tool.path];
-                          const isLoading = toolState?.loading ?? false;
-                          const error = toolState?.error ?? null;
-                          const data = toolState?.data ?? null;
-                          const dataRows = getRowCount(data);
+                    {/* ── Expanded Tool Data ── */}
+                    {isExpanded && (
+                      <div className="admin-sector-body">
+                        {totalTools === 0 ? (
+                          <div className="empty-tools">No tools configured for this sector</div>
+                        ) : (
+                          <div className="admin-tools-grid">
+                            {sector.tools.map((tool) => {
+                              const toolState = state?.tools[tool.path];
+                              const isLoading = toolState?.loading ?? false;
+                              const error = toolState?.error ?? null;
+                              const data = toolState?.data ?? null;
+                              const dataRows = getRowCount(data);
 
-                          return (
-                            <div key={tool.path} className="admin-tool-card" style={{ borderLeft: `3px solid ${sector.color}` }}>
-                              <div className="admin-tool-header">
-                                <span className="admin-tool-icon">{tool.icon}</span>
-                                <span className="admin-tool-name">{tool.label}</span>
-                                {isLoading && <span className="loading-dots">Fetching</span>}
-                                {!isLoading && data && (
-                                  <>
-                                    <span className="admin-tool-badge">{dataRows} items</span>
-                                    <button
-                                      className="admin-tool-manage"
-                                      onClick={() =>
-                                        setManaging((prev) => ({
-                                          ...prev,
-                                          [`${sector.id}/${tool.path}`]: !prev[`${sector.id}/${tool.path}`],
-                                        }))
-                                      }
-                                    >
-                                      {managing[`${sector.id}/${tool.path}`] ? "📋 View" : "✏️ Manage"}
-                                    </button>
-                                  </>
-                                )}
-                                {!isLoading && !data && !error && (
-                                  <button
-                                    className="btn btn-xs"
-                                    onClick={() => fetchToolData(sector.id, tool.path)}
-                                  >
-                                    Load
-                                  </button>
-                                )}
-                              </div>
-                              {error && <div className="admin-tool-error">⚠ {error}</div>}
-                              {data && (
-                                <>
-                                  <div className="admin-tool-preview">
-                                    <ToolDataPreview
-                                      data={data}
-                                      sectorId={sector.id}
-                                      toolPath={tool.path}
-                                      accentColor={sector.color}
-                                      editing={!!managing[`${sector.id}/${tool.path}`]}
-                                      onToggleEdit={() =>
-                                        setManaging((prev) => ({
-                                          ...prev,
-                                          [`${sector.id}/${tool.path}`]: !prev[`${sector.id}/${tool.path}`],
-                                        }))
-                                      }
-                                      onDataChanged={() => fetchToolData(sector.id, tool.path)}
-                                    />
+                              return (
+                                <div
+                                  key={tool.path}
+                                  className="admin-tool-card"
+                                  style={{ borderLeft: `3px solid ${sector.color}` }}
+                                >
+                                  <div className="admin-tool-header">
+                                    <span className="admin-tool-icon">{tool.icon}</span>
+                                    <span className="admin-tool-name">{tool.label}</span>
+                                    {isLoading && <span className="loading-dots">Fetching</span>}
+                                    {!isLoading && data && (
+                                      <>
+                                        <span className="admin-tool-badge">{dataRows} items</span>
+                                        <button
+                                          className="admin-tool-manage"
+                                          onClick={() =>
+                                            setManaging((prev) => ({
+                                              ...prev,
+                                              [`${sector.id}/${tool.path}`]:
+                                                !prev[`${sector.id}/${tool.path}`],
+                                            }))
+                                          }
+                                        >
+                                          {managing[`${sector.id}/${tool.path}`]
+                                            ? "📋 View"
+                                            : "✏️ Manage"}
+                                        </button>
+                                      </>
+                                    )}
+                                    {!isLoading && !data && !error && (
+                                      <button
+                                        className="btn btn-xs"
+                                        onClick={() => fetchToolData(sector.id, tool.path)}
+                                      >
+                                        Load
+                                      </button>
+                                    )}
                                   </div>
-                                </>
-                              )}
-                            </div>
-                          );
-                        })}
+                                  {error && <div className="admin-tool-error">⚠ {error}</div>}
+                                  {data && (
+                                    <>
+                                      <div className="admin-tool-preview">
+                                        <ToolDataPreview
+                                          data={data}
+                                          sectorId={sector.id}
+                                          toolPath={tool.path}
+                                          accentColor={sector.color}
+                                          editing={!!managing[`${sector.id}/${tool.path}`]}
+                                          onToggleEdit={() =>
+                                            setManaging((prev) => ({
+                                              ...prev,
+                                              [`${sector.id}/${tool.path}`]:
+                                                !prev[`${sector.id}/${tool.path}`],
+                                            }))
+                                          }
+                                          onDataChanged={() => fetchToolData(sector.id, tool.path)}
+                                        />
+                                      </div>
+                                    </>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
-                )}
-              </div>
-              </ScaleOnHover>
+                </ScaleOnHover>
               </StaggerItem>
             );
           })}
@@ -611,12 +729,38 @@ export default function AdminSectorsPage() {
 
 // Common ID field candidates across all 40 tools
 const ID_FIELD_CANDIDATES = [
-  "id", "cve", "sku", "supplier", "transaction_id",
-  "applicant_id", "account_id", "zone", "depot", "stops", "machine_id",
-  "batch_id", "route_id", "property", "room", "guest_id", "venue",
-  "resource", "service", "district", "region", "site", "theme",
-  "process", "document_type", "query", "chain_id", "analyzed_symptoms",
-  "patient_id", "medications", "symptoms", "indicator",
+  "id",
+  "cve",
+  "sku",
+  "supplier",
+  "transaction_id",
+  "applicant_id",
+  "account_id",
+  "zone",
+  "depot",
+  "stops",
+  "machine_id",
+  "batch_id",
+  "route_id",
+  "property",
+  "room",
+  "guest_id",
+  "venue",
+  "resource",
+  "service",
+  "district",
+  "region",
+  "site",
+  "theme",
+  "process",
+  "document_type",
+  "query",
+  "chain_id",
+  "analyzed_symptoms",
+  "patient_id",
+  "medications",
+  "symptoms",
+  "indicator",
 ];
 
 function detectIdField(records: Record<string, unknown>[]): string {
@@ -629,12 +773,38 @@ function detectIdField(records: Record<string, unknown>[]): string {
 }
 
 const DATA_KEY_CANDIDATES = [
-  "threats", "vulnerabilities", "diagnostics", "vitals",
-  "interactions", "triage", "fraud_cases", "applications", "accounts",
-  "forecast", "suppliers", "zones", "fleet", "routes", "machines",
-  "batches", "shipments", "bookings", "pricing", "requests", "venues",
-  "resources", "services", "districts", "regions", "sites", "exhibitions",
-  "tours", "workflows", "documents", "tickets", "chains",
+  "threats",
+  "vulnerabilities",
+  "diagnostics",
+  "vitals",
+  "interactions",
+  "triage",
+  "fraud_cases",
+  "applications",
+  "accounts",
+  "forecast",
+  "suppliers",
+  "zones",
+  "fleet",
+  "routes",
+  "machines",
+  "batches",
+  "shipments",
+  "bookings",
+  "pricing",
+  "requests",
+  "venues",
+  "resources",
+  "services",
+  "districts",
+  "regions",
+  "sites",
+  "exhibitions",
+  "tours",
+  "workflows",
+  "documents",
+  "tickets",
+  "chains",
 ];
 
 function detectDataKey(data: Record<string, unknown>): string {
@@ -721,9 +891,7 @@ function ToolDataPreview({
         </tbody>
       </table>
       {records.length > 5 && (
-        <div className="admin-tool-footer">
-          Showing 5 of {records.length} records
-        </div>
+        <div className="admin-tool-footer">Showing 5 of {records.length} records</div>
       )}
     </div>
   );
@@ -741,15 +909,51 @@ function findRecords(data: unknown): Record<string, unknown>[] | null {
 
   // Search for array keys
   const arrayKeys = [
-    "threats", "vulnerabilities", "diagnostics", "vitals", "interactions",
-    "triage", "fraud_cases", "applications", "accounts", "forecast", "forecast",
-    "inventory", "suppliers", "zones", "fleet", "routes", "machines",
-    "batches", "shipments", "bookings", "pricing", "requests", "venues",
-    "resources", "services", "districts", "regions", "sites", "exhibitions",
-    "tours", "workflows", "documents", "tickets", "chains",
-    "supply_chain", "visitor_data", "heritage_sites", "virtual_tours",
-    "resource_data", "public_services", "waste_data", "energy_grid",
-    "document_queue", "support_tickets", "supply_chain",
+    "threats",
+    "vulnerabilities",
+    "diagnostics",
+    "vitals",
+    "interactions",
+    "triage",
+    "fraud_cases",
+    "applications",
+    "accounts",
+    "forecast",
+    "forecast",
+    "inventory",
+    "suppliers",
+    "zones",
+    "fleet",
+    "routes",
+    "machines",
+    "batches",
+    "shipments",
+    "bookings",
+    "pricing",
+    "requests",
+    "venues",
+    "resources",
+    "services",
+    "districts",
+    "regions",
+    "sites",
+    "exhibitions",
+    "tours",
+    "workflows",
+    "documents",
+    "tickets",
+    "chains",
+    "supply_chain",
+    "visitor_data",
+    "heritage_sites",
+    "virtual_tours",
+    "resource_data",
+    "public_services",
+    "waste_data",
+    "energy_grid",
+    "document_queue",
+    "support_tickets",
+    "supply_chain",
   ];
 
   for (const key of arrayKeys) {
@@ -803,7 +1007,8 @@ function formatCellValue(value: unknown): string {
   if (typeof value === "object") {
     if (Array.isArray(value)) {
       if (value.length === 0) return "[]";
-      if (typeof value[0] === "string") return value.slice(0, 3).join(", ") + (value.length > 3 ? "…" : "");
+      if (typeof value[0] === "string")
+        return value.slice(0, 3).join(", ") + (value.length > 3 ? "…" : "");
       return `[${value.length} items]`;
     }
     return JSON.stringify(value).substring(0, 30) + "…";

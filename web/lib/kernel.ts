@@ -19,7 +19,7 @@ export function pythonUrl(): string | undefined {
 
 export async function kernelChat(
   query: string,
-  system?: string,
+  system?: string
 ): Promise<KernelResponse<{ answer: string; backend: string }> | null> {
   const url = pythonUrl();
   if (!url) return null;
@@ -56,7 +56,7 @@ export async function kernelChat(
 export async function kernelAppChat(
   appId: string,
   query: string,
-  system?: string,
+  system?: string
 ): Promise<KernelResponse<{ answer: string; backend: string }> | null> {
   const url = pythonUrl();
   if (!url) return null;
@@ -93,7 +93,7 @@ export async function kernelAppChat(
 export async function kernelTick(
   appId: string,
   query: string,
-  asyncMode = false,
+  asyncMode = false
 ): Promise<KernelResponse<unknown> | null> {
   const url = pythonUrl();
   if (!url) return null;

@@ -7,7 +7,10 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   const session = await auth();
   const { searchParams } = new URL(req.url);
-  const workspaceId = searchParams.get("workspace_id") || ((session?.user as any)?.workspaceId as string) || "default";
+  const workspaceId =
+    searchParams.get("workspace_id") ||
+    ((session?.user as any)?.workspaceId as string) ||
+    "default";
 
   const url = pythonUrl();
   if (!url) {
@@ -32,7 +35,8 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const session = await auth();
   const body = await req.json().catch(() => ({}));
-  const workspaceId = body.workspace_id || ((session?.user as any)?.workspaceId as string) || "default";
+  const workspaceId =
+    body.workspace_id || ((session?.user as any)?.workspaceId as string) || "default";
   const retentionDays = Math.max(1, Number(body.retention_days || 365));
   const action = ["delete", "archive"].includes(body.action) ? body.action : "archive";
 

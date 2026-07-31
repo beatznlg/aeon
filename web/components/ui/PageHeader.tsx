@@ -12,9 +12,18 @@ interface PageHeaderProps {
   className?: string;
 }
 
-export default function PageHeader({ title, subtitle, actions, backHref, backLabel = "← OS Launcher", className = "" }: PageHeaderProps) {
+export default function PageHeader({
+  title,
+  subtitle,
+  actions,
+  backHref,
+  backLabel = "← OS Launcher",
+  className = "",
+}: PageHeaderProps) {
   return (
-    <header className={`mb-6 flex flex-col gap-4 md:flex-row md:items-start md:justify-between ${className}`}>
+    <header
+      className={`mb-6 flex flex-col gap-4 md:flex-row md:items-start md:justify-between ${className}`}
+    >
       <div>
         <h1 className="text-2xl font-bold text-gradient">{title}</h1>
         {subtitle && <p className="mt-1 text-sm text-aeon-fg-mute">{subtitle}</p>}

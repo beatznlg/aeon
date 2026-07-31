@@ -15,10 +15,7 @@ export default function OSLoading() {
               marginBottom: "0.5rem",
             }}
           />
-          <div
-            className="skeleton-shimmer"
-            style={{ height: "0.8rem", width: 360 }}
-          />
+          <div className="skeleton-shimmer" style={{ height: "0.8rem", width: 360 }} />
         </div>
         <div className="flex gap-3">
           <div
@@ -66,10 +63,7 @@ export default function OSLoading() {
               className="skeleton-shimmer"
               style={{ height: "0.7rem", width: "40%", marginBottom: "0.5rem" }}
             />
-            <div
-              className="skeleton-shimmer"
-              style={{ height: "0.7rem", width: "80%" }}
-            />
+            <div className="skeleton-shimmer" style={{ height: "0.7rem", width: "80%" }} />
             <div className="flex gap-2 mt-4">
               <div
                 className="skeleton-shimmer"

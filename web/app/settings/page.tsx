@@ -105,7 +105,9 @@ export default function SettingsPage() {
   const [setup, setSetup] = useState<SetupStatus | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [connectorCatalog, setConnectorCatalog] = useState<ConnectorCatalogItem[]>([]);
-  const [connectorStatus, setConnectorStatus] = useState<Record<string, { ok: boolean; message: string }>>({});
+  const [connectorStatus, setConnectorStatus] = useState<
+    Record<string, { ok: boolean; message: string }>
+  >({});
   const userRole = ((session?.user as any)?.role as string) || "viewer";
 
   useEffect(() => {
@@ -154,7 +156,10 @@ export default function SettingsPage() {
         [item.id]: { ok: data.ok, message: data.ok ? "connected" : data.error || "failed" },
       }));
     } catch (e: any) {
-      setConnectorStatus((s) => ({ ...s, [item.id]: { ok: false, message: e?.message || "error" } }));
+      setConnectorStatus((s) => ({
+        ...s,
+        [item.id]: { ok: false, message: e?.message || "error" },
+      }));
     }
   };
 
@@ -190,7 +195,11 @@ export default function SettingsPage() {
           </div>
           <div className="settings-item-right">
             <span className={`settings-status ${health?.ok ? "connected" : "disconnected"}`}>
-              {health === null ? "..." : health.ok ? `Online · ${health.backend || "stub"}` : "Offline"}
+              {health === null
+                ? "..."
+                : health.ok
+                  ? `Online · ${health.backend || "stub"}`
+                  : "Offline"}
             </span>
           </div>
         </div>
@@ -200,7 +209,15 @@ export default function SettingsPage() {
             <div className="settings-item-desc">AEON kernel</div>
           </div>
           <div className="settings-item-right">
-            <span style={{ color: "var(--fg-soft)", fontFamily: "ui-monospace, monospace", fontSize: "0.85rem" }}>v3.0</span>
+            <span
+              style={{
+                color: "var(--fg-soft)",
+                fontFamily: "ui-monospace, monospace",
+                fontSize: "0.85rem",
+              }}
+            >
+              v3.0
+            </span>
           </div>
         </div>
         <div className="settings-item">
@@ -209,7 +226,9 @@ export default function SettingsPage() {
             <div className="settings-item-desc">Unconfigured services</div>
           </div>
           <div className="settings-item-right">
-            <span className={`settings-status ${(setup?.notes?.length || 0) > 0 ? "disconnected" : "connected"}`}>
+            <span
+              className={`settings-status ${(setup?.notes?.length || 0) > 0 ? "disconnected" : "connected"}`}
+            >
               {setup?.notes?.length || 0} items
             </span>
           </div>
@@ -239,7 +258,14 @@ export default function SettingsPage() {
             <div className="settings-item-label">Role</div>
             <div className="settings-item-desc">RBAC level for this session</div>
           </div>
-          <span style={{ color: "var(--fg-soft)", fontFamily: "ui-monospace, monospace", fontSize: "0.85rem", textTransform: "uppercase" }}>
+          <span
+            style={{
+              color: "var(--fg-soft)",
+              fontFamily: "ui-monospace, monospace",
+              fontSize: "0.85rem",
+              textTransform: "uppercase",
+            }}
+          >
             {userRole}
           </span>
         </div>
@@ -272,7 +298,12 @@ export default function SettingsPage() {
                 {keyDef.href && (
                   <>
                     {" · "}
-                    <a href={keyDef.href} target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)" }}>
+                    <a
+                      href={keyDef.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ color: "var(--accent)" }}
+                    >
                       Get key ↗
                     </a>
                   </>
@@ -306,7 +337,12 @@ export default function SettingsPage() {
                 {keyDef.href && (
                   <>
                     {" · "}
-                    <a href={keyDef.href} target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)" }}>
+                    <a
+                      href={keyDef.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ color: "var(--accent)" }}
+                    >
                       {keyDef.id === "gh_token" ? "Create token ↗" : "Open dashboard ↗"}
                     </a>
                   </>
@@ -334,21 +370,31 @@ export default function SettingsPage() {
         <div className="settings-item">
           <div>
             <div className="settings-item-label">1. Connect your LLM</div>
-            <div className="settings-item-desc">Add an OpenAI, Anthropic, or HuggingFace API key above, or use stub mode</div>
+            <div className="settings-item-desc">
+              Add an OpenAI, Anthropic, or HuggingFace API key above, or use stub mode
+            </div>
           </div>
-          <Link href="/llm" className="btn btn-sm btn-primary">Connect</Link>
+          <Link href="/llm" className="btn btn-sm btn-primary">
+            Connect
+          </Link>
         </div>
         <div className="settings-item">
           <div>
             <div className="settings-item-label">2. Launch a module</div>
-            <div className="settings-item-desc">Open any industry module to see autonomous AI in action</div>
+            <div className="settings-item-desc">
+              Open any industry module to see autonomous AI in action
+            </div>
           </div>
-          <Link href="/os" className="btn btn-sm">Open OS</Link>
+          <Link href="/os" className="btn btn-sm">
+            Open OS
+          </Link>
         </div>
         <div className="settings-item">
           <div>
             <div className="settings-item-label">3. Set your provider</div>
-            <div className="settings-item-desc">Set AEON_LLM_PROVIDER env var to your chosen backend</div>
+            <div className="settings-item-desc">
+              Set AEON_LLM_PROVIDER env var to your chosen backend
+            </div>
           </div>
           <button className="btn btn-sm" onClick={() => copyKey("AEON_LLM_PROVIDER")}>
             {copied === "AEON_LLM_PROVIDER" ? "Copied!" : "Copy env name"}
@@ -418,7 +464,9 @@ export default function SettingsPage() {
         <div className="settings-item">
           <div>
             <div className="settings-item-label">Company Branding</div>
-            <div className="settings-item-desc">Edit company name, product name, logo, primary color, and module toggles</div>
+            <div className="settings-item-desc">
+              Edit company name, product name, logo, primary color, and module toggles
+            </div>
           </div>
           <Link href="/settings/branding" className="btn btn-sm btn-primary">
             Customize
@@ -440,7 +488,9 @@ export default function SettingsPage() {
             <div className="settings-item-label">Current Role</div>
             <div className="settings-item-desc">Determines what actions you can perform</div>
           </div>
-          <span className={`settings-status ${userRole === "ADMIN" ? "connected" : "disconnected"}`}>
+          <span
+            className={`settings-status ${userRole === "ADMIN" ? "connected" : "disconnected"}`}
+          >
             {userRole.toUpperCase()}
           </span>
         </div>
@@ -449,7 +499,13 @@ export default function SettingsPage() {
             <div className="settings-item-label">Workspace ID</div>
             <div className="settings-item-desc">Active workspace context for data isolation</div>
           </div>
-          <span style={{ color: "var(--fg-soft)", fontFamily: "ui-monospace, monospace", fontSize: "0.85rem" }}>
+          <span
+            style={{
+              color: "var(--fg-soft)",
+              fontFamily: "ui-monospace, monospace",
+              fontSize: "0.85rem",
+            }}
+          >
             {(session?.user as any)?.workspaceId || "default"}
           </span>
         </div>

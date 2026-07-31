@@ -3,17 +3,14 @@
 import { useEffect, useState } from "react";
 
 type Episode = {
-  id: number; ts: number;
-  kind: "user" | "bot" | "obs"; text: string; ref: string | null;
+  id: number;
+  ts: number;
+  kind: "user" | "bot" | "obs";
+  text: string;
+  ref: string | null;
 };
 
-export default function MemoryBrowser({
-  open,
-  onClose,
-}: {
-  open: boolean;
-  onClose: () => void;
-}) {
+export default function MemoryBrowser({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [page, setPage] = useState(0);
   const [rows, setRows] = useState<Episode[]>([]);
   const [loading, setLoading] = useState(false);
@@ -33,12 +30,11 @@ export default function MemoryBrowser({
 
   return (
     <>
-      <div
-        className={"drawer-backdrop" + (open ? " open" : "")}
-        onClick={onClose}
-      ></div>
+      <div className={"drawer-backdrop" + (open ? " open" : "")} onClick={onClose}></div>
       <aside className={"drawer" + (open ? " open" : "")} aria-hidden={!open}>
-        <button className="close" onClick={onClose} title="Close">×</button>
+        <button className="close" onClick={onClose} title="Close">
+          ×
+        </button>
         <h2>Memory browser</h2>
         <p style={{ color: "var(--fg-mute)", fontSize: "0.85rem" }}>
           Latest 20 episodes from Supabase, page {page + 1}.
@@ -56,8 +52,7 @@ export default function MemoryBrowser({
               <div key={e.id} className="memory-item">
                 <div className="meta">
                   #{e.id} · {e.kind}
-                  {e.ref ? " · " + e.ref : ""} ·{" "}
-                  {new Date(e.ts * 1000).toLocaleString()}
+                  {e.ref ? " · " + e.ref : ""} · {new Date(e.ts * 1000).toLocaleString()}
                 </div>
                 <div>{e.text}</div>
               </div>

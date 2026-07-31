@@ -7,7 +7,10 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   const session = await auth();
   const { searchParams } = new URL(req.url);
-  const workspaceId = searchParams.get("workspace_id") || ((session?.user as any)?.workspaceId as string) || "default";
+  const workspaceId =
+    searchParams.get("workspace_id") ||
+    ((session?.user as any)?.workspaceId as string) ||
+    "default";
   const action = searchParams.get("action") || undefined;
   const moduleName = searchParams.get("module") || undefined;
   const limit = Math.min(1000, Math.max(1, Number(searchParams.get("limit") || 100)));

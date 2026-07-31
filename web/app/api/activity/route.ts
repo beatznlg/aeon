@@ -24,7 +24,9 @@ export async function GET(req: NextRequest) {
     const { data, error, count } = await sb
       .from("activity_events")
       .select("*", { count: "exact" })
-      .or(`user_id.eq.${userId},workspace_id.in.(SELECT workspace_id FROM memberships WHERE user_id = '${userId}')`)
+      .or(
+        `user_id.eq.${userId},workspace_id.in.(SELECT workspace_id FROM memberships WHERE user_id = '${userId}')`
+      )
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
 

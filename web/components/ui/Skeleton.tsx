@@ -19,12 +19,7 @@ interface SkeletonProps {
 /* ─── Base shimmer block ─── */
 
 function SkeletonBlock({ className = "" }: { className?: string }) {
-  return (
-    <div
-      className={`skeleton-shimmer ${className}`}
-      aria-hidden="true"
-    />
-  );
+  return <div className={`skeleton-shimmer ${className}`} aria-hidden="true" />;
 }
 
 /* ─── Variants ─── */
@@ -58,14 +53,17 @@ export function SkeletonStat({ className = "" }: { className?: string }) {
 }
 
 /** A table row skeleton */
-export function SkeletonTableRow({ columns = 4, className = "" }: { columns?: number; className?: string }) {
+export function SkeletonTableRow({
+  columns = 4,
+  className = "",
+}: {
+  columns?: number;
+  className?: string;
+}) {
   return (
     <div className={`skeleton-table-row ${className}`}>
       {Array.from({ length: columns }).map((_, i) => (
-        <SkeletonBlock
-          key={i}
-          className={`skeleton-text ${i === 0 ? "w-1/3" : "w-1/2"}`}
-        />
+        <SkeletonBlock key={i} className={`skeleton-text ${i === 0 ? "w-1/3" : "w-1/2"}`} />
       ))}
     </div>
   );
@@ -98,7 +96,10 @@ export function SkeletonPage({
 
       {/* Cards grid */}
       {cards > 0 && (
-        <div className="skeleton-grid" style={{ "--skeleton-cols": Math.min(cards, 4) } as React.CSSProperties}>
+        <div
+          className="skeleton-grid"
+          style={{ "--skeleton-cols": Math.min(cards, 4) } as React.CSSProperties}
+        >
           {Array.from({ length: cards }).map((_, i) => (
             <SkeletonCard key={i} />
           ))}

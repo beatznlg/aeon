@@ -22,14 +22,7 @@ export function ModuleChat({ appId, appName }: ModuleChatProps) {
     return () => window.removeEventListener("storage", onStorage);
   }, []);
 
-  const {
-    messages,
-    input,
-    handleInputChange,
-    handleSubmit,
-    isLoading,
-    error,
-  } = useChat({
+  const { messages, input, handleInputChange, handleSubmit, isLoading, error } = useChat({
     api: `/api/os/apps/${appId}/chat`,
     id: `module-chat-${appId}`,
     body: { appId },
@@ -55,18 +48,11 @@ export function ModuleChat({ appId, appName }: ModuleChatProps) {
 
       <div className="os-chat-messages">
         {messages.map((message) => (
-          <div
-            key={message.id}
-            className={`chat-message ${message.role}`}
-          >
-            <div className="chat-message-avatar">
-              {message.role === "user" ? "👤" : "🤖"}
-            </div>
+          <div key={message.id} className={`chat-message ${message.role}`}>
+            <div className="chat-message-avatar">{message.role === "user" ? "👤" : "🤖"}</div>
             <div className="chat-message-content">
               <div className="chat-message-text">
-                {message.content || (
-                  <span className="chat-empty-content">…</span>
-                )}
+                {message.content || <span className="chat-empty-content">…</span>}
               </div>
             </div>
           </div>
@@ -86,9 +72,7 @@ export function ModuleChat({ appId, appName }: ModuleChatProps) {
         )}
 
         {error && (
-          <div className="module-alert danger">
-            Chat error: {error.message || String(error)}
-          </div>
+          <div className="module-alert danger">Chat error: {error.message || String(error)}</div>
         )}
       </div>
 
@@ -101,11 +85,7 @@ export function ModuleChat({ appId, appName }: ModuleChatProps) {
           disabled={isLoading}
           autoComplete="off"
         />
-        <button
-          type="submit"
-          className="btn btn-primary"
-          disabled={isLoading || !input.trim()}
-        >
+        <button type="submit" className="btn btn-primary" disabled={isLoading || !input.trim()}>
           {isLoading ? "Streaming…" : "Send"}
         </button>
       </form>

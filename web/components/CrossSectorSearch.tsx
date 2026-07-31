@@ -52,7 +52,10 @@ function ResultCard({ result, onSelect }: { result: SearchResult; onSelect: () =
         style={{ textDecoration: "none" }}
       >
         <div className="sector-search-result-header">
-          <span className="sector-search-sector-badge" style={{ background: `${color}18`, color, borderColor: color }}>
+          <span
+            className="sector-search-sector-badge"
+            style={{ background: `${color}18`, color, borderColor: color }}
+          >
             {result.sectorIcon} {result.sectorName}
           </span>
           <span className="sector-search-tool-label">{result.toolLabel}</span>
@@ -153,8 +156,12 @@ export default function CrossSectorSearch({
   // Close on click outside
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (panelRef.current && !panelRef.current.contains(e.target as Node) &&
-          inputRef.current && !inputRef.current.contains(e.target as Node)) {
+      if (
+        panelRef.current &&
+        !panelRef.current.contains(e.target as Node) &&
+        inputRef.current &&
+        !inputRef.current.contains(e.target as Node)
+      ) {
         setShowPanel(false);
       }
     };
@@ -187,8 +194,15 @@ export default function CrossSectorSearch({
       <div className={`sector-search-bar ${showPanel && query ? "active" : ""}`}>
         <span className="sector-search-icon">
           {loading ? (
-            <motion.span animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 0.8, ease: "linear" }}>↻</motion.span>
-          ) : "🔍"}
+            <motion.span
+              animate={{ rotate: 360 }}
+              transition={{ repeat: Infinity, duration: 0.8, ease: "linear" }}
+            >
+              ↻
+            </motion.span>
+          ) : (
+            "🔍"
+          )}
         </span>
         <input
           ref={inputRef}
@@ -196,15 +210,24 @@ export default function CrossSectorSearch({
           className="sector-search-input"
           placeholder={placeholder}
           value={query}
-          onChange={(e) => { setQuery(e.target.value); setShowPanel(true); setSelectedIndex(-1); }}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setShowPanel(true);
+            setSelectedIndex(-1);
+          }}
           onFocus={() => setShowPanel(true)}
           onKeyDown={handleKeyDown}
         />
-        <span className="sector-search-shortcut">
-          {autoFocus ? "" : "⌘K"}
-        </span>
+        <span className="sector-search-shortcut">{autoFocus ? "" : "⌘K"}</span>
         {query && (
-          <button className="sector-search-clear" onClick={() => { setQuery(""); setResults([]); setSearched(false); }}>
+          <button
+            className="sector-search-clear"
+            onClick={() => {
+              setQuery("");
+              setResults([]);
+              setSearched(false);
+            }}
+          >
             ✕
           </button>
         )}
@@ -225,7 +248,10 @@ export default function CrossSectorSearch({
               <div className="sector-search-loading">
                 {[1, 2, 3].map((i) => (
                   <div key={i} className="sector-search-skeleton">
-                    <div className="skeleton-shimmer" style={{ height: "0.7rem", width: "30%", marginBottom: "0.5rem" }} />
+                    <div
+                      className="skeleton-shimmer"
+                      style={{ height: "0.7rem", width: "30%", marginBottom: "0.5rem" }}
+                    />
                     <div className="skeleton-shimmer" style={{ height: "0.6rem", width: "80%" }} />
                   </div>
                 ))}
@@ -238,15 +264,17 @@ export default function CrossSectorSearch({
                 {results.length > 0 ? (
                   <>
                     <div className="sector-search-panel-header">
-                      Found <strong>{totalResults}</strong> match{totalResults !== 1 ? "es" : ""} across{" "}
-                      <strong>{new Set(results.map((r) => r.sectorId)).size}</strong> sectors
+                      Found <strong>{totalResults}</strong> match{totalResults !== 1 ? "es" : ""}{" "}
+                      across <strong>{new Set(results.map((r) => r.sectorId)).size}</strong> sectors
                     </div>
                     <div className="sector-search-results">
                       {results.map((r, i) => (
                         <div
                           key={`${r.sectorId}-${r.toolPath}-${i}`}
                           className={i === selectedIndex ? "selected" : ""}
-                          style={i === selectedIndex ? { background: "var(--aeon-bg-2)" } : undefined}
+                          style={
+                            i === selectedIndex ? { background: "var(--aeon-bg-2)" } : undefined
+                          }
                         >
                           <ResultCard result={r} onSelect={handleSelect} />
                         </div>
@@ -256,8 +284,12 @@ export default function CrossSectorSearch({
                 ) : (
                   <div className="sector-search-empty">
                     <span className="sector-search-empty-icon">🔍</span>
-                    <p>No results found for <strong>&quot;{query}&quot;</strong></p>
-                    <p className="sector-search-empty-hint">Try a different search term or browse a sector directly</p>
+                    <p>
+                      No results found for <strong>&quot;{query}&quot;</strong>
+                    </p>
+                    <p className="sector-search-empty-hint">
+                      Try a different search term or browse a sector directly
+                    </p>
                   </div>
                 )}
               </>
@@ -266,7 +298,9 @@ export default function CrossSectorSearch({
             {/* Hint when empty */}
             {!loading && !searched && !query && (
               <div className="sector-search-empty">
-                <p className="sector-search-empty-hint">Type to search across all 40+ sector tools</p>
+                <p className="sector-search-empty-hint">
+                  Type to search across all 40+ sector tools
+                </p>
               </div>
             )}
           </motion.div>

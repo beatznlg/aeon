@@ -3,10 +3,7 @@ import { pythonUrl } from "@/lib/kernel";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(
-  _req: NextRequest,
-  { params }: { params: { keyId: string } }
-) {
+export async function GET(_req: NextRequest, { params }: { params: { keyId: string } }) {
   const url = pythonUrl();
   if (!url) {
     return NextResponse.json({

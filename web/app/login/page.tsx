@@ -3,10 +3,7 @@
 import { useState, Suspense, useEffect } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
-import {
-  loginToFlask,
-  storeFlaskSession,
-} from "@/lib/flask-auth";
+import { loginToFlask, storeFlaskSession } from "@/lib/flask-auth";
 import { defaultThemeConfig } from "@/lib/theme-config";
 
 const AEON_URL = process.env.NEXT_PUBLIC_AEON_PYTHON_URL || "http://127.0.0.1:5000";
@@ -140,7 +137,12 @@ function AuthForm() {
     <div className="login-page">
       <div className="login-bg" aria-hidden="true">
         <div className="login-grid" />
-        <div className="login-glow" style={{ background: `radial-gradient(circle at 50% 50%, ${primaryColor}22, transparent 60%)` }} />
+        <div
+          className="login-glow"
+          style={{
+            background: `radial-gradient(circle at 50% 50%, ${primaryColor}22, transparent 60%)`,
+          }}
+        />
       </div>
 
       <div className="login-split flex-col md:flex-row">
@@ -150,9 +152,7 @@ function AuthForm() {
             <div className="login-value-logo" style={{ color: primaryColor }}>
               ⟁
             </div>
-            <h1 className="login-value-title">
-              {productName}
-            </h1>
+            <h1 className="login-value-title">{productName}</h1>
             <p className="login-value-tagline">
               {tagline} for {companyName}
             </p>
@@ -185,7 +185,9 @@ function AuthForm() {
         <div className={`login-card-wrapper ${mounted ? "mounted" : ""} w-full md:w-1/2 max-w-md`}>
           <div className="login-card">
             <div className="login-brand">
-              <div className="login-logo" style={{ color: primaryColor }}>⟁</div>
+              <div className="login-logo" style={{ color: primaryColor }}>
+                ⟁
+              </div>
               <h2>Welcome back</h2>
               <p>Sign in to {productName}</p>
             </div>
@@ -193,13 +195,19 @@ function AuthForm() {
             <div className="login-tabs">
               <button
                 className={`login-tab ${mode === "login" ? "active" : ""}`}
-                onClick={() => { setMode("login"); setError(""); }}
+                onClick={() => {
+                  setMode("login");
+                  setError("");
+                }}
               >
                 Sign In
               </button>
               <button
                 className={`login-tab ${mode === "register" ? "active" : ""}`}
-                onClick={() => { setMode("register"); setError(""); }}
+                onClick={() => {
+                  setMode("register");
+                  setError("");
+                }}
               >
                 Create Account
               </button>
@@ -213,7 +221,9 @@ function AuthForm() {
               )}
               {mode === "register" && (
                 <div className="login-field">
-                  <label htmlFor="name" className="aeon-label">Name (optional)</label>
+                  <label htmlFor="name" className="aeon-label">
+                    Name (optional)
+                  </label>
                   <input
                     id="name"
                     type="text"
@@ -225,7 +235,9 @@ function AuthForm() {
                 </div>
               )}
               <div className="login-field">
-                <label htmlFor="email" className="aeon-label">Email</label>
+                <label htmlFor="email" className="aeon-label">
+                  Email
+                </label>
                 <input
                   id="email"
                   type="email"
@@ -237,7 +249,9 @@ function AuthForm() {
                 />
               </div>
               <div className="login-field">
-                <label htmlFor="password" className="aeon-label">Password</label>
+                <label htmlFor="password" className="aeon-label">
+                  Password
+                </label>
                 <input
                   id="password"
                   type="password"
@@ -249,7 +263,11 @@ function AuthForm() {
                   className="aeon-input"
                 />
               </div>
-              <button type="submit" className="aeon-btn-primary w-full justify-center" disabled={loading || demoSeeding}>
+              <button
+                type="submit"
+                className="aeon-btn-primary w-full justify-center"
+                disabled={loading || demoSeeding}
+              >
                 {loading ? (
                   <span className="inline-flex items-center gap-2">
                     <span className="inline-block w-3 h-3 rounded-full border-2 border-white/30 border-t-white animate-spin" />
@@ -304,10 +322,27 @@ export default function LoginPage() {
       fallback={
         <div className="login-page flex items-center justify-center min-h-screen">
           <div className="skeleton-stat max-w-sm w-full">
-            <div className="skeleton-shimmer" style={{ height: "1.75rem", width: "40%", borderRadius: "var(--aeon-radius)", margin: "0 auto 1rem" }} />
-            <div className="skeleton-shimmer" style={{ height: "2.5rem", width: "100%", marginBottom: "0.75rem" }} />
-            <div className="skeleton-shimmer" style={{ height: "2.5rem", width: "100%", marginBottom: "0.75rem" }} />
-            <div className="skeleton-shimmer" style={{ height: "2.5rem", width: "60%", margin: "0 auto" }} />
+            <div
+              className="skeleton-shimmer"
+              style={{
+                height: "1.75rem",
+                width: "40%",
+                borderRadius: "var(--aeon-radius)",
+                margin: "0 auto 1rem",
+              }}
+            />
+            <div
+              className="skeleton-shimmer"
+              style={{ height: "2.5rem", width: "100%", marginBottom: "0.75rem" }}
+            />
+            <div
+              className="skeleton-shimmer"
+              style={{ height: "2.5rem", width: "100%", marginBottom: "0.75rem" }}
+            />
+            <div
+              className="skeleton-shimmer"
+              style={{ height: "2.5rem", width: "60%", margin: "0 auto" }}
+            />
           </div>
         </div>
       }

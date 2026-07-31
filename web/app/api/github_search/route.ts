@@ -21,11 +21,14 @@ export async function POST(req: NextRequest) {
   try {
     const r = await fetch(
       `https://api.github.com/search/code?q=${encodeURIComponent(q)}&per_page=${limit}`,
-      { headers, cache: "no-store" },
+      { headers, cache: "no-store" }
     );
     if (r.status !== 200) {
       return NextResponse.json({
-        ok: false, error: "HTTP " + r.status, items: [], snippet: (await r.text()).slice(0, 160),
+        ok: false,
+        error: "HTTP " + r.status,
+        items: [],
+        snippet: (await r.text()).slice(0, 160),
       });
     }
     const j = await r.json();

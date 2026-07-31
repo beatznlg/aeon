@@ -108,7 +108,9 @@ function TestConditionButton({ condition }: { condition: Record<string, any> }) 
 
   return (
     <div style={{ marginTop: 8, padding: 12, border: "1px solid var(--border)", borderRadius: 8 }}>
-      <label style={{ display: "block", marginBottom: 6, fontSize: "0.8rem", fontWeight: 600 }}>Test payload (JSON)</label>
+      <label style={{ display: "block", marginBottom: 6, fontSize: "0.8rem", fontWeight: 600 }}>
+        Test payload (JSON)
+      </label>
       <textarea
         className="input"
         rows={3}
@@ -190,8 +192,8 @@ function ActionConfigEditor({
             onChange={(e) => updateConfig("body", e.target.value)}
           />
           <div style={{ fontSize: "0.75rem", color: "var(--fg-mute)", marginTop: 4 }}>
-            Use templates like {"{{ event.payload.issue }}"}, {"{{ event.type }}"}, {"{{ rule.name }}"} in URL,
-            headers, and body.
+            Use templates like {"{{ event.payload.issue }}"}, {"{{ event.type }}"},{" "}
+            {"{{ rule.name }}"} in URL, headers, and body.
           </div>
         </>
       )}
@@ -265,15 +267,20 @@ function ActionConfigEditor({
             type="number"
             min={1}
             placeholder="Timeout (minutes)"
-            onChange={(e) => updateConfig("timeout_minutes", parseInt(e.target.value || "1440", 10))}
+            onChange={(e) =>
+              updateConfig("timeout_minutes", parseInt(e.target.value || "1440", 10))
+            }
             style={{ marginBottom: 8 }}
           />
           <div style={{ fontSize: "0.75rem", color: "var(--fg-mute)" }}>
-            Suspend the automation until an event of the specified type arrives with a matching correlation value. Resumes after the timeout if no matching event is received.
+            Suspend the automation until an event of the specified type arrives with a matching
+            correlation value. Resumes after the timeout if no matching event is received.
           </div>
         </>
       )}
-      {(actionType === "set_variable" || actionType === "get_variable" || actionType === "delete_variable") && (
+      {(actionType === "set_variable" ||
+        actionType === "get_variable" ||
+        actionType === "delete_variable") && (
         <>
           <input
             className="input"
@@ -299,14 +306,21 @@ function ActionConfigEditor({
                 type="number"
                 min={1}
                 placeholder="TTL (minutes, optional)"
-                onChange={(e) => updateConfig("ttl_minutes", e.target.value ? parseInt(e.target.value, 10) : undefined)}
+                onChange={(e) =>
+                  updateConfig(
+                    "ttl_minutes",
+                    e.target.value ? parseInt(e.target.value, 10) : undefined
+                  )
+                }
                 style={{ marginBottom: 8 }}
               />
             </>
           )}
           <div style={{ fontSize: "0.75rem", color: "var(--fg-mute)" }}>
-            {actionType === "set_variable" && "Store a variable in the workspace state. Reference it later with {{ state.MY_KEY }}."}
-            {actionType === "get_variable" && "Read a workspace variable. The value is available in subsequent steps via {{ steps.N.value }}."}
+            {actionType === "set_variable" &&
+              "Store a variable in the workspace state. Reference it later with {{ state.MY_KEY }}."}
+            {actionType === "get_variable" &&
+              "Read a workspace variable. The value is available in subsequent steps via {{ steps.N.value }}."}
             {actionType === "delete_variable" && "Remove a variable from the workspace state."}
           </div>
         </>
@@ -327,7 +341,8 @@ function ActionConfigEditor({
             style={{ marginBottom: 8 }}
           />
           <div style={{ fontSize: "0.75rem", color: "var(--fg-mute)" }}>
-            Atomically increment a numeric variable by the given amount. Creates the variable if it does not exist.
+            Atomically increment a numeric variable by the given amount. Creates the variable if it
+            does not exist.
           </div>
         </>
       )}
@@ -356,7 +371,15 @@ function ActionConfigEditor({
             onChange={(e) => updateConfig("event_type", e.target.value)}
             style={{ marginBottom: 8 }}
           />
-          <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, fontSize: "0.85rem" }}>
+          <label
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              marginBottom: 8,
+              fontSize: "0.85rem",
+            }}
+          >
             <input
               type="checkbox"
               defaultChecked
@@ -365,8 +388,8 @@ function ActionConfigEditor({
             Wait for sub-rule to complete before continuing
           </label>
           <div style={{ fontSize: "0.75rem", color: "var(--fg-mute)" }}>
-            Invoke another automation rule as a sub-workflow. The sub-rule&apos;s result is available via{" "}
-            {"{{ steps.N.sub_result }}"}. Circular calls are blocked at a depth of 5.
+            Invoke another automation rule as a sub-workflow. The sub-rule&apos;s result is
+            available via {"{{ steps.N.sub_result }}"}. Circular calls are blocked at a depth of 5.
           </div>
         </>
       )}
@@ -477,8 +500,7 @@ function ActionConfigEditor({
             />
           )}
           <div style={{ fontSize: "0.75rem", color: "var(--fg-mute)" }}>
-            Transform data and store the result in{" "}
-            {"{{ steps.N.result }}"} for use by later steps.
+            Transform data and store the result in {"{{ steps.N.result }}"} for use by later steps.
           </div>
         </>
       )}
@@ -576,16 +598,20 @@ function ParallelBranchEditor({
                 value={act.type}
                 onChange={(e) => {
                   const next = [...branches];
-                  next[bidx].actions[aidx] = { ...next[bidx].actions[aidx], type: e.target.value, config: {} };
+                  next[bidx].actions[aidx] = {
+                    ...next[bidx].actions[aidx],
+                    type: e.target.value,
+                    config: {},
+                  };
                   updateBranches(next);
                 }}
                 style={{ marginBottom: 8 }}
               >
-                  {ACTION_TYPES.filter((t) => t !== "parallel").map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
+                {ACTION_TYPES.filter((t) => t !== "parallel").map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
               </select>
               <ActionConfigEditor
                 actionType={act.type}
@@ -646,7 +672,11 @@ export default function AutomationsPage() {
   const [blueprints, setBlueprints] = useState<any[]>([]);
   const [importText, setImportText] = useState("");
   const [importLoading, setImportLoading] = useState(false);
-  const [importResult, setImportResult] = useState<{ ok?: boolean; imported?: number; error?: string } | null>(null);
+  const [importResult, setImportResult] = useState<{
+    ok?: boolean;
+    imported?: number;
+    error?: string;
+  } | null>(null);
 
   const [form, setForm] = useState<Partial<AutomationRule>>({
     name: "",
@@ -717,7 +747,8 @@ export default function AutomationsPage() {
   }
 
   async function deleteWebhook(id: string) {
-    if (!confirm("Delete this inbound webhook? External systems using it will stop working.")) return;
+    if (!confirm("Delete this inbound webhook? External systems using it will stop working."))
+      return;
     try {
       await fetch(`/api/inbound-webhooks/${id}`, { method: "DELETE" });
       await loadWebhooks();
@@ -936,12 +967,29 @@ export default function AutomationsPage() {
 
   return (
     <div className="os-page" style={{ padding: 24 }}>
-      <header className="os-header" style={{ marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <header
+        className="os-header"
+        style={{
+          marginBottom: 20,
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+        }}
+      >
         <div>
-          <h1 style={{ background: "var(--grad)", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>
+          <h1
+            style={{
+              background: "var(--grad)",
+              WebkitBackgroundClip: "text",
+              backgroundClip: "text",
+              color: "transparent",
+            }}
+          >
             🤖 Automations
           </h1>
-          <p className="dashboard-subtitle">Event-driven rules that trigger webhooks, swarms, or workflows.</p>
+          <p className="dashboard-subtitle">
+            Event-driven rules that trigger webhooks, swarms, or workflows.
+          </p>
         </div>
         <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
           <Link href="/os/automations/metrics" className="btn btn-sm">
@@ -980,9 +1028,20 @@ export default function AutomationsPage() {
         >
           <h3 style={{ marginTop: 0 }}>Create Automation Rule</h3>
           <form onSubmit={createRule}>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16, marginBottom: 16 }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                gap: 16,
+                marginBottom: 16,
+              }}
+            >
               <div>
-                <label style={{ display: "block", marginBottom: 6, fontSize: "0.8rem", fontWeight: 600 }}>Name</label>
+                <label
+                  style={{ display: "block", marginBottom: 6, fontSize: "0.8rem", fontWeight: 600 }}
+                >
+                  Name
+                </label>
                 <input
                   className="input"
                   value={form.name || ""}
@@ -992,7 +1051,11 @@ export default function AutomationsPage() {
                 />
               </div>
               <div>
-                <label style={{ display: "block", marginBottom: 6, fontSize: "0.8rem", fontWeight: 600 }}>Event Type</label>
+                <label
+                  style={{ display: "block", marginBottom: 6, fontSize: "0.8rem", fontWeight: 600 }}
+                >
+                  Event Type
+                </label>
                 <select
                   className="input"
                   value={form.event_type}
@@ -1007,11 +1070,22 @@ export default function AutomationsPage() {
               </div>
               {(!form.actions || form.actions.length === 0) && (
                 <div>
-                  <label style={{ display: "block", marginBottom: 6, fontSize: "0.8rem", fontWeight: 600 }}>Action Type</label>
+                  <label
+                    style={{
+                      display: "block",
+                      marginBottom: 6,
+                      fontSize: "0.8rem",
+                      fontWeight: 600,
+                    }}
+                  >
+                    Action Type
+                  </label>
                   <select
                     className="input"
                     value={form.action_type}
-                    onChange={(e) => setForm({ ...form, action_type: e.target.value, action_config: {} })}
+                    onChange={(e) =>
+                      setForm({ ...form, action_type: e.target.value, action_config: {} })
+                    }
                   >
                     {ACTION_TYPES.map((t) => (
                       <option key={t} value={t}>
@@ -1024,7 +1098,11 @@ export default function AutomationsPage() {
             </div>
 
             <div style={{ marginBottom: 16 }}>
-              <label style={{ display: "block", marginBottom: 6, fontSize: "0.8rem", fontWeight: 600 }}>Condition (JSON)</label>
+              <label
+                style={{ display: "block", marginBottom: 6, fontSize: "0.8rem", fontWeight: 600 }}
+              >
+                Condition (JSON)
+              </label>
               <textarea
                 className="input"
                 rows={3}
@@ -1037,7 +1115,8 @@ export default function AutomationsPage() {
                 placeholder='{"status": "failed"}'
               />
               <div style={{ fontSize: "0.75rem", color: "var(--fg-mute)", marginTop: 4 }}>
-                Operators: {"$eq"}, {"$neq"}, {"$gt"}, {"$lt"}, {"$gte"}, {"$lte"}, {"$in"}, {"$contains"}, {"$exists"}, {"$regex"}. Use {"$and"} / {"$or"} / {"$not"} for logic.
+                Operators: {"$eq"}, {"$neq"}, {"$gt"}, {"$lt"}, {"$gte"}, {"$lte"}, {"$in"},{" "}
+                {"$contains"}, {"$exists"}, {"$regex"}. Use {"$and"} / {"$or"} / {"$not"} for logic.
               </div>
               <TestConditionButton condition={form.condition || {}} />
             </div>
@@ -1055,11 +1134,15 @@ export default function AutomationsPage() {
             </div>
 
             <div style={{ marginBottom: 16 }}>
-              <label style={{ display: "block", marginBottom: 6, fontSize: "0.8rem", fontWeight: 600 }}>
+              <label
+                style={{ display: "block", marginBottom: 6, fontSize: "0.8rem", fontWeight: 600 }}
+              >
                 Trigger
               </label>
               <div style={{ display: "flex", gap: 12 }}>
-                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "0.85rem" }}>
+                <label
+                  style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "0.85rem" }}
+                >
                   <input
                     type="radio"
                     name="schedule_type"
@@ -1069,7 +1152,9 @@ export default function AutomationsPage() {
                   />
                   Event-driven
                 </label>
-                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "0.85rem" }}>
+                <label
+                  style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "0.85rem" }}
+                >
                   <input
                     type="radio"
                     name="schedule_type"
@@ -1084,7 +1169,9 @@ export default function AutomationsPage() {
 
             {form.schedule_type === "cron" && (
               <div style={{ marginBottom: 16 }}>
-                <label style={{ display: "block", marginBottom: 6, fontSize: "0.8rem", fontWeight: 600 }}>
+                <label
+                  style={{ display: "block", marginBottom: 6, fontSize: "0.8rem", fontWeight: 600 }}
+                >
                   Cron Expression
                 </label>
                 <input
@@ -1101,7 +1188,9 @@ export default function AutomationsPage() {
             )}
 
             <div style={{ marginBottom: 16 }}>
-              <label style={{ display: "block", marginBottom: 6, fontSize: "0.8rem", fontWeight: 600 }}>
+              <label
+                style={{ display: "block", marginBottom: 6, fontSize: "0.8rem", fontWeight: 600 }}
+              >
                 Cooldown (minutes)
               </label>
               <input
@@ -1109,7 +1198,9 @@ export default function AutomationsPage() {
                 type="number"
                 min={0}
                 value={form.cooldown_minutes ?? 0}
-                onChange={(e) => setForm({ ...form, cooldown_minutes: parseInt(e.target.value || "0", 10) })}
+                onChange={(e) =>
+                  setForm({ ...form, cooldown_minutes: parseInt(e.target.value || "0", 10) })
+                }
                 placeholder="0"
               />
               <div style={{ fontSize: "0.75rem", color: "var(--fg-mute)", marginTop: 4 }}>
@@ -1117,9 +1208,16 @@ export default function AutomationsPage() {
               </div>
             </div>
 
-            {(!form.actions || form.actions.length === 0) ? (
+            {!form.actions || form.actions.length === 0 ? (
               <div style={{ marginBottom: 16 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    marginBottom: 6,
+                  }}
+                >
                   <label style={{ fontSize: "0.8rem", fontWeight: 600 }}>Action Config</label>
                   <button
                     type="button"
@@ -1145,7 +1243,14 @@ export default function AutomationsPage() {
               </div>
             ) : (
               <div style={{ marginBottom: 16 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    marginBottom: 6,
+                  }}
+                >
                   <label style={{ fontSize: "0.8rem", fontWeight: 600 }}>Action Steps</label>
                   <button
                     type="button"
@@ -1161,8 +1266,18 @@ export default function AutomationsPage() {
                   </button>
                 </div>
                 {form.actions.map((act, idx) => (
-                  <div key={idx} style={{ border: "1px solid var(--border)", padding: 12, borderRadius: 8, marginBottom: 8 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                  <div
+                    key={idx}
+                    style={{
+                      border: "1px solid var(--border)",
+                      padding: 12,
+                      borderRadius: 8,
+                      marginBottom: 8,
+                    }}
+                  >
+                    <div
+                      style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}
+                    >
                       <span style={{ fontWeight: 600, fontSize: "0.85rem" }}>Step {idx + 1}</span>
                       <button
                         type="button"
@@ -1198,7 +1313,10 @@ export default function AutomationsPage() {
                       value={act.loop_over || ""}
                       onChange={(e) => {
                         const newActions = [...form.actions!];
-                        newActions[idx] = { ...newActions[idx], loop_over: e.target.value || undefined };
+                        newActions[idx] = {
+                          ...newActions[idx],
+                          loop_over: e.target.value || undefined,
+                        };
                         setForm({ ...form, actions: newActions });
                       }}
                       style={{ marginBottom: 8 }}
@@ -1208,12 +1326,29 @@ export default function AutomationsPage() {
                       config={act.config}
                       updateConfig={(k, v) => {
                         const newActions = [...form.actions!];
-                        newActions[idx] = { ...newActions[idx], config: { ...newActions[idx].config, [k]: v } };
+                        newActions[idx] = {
+                          ...newActions[idx],
+                          config: { ...newActions[idx].config, [k]: v },
+                        };
                         setForm({ ...form, actions: newActions });
                       }}
                     />
-                    <div style={{ marginTop: 12, padding: 10, border: "1px dashed var(--border)", borderRadius: 6 }}>
-                      <label style={{ fontSize: "0.75rem", fontWeight: 600, display: "block", marginBottom: 4 }}>
+                    <div
+                      style={{
+                        marginTop: 12,
+                        padding: 10,
+                        border: "1px dashed var(--border)",
+                        borderRadius: 6,
+                      }}
+                    >
+                      <label
+                        style={{
+                          fontSize: "0.75rem",
+                          fontWeight: 600,
+                          display: "block",
+                          marginBottom: 4,
+                        }}
+                      >
                         Run condition (run_if)
                       </label>
                       <textarea
@@ -1232,31 +1367,64 @@ export default function AutomationsPage() {
                         style={{ marginBottom: 4 }}
                       />
                       <div style={{ fontSize: "0.7rem", color: "var(--fg-mute)", marginTop: 4 }}>
-                        Leave {"{}"} to always run. Paths: event.payload.x, steps.0.data.y, rule.name.
+                        Leave {"{}"} to always run. Paths: event.payload.x, steps.0.data.y,
+                        rule.name.
                       </div>
                     </div>
 
-                    <div style={{ marginTop: 12, padding: 10, border: "1px dashed var(--border)", borderRadius: 6 }}>
-                      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "0.85rem", fontWeight: 600 }}>
+                    <div
+                      style={{
+                        marginTop: 12,
+                        padding: 10,
+                        border: "1px dashed var(--border)",
+                        borderRadius: 6,
+                      }}
+                    >
+                      <label
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 6,
+                          fontSize: "0.85rem",
+                          fontWeight: 600,
+                        }}
+                      >
                         <input
                           type="checkbox"
                           checked={!!act.continue_on_error}
                           onChange={(e) => {
                             const newActions = [...form.actions!];
-                            newActions[idx] = { ...newActions[idx], continue_on_error: e.target.checked };
+                            newActions[idx] = {
+                              ...newActions[idx],
+                              continue_on_error: e.target.checked,
+                            };
                             setForm({ ...form, actions: newActions });
                           }}
                         />
                         Continue to next step if this step fails
                       </label>
                       <div style={{ fontSize: "0.7rem", color: "var(--fg-mute)", marginTop: 4 }}>
-                        When enabled, a failure here will not stop the chain; the on_error fallback (if any) still
-                        runs first.
+                        When enabled, a failure here will not stop the chain; the on_error fallback
+                        (if any) still runs first.
                       </div>
                     </div>
 
-                    <div style={{ marginTop: 12, padding: 10, border: "1px dashed var(--border)", borderRadius: 6 }}>
-                      <label style={{ fontSize: "0.75rem", fontWeight: 600, display: "block", marginBottom: 4 }}>
+                    <div
+                      style={{
+                        marginTop: 12,
+                        padding: 10,
+                        border: "1px dashed var(--border)",
+                        borderRadius: 6,
+                      }}
+                    >
+                      <label
+                        style={{
+                          fontSize: "0.75rem",
+                          fontWeight: 600,
+                          display: "block",
+                          marginBottom: 4,
+                        }}
+                      >
                         On-error fallback (on_error)
                       </label>
                       <select
@@ -1267,7 +1435,9 @@ export default function AutomationsPage() {
                           const newActions = [...form.actions!];
                           newActions[idx] = {
                             ...newActions[idx],
-                            on_error: type ? { type, config: act.on_error?.config || {} } : undefined,
+                            on_error: type
+                              ? { type, config: act.on_error?.config || {} }
+                              : undefined,
                           };
                           setForm({ ...form, actions: newActions });
                         }}
@@ -1288,15 +1458,18 @@ export default function AutomationsPage() {
                             const newActions = [...form.actions!];
                             newActions[idx] = {
                               ...newActions[idx],
-                              on_error: { ...newActions[idx].on_error!, config: { ...newActions[idx].on_error!.config, [k]: v } },
+                              on_error: {
+                                ...newActions[idx].on_error!,
+                                config: { ...newActions[idx].on_error!.config, [k]: v },
+                              },
                             };
                             setForm({ ...form, actions: newActions });
                           }}
                         />
                       )}
                       <div style={{ fontSize: "0.7rem", color: "var(--fg-mute)", marginTop: 4 }}>
-                        Runs when this step fails. Templates: {"{{ error.message }}"}, {"{{ error.step }}"}, event,
-                        rule, steps.
+                        Runs when this step fails. Templates: {"{{ error.message }}"},{" "}
+                        {"{{ error.step }}"}, event, rule, steps.
                       </div>
                     </div>
                   </div>
@@ -1326,7 +1499,9 @@ export default function AutomationsPage() {
           }}
         >
           {loading ? (
-            <div style={{ padding: 40, textAlign: "center", color: "var(--fg-mute)" }}>Loading…</div>
+            <div style={{ padding: 40, textAlign: "center", color: "var(--fg-mute)" }}>
+              Loading…
+            </div>
           ) : rules.length === 0 ? (
             <div style={{ padding: 60, textAlign: "center", color: "var(--fg-mute)" }}>
               <div style={{ fontSize: "2rem", marginBottom: 12, opacity: 0.5 }}>🤖</div>
@@ -1346,11 +1521,20 @@ export default function AutomationsPage() {
                   }}
                   onClick={() => loadExecutions(rule)}
                 >
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                    }}
+                  >
                     <div>
                       <div style={{ fontWeight: 600 }}>{rule.name}</div>
                       <div style={{ fontSize: "0.78rem", color: "var(--fg-mute)" }}>
-                        {rule.schedule_type === "cron" ? `⏰ ${rule.cron_expression}` : rule.event_type} →{" "}
+                        {rule.schedule_type === "cron"
+                          ? `⏰ ${rule.cron_expression}`
+                          : rule.event_type}{" "}
+                        →{" "}
                         {rule.actions && rule.actions.length > 0
                           ? `${rule.actions[0].type} (${rule.actions.length} steps)`
                           : rule.action_type}
@@ -1360,7 +1544,8 @@ export default function AutomationsPage() {
                           {rule.next_run_at
                             ? `Next run: ${new Date(rule.next_run_at).toLocaleString()}`
                             : "Next run: not scheduled"}
-                          {rule.last_run_at && ` · Last run: ${new Date(rule.last_run_at).toLocaleString()}`}
+                          {rule.last_run_at &&
+                            ` · Last run: ${new Date(rule.last_run_at).toLocaleString()}`}
                         </div>
                       )}
                     </div>
@@ -1502,8 +1687,8 @@ export default function AutomationsPage() {
       >
         <h3 style={{ marginTop: 0 }}>🔗 Inbound Webhooks</h3>
         <p style={{ color: "var(--fg-mute)", fontSize: "0.85rem" }}>
-          External services can POST to these URLs to trigger AEON automations. Create a webhook, then build a rule with
-          Event Type <strong>inbound_webhook</strong>.
+          External services can POST to these URLs to trigger AEON automations. Create a webhook,
+          then build a rule with Event Type <strong>inbound_webhook</strong>.
         </p>
         <form onSubmit={createWebhook} style={{ display: "flex", gap: 12, marginBottom: 16 }}>
           <input
@@ -1547,7 +1732,10 @@ export default function AutomationsPage() {
                     <button className="btn btn-sm" onClick={() => copyUrl(url)}>
                       {copiedToken === url ? "Copied!" : "Copy"}
                     </button>
-                    <button className="btn btn-sm btn-danger" onClick={() => deleteWebhook(hook.id)}>
+                    <button
+                      className="btn btn-sm btn-danger"
+                      onClick={() => deleteWebhook(hook.id)}
+                    >
                       Delete
                     </button>
                   </div>
@@ -1585,7 +1773,14 @@ export default function AutomationsPage() {
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: 16,
+              }}
+            >
               <h3 style={{ margin: 0 }}>{runResult.dry_run ? "Dry Run Result" : "Run Result"}</h3>
               <button className="btn btn-sm" onClick={() => setRunResult(null)}>
                 Close
@@ -1634,15 +1829,22 @@ export default function AutomationsPage() {
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: 16,
+              }}
+            >
               <h3 style={{ margin: 0 }}>Import Automation Rules</h3>
               <button className="btn btn-sm" onClick={() => setShowImportModal(false)}>
                 Close
               </button>
             </div>
             <p style={{ color: "var(--fg-mute)", fontSize: "0.85rem" }}>
-              Paste the exported JSON below. You can import a single rule, an array of rules, or an object with a{" "}
-              <code>rules</code> property.
+              Paste the exported JSON below. You can import a single rule, an array of rules, or an
+              object with a <code>rules</code> property.
             </p>
             <textarea
               className="input"
@@ -1707,13 +1909,26 @@ export default function AutomationsPage() {
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: 16,
+              }}
+            >
               <h3 style={{ margin: 0 }}>Create Automation</h3>
               <button className="btn btn-sm" onClick={() => setShowBlueprintsModal(false)}>
                 Close
               </button>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                gap: 16,
+              }}
+            >
               <button
                 onClick={() => {
                   setShowBlueprintsModal(false);
@@ -1729,7 +1944,9 @@ export default function AutomationsPage() {
                 }}
               >
                 <div style={{ fontWeight: 600, marginBottom: 4 }}>Blank Automation</div>
-                <div style={{ fontSize: "0.78rem", color: "var(--fg-mute)" }}>Start from scratch with a custom rule.</div>
+                <div style={{ fontSize: "0.78rem", color: "var(--fg-mute)" }}>
+                  Start from scratch with a custom rule.
+                </div>
               </button>
               {blueprints.map((bp) => (
                 <button
@@ -1745,7 +1962,9 @@ export default function AutomationsPage() {
                   }}
                 >
                   <div style={{ fontWeight: 600, marginBottom: 4 }}>{bp.name}</div>
-                  <div style={{ fontSize: "0.78rem", color: "var(--fg-mute)" }}>{bp.description}</div>
+                  <div style={{ fontSize: "0.78rem", color: "var(--fg-mute)" }}>
+                    {bp.description}
+                  </div>
                 </button>
               ))}
             </div>

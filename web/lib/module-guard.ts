@@ -19,10 +19,13 @@ async function fetchWorkspaceBranding(workspaceId: string): Promise<Partial<Them
     const backendUrl = process.env.AEON_PYTHON_URL || "http://127.0.0.1:5000";
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 2000);
-    const res = await fetch(`${backendUrl}/workspaces/${encodeURIComponent(workspaceId)}/branding`, {
-      cache: "no-store",
-      signal: controller.signal,
-    });
+    const res = await fetch(
+      `${backendUrl}/workspaces/${encodeURIComponent(workspaceId)}/branding`,
+      {
+        cache: "no-store",
+        signal: controller.signal,
+      }
+    );
     clearTimeout(timeout);
     if (!res.ok) return null;
     const data = (await res.json()) as BrandingResponse;
@@ -43,8 +46,7 @@ export async function guardModuleRoute(
 ): Promise<GuardResult> {
   const session = await auth();
   const user = session?.user as
-    | { id?: string; email?: string; role?: string; workspaceId?: string }
-    | undefined;
+    { id?: string; email?: string; role?: string; workspaceId?: string } | undefined;
 
   const workspaceId = user?.workspaceId;
   const role = user?.role;

@@ -133,6 +133,9 @@ export async function POST(_req: NextRequest) {
       seed: seedData,
     });
   } catch (err: any) {
-    return NextResponse.json({ ok: false, error: err.message || "Demo seed failed" }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: err.message || "Demo seed failed" },
+      { status: 500 }
+    );
   }
 }

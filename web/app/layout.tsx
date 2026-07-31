@@ -7,8 +7,7 @@ import { ThemeConfig } from "@/lib/theme-config";
 
 export const metadata: Metadata = {
   title: "AEON OS — Enterprise AI Operating System",
-  description:
-    "AEON OS: Autonomous AI operating system for government and enterprise.",
+  description: "AEON OS: Autonomous AI operating system for government and enterprise.",
 };
 
 interface Health {
@@ -37,10 +36,13 @@ async function getWorkspaceBranding(workspaceId: string): Promise<Partial<ThemeC
     const backendUrl = process.env.AEON_PYTHON_URL || "http://127.0.0.1:5000";
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 2000);
-    const res = await fetch(`${backendUrl}/workspaces/${encodeURIComponent(workspaceId)}/branding`, {
-      cache: "no-store",
-      signal: controller.signal,
-    });
+    const res = await fetch(
+      `${backendUrl}/workspaces/${encodeURIComponent(workspaceId)}/branding`,
+      {
+        cache: "no-store",
+        signal: controller.signal,
+      }
+    );
     clearTimeout(timeout);
     if (!res.ok) return null;
     const data = (await res.json()) as BrandingResponse;
@@ -50,11 +52,7 @@ async function getWorkspaceBranding(workspaceId: string): Promise<Partial<ThemeC
   }
 }
 
-export default async function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const health = await getHealth();
   const session = await auth();
   const workspaceId = session?.user?.workspaceId as string | undefined;
@@ -66,7 +64,16 @@ export default async function RootLayout({
         <meta name="viewport" content="width=device-width, initial-scale=1" />
       </head>
       <body>
-        <Providers sidebar={<AppSidebar health={health} branding={branding ?? undefined} userRole={(session?.user as any)?.role} />} initialConfig={branding ?? undefined}>
+        <Providers
+          sidebar={
+            <AppSidebar
+              health={health}
+              branding={branding ?? undefined}
+              userRole={(session?.user as any)?.role}
+            />
+          }
+          initialConfig={branding ?? undefined}
+        >
           {children}
         </Providers>
       </body>

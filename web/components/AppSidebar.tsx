@@ -121,9 +121,7 @@ export default function AppSidebar({ health, branding, userRole }: AppSidebarPro
               href={link.href}
               icon={link.icon}
               label={link.label}
-              muted={
-                !isModuleEnabled(config, link.moduleId || "", true) && admin
-              }
+              muted={!isModuleEnabled(config, link.moduleId || "", true) && admin}
             />
           ))}
         </Section>
@@ -134,9 +132,7 @@ export default function AppSidebar({ health, branding, userRole }: AppSidebarPro
               href={link.href}
               icon={link.icon}
               label={link.label}
-              muted={
-                !isModuleEnabled(config, link.moduleId || "", true) && admin
-              }
+              muted={!isModuleEnabled(config, link.moduleId || "", true) && admin}
             />
           ))}
         </Section>
@@ -147,9 +143,7 @@ export default function AppSidebar({ health, branding, userRole }: AppSidebarPro
               href={link.href}
               icon={link.icon}
               label={link.label}
-              muted={
-                !isModuleEnabled(config, link.moduleId || "", true) && admin
-              }
+              muted={!isModuleEnabled(config, link.moduleId || "", true) && admin}
             />
           ))}
         </Section>

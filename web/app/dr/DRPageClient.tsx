@@ -294,9 +294,7 @@ export default function DRPageClient() {
         title="Disaster Recovery"
         subtitle="Backup policies, restore jobs, and DR drills"
         backHref="/os"
-        actions={
-          <Button onClick={runScheduledBackups}>Run Scheduled Backups</Button>
-        }
+        actions={<Button onClick={runScheduledBackups}>Run Scheduled Backups</Button>}
       />
 
       {error && (
@@ -376,9 +374,7 @@ export default function DRPageClient() {
                   className="rounded-aeon-sm border border-aeon-border bg-aeon-bg p-3"
                 >
                   <div className="flex items-center justify-between">
-                    <span className="font-mono text-xs text-aeon-fg-soft">
-                      #{j.id.slice(0, 8)}
-                    </span>
+                    <span className="font-mono text-xs text-aeon-fg-soft">#{j.id.slice(0, 8)}</span>
                     <Badge variant={statusVariant(j.status)}>{j.status}</Badge>
                   </div>
                   <div className="mt-1 text-xs text-aeon-fg-mute">
@@ -407,25 +403,19 @@ export default function DRPageClient() {
                 type="number"
                 placeholder="RTO (min)"
                 value={planForm.rto_minutes}
-                onChange={(e) =>
-                  setPlanForm({ ...planForm, rto_minutes: Number(e.target.value) })
-                }
+                onChange={(e) => setPlanForm({ ...planForm, rto_minutes: Number(e.target.value) })}
               />
               <Input
                 type="number"
                 placeholder="RPO (min)"
                 value={planForm.rpo_minutes}
-                onChange={(e) =>
-                  setPlanForm({ ...planForm, rpo_minutes: Number(e.target.value) })
-                }
+                onChange={(e) => setPlanForm({ ...planForm, rpo_minutes: Number(e.target.value) })}
               />
             </div>
             <Input
               placeholder="Failover regions (comma-separated)"
               value={planForm.failover_regions}
-              onChange={(e) =>
-                setPlanForm({ ...planForm, failover_regions: e.target.value })
-              }
+              onChange={(e) => setPlanForm({ ...planForm, failover_regions: e.target.value })}
             />
             <Button type="submit" variant="primary">
               Add Plan
@@ -469,9 +459,7 @@ export default function DRPageClient() {
                   className="rounded-aeon-sm border border-aeon-border bg-aeon-bg p-3"
                 >
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-aeon-fg-soft">
-                      Restore #{r.id.slice(0, 8)}
-                    </span>
+                    <span className="text-sm text-aeon-fg-soft">Restore #{r.id.slice(0, 8)}</span>
                     <Badge variant={statusVariant(r.status)}>{r.status}</Badge>
                   </div>
                   <div className="mt-1 text-xs text-aeon-fg-mute">
@@ -494,9 +482,7 @@ export default function DRPageClient() {
                   className="rounded-aeon-sm border border-aeon-border bg-aeon-bg p-3"
                 >
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-aeon-fg-soft">
-                      Drill #{d.id.slice(0, 8)}
-                    </span>
+                    <span className="text-sm text-aeon-fg-soft">Drill #{d.id.slice(0, 8)}</span>
                     <Badge variant={statusVariant(d.status)}>{d.status}</Badge>
                   </div>
                   <div className="mt-1 text-xs text-aeon-fg-mute">

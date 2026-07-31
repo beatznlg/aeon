@@ -54,7 +54,11 @@ export default function IncidentsPageClient() {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"incidents" | "runbooks">("incidents");
 
-  const [incidentForm, setIncidentForm] = useState({ title: "", severity: "warning", status: "open" });
+  const [incidentForm, setIncidentForm] = useState({
+    title: "",
+    severity: "warning",
+    status: "open",
+  });
   const [runbookForm, setRunbookForm] = useState({
     name: "",
     description: "",
@@ -266,7 +270,10 @@ export default function IncidentsPageClient() {
             {loading ? (
               <LoadingState />
             ) : incidents.length === 0 ? (
-              <EmptyState title="No incidents yet" description="Create an incident or trigger one from an anomaly." />
+              <EmptyState
+                title="No incidents yet"
+                description="Create an incident or trigger one from an anomaly."
+              />
             ) : (
               <div className="flex flex-col gap-3">
                 {incidents.map((i) => (
@@ -357,7 +364,10 @@ export default function IncidentsPageClient() {
 
           <Card title="Runbooks" className="mt-6">
             {runbooks.length === 0 ? (
-              <EmptyState title="No runbooks yet" description="Create a runbook to automate incident response." />
+              <EmptyState
+                title="No runbooks yet"
+                description="Create a runbook to automate incident response."
+              />
             ) : (
               <div className="flex flex-col gap-3">
                 {runbooks.map((rb) => (

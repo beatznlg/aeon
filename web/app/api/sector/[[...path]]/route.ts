@@ -11,10 +11,7 @@ export const dynamic = "force-dynamic";
  * 1. Tries to proxy to the Python backend first
  * 2. Falls back to generating time-varying local mock data (for live-updating charts)
  */
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { path?: string[] } }
-) {
+export async function GET(request: NextRequest, { params }: { params: { path?: string[] } }) {
   const path = params.path || [];
   const [sector, ...rest] = path;
   const tool = rest.join("-");
@@ -36,9 +33,10 @@ export async function GET(
     // Generate time-varying mock data for live-updating charts
     const data = generateSectorData({ sector, tool });
     // Add timestamp so clients can measure freshness
-    const dataObj = (typeof data === "object" && data !== null && !Array.isArray(data))
-      ? (data as Record<string, unknown>)
-      : {};
+    const dataObj =
+      typeof data === "object" && data !== null && !Array.isArray(data)
+        ? (data as Record<string, unknown>)
+        : {};
     return NextResponse.json({
       ...dataObj,
       _generatedAt: Date.now(),
@@ -51,26 +49,17 @@ export async function GET(
   return proxyApiRequest(request, { backendPath });
 }
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { path?: string[] } }
-) {
+export async function POST(request: NextRequest, { params }: { params: { path?: string[] } }) {
   const backendPath = `/sectors/${(params.path || []).join("/")}`;
   return proxyApiRequest(request, { backendPath });
 }
 
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: { path?: string[] } }
-) {
+export async function PATCH(request: NextRequest, { params }: { params: { path?: string[] } }) {
   const backendPath = `/sectors/${(params.path || []).join("/")}`;
   return proxyApiRequest(request, { backendPath });
 }
 
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { path?: string[] } }
-) {
+export async function DELETE(request: NextRequest, { params }: { params: { path?: string[] } }) {
   const backendPath = `/sectors/${(params.path || []).join("/")}`;
   return proxyApiRequest(request, { backendPath });
 }

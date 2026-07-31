@@ -17,7 +17,8 @@ const variantClasses: Record<ButtonVariant, string> = {
   primary: "aeon-btn-primary",
   secondary: "aeon-btn-secondary",
   danger: "aeon-btn-danger",
-  ghost: "aeon-btn border-transparent bg-transparent text-aeon-fg-soft hover:bg-aeon-bg-2 hover:text-aeon-fg",
+  ghost:
+    "aeon-btn border-transparent bg-transparent text-aeon-fg-soft hover:bg-aeon-bg-2 hover:text-aeon-fg",
 };
 
 const sizeClasses: Record<ButtonSize, string> = {
@@ -27,8 +28,22 @@ const sizeClasses: Record<ButtonSize, string> = {
 };
 
 const Button = forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ variant = "secondary", size = "md", loading = false, leftIcon, rightIcon, children, className = "", disabled, ...props }, ref) => {
-    const base = "inline-flex items-center justify-center gap-2 rounded-aeon-sm font-medium transition-all focus:outline-none focus:ring-2 focus:ring-aeon-primary/50 focus:ring-offset-2 focus:ring-offset-aeon-bg disabled:cursor-not-allowed disabled:opacity-50";
+  (
+    {
+      variant = "secondary",
+      size = "md",
+      loading = false,
+      leftIcon,
+      rightIcon,
+      children,
+      className = "",
+      disabled,
+      ...props
+    },
+    ref
+  ) => {
+    const base =
+      "inline-flex items-center justify-center gap-2 rounded-aeon-sm font-medium transition-all focus:outline-none focus:ring-2 focus:ring-aeon-primary/50 focus:ring-offset-2 focus:ring-offset-aeon-bg disabled:cursor-not-allowed disabled:opacity-50";
     const classes = `${base} ${variantClasses[variant]} ${sizeClasses[size]} ${className}`;
     return (
       <button ref={ref} className={classes} disabled={disabled || loading} {...props}>

@@ -161,11 +161,10 @@ export function SectorDashboardProvider({
 
     const results = await Promise.allSettled(
       tools.map((tool) =>
-        fetch(`/api/sector/${sectorId}/${tool.path}`, { cache: "no-store" })
-          .then((r) => {
-            if (!r.ok) throw new Error(`HTTP ${r.status}`);
-            return r.json();
-          })
+        fetch(`/api/sector/${sectorId}/${tool.path}`, { cache: "no-store" }).then((r) => {
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          return r.json();
+        })
       )
     );
 

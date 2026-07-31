@@ -14,10 +14,13 @@ async function getWorkspaceBranding(workspaceId: string): Promise<Partial<ThemeC
     const backendUrl = process.env.AEON_PYTHON_URL || "http://127.0.0.1:5000";
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 2000);
-    const res = await fetch(`${backendUrl}/workspaces/${encodeURIComponent(workspaceId)}/branding`, {
-      cache: "no-store",
-      signal: controller.signal,
-    });
+    const res = await fetch(
+      `${backendUrl}/workspaces/${encodeURIComponent(workspaceId)}/branding`,
+      {
+        cache: "no-store",
+        signal: controller.signal,
+      }
+    );
     clearTimeout(timeout);
     if (!res.ok) return null;
     const data = (await res.json()) as BrandingResponse;
@@ -35,8 +38,7 @@ export default async function AppPage({ params }: PageProps) {
   const { appId } = await params;
   const session = await auth();
   const user = session?.user as
-    | { id?: string; email?: string; role?: string; workspaceId?: string }
-    | undefined;
+    { id?: string; email?: string; role?: string; workspaceId?: string } | undefined;
 
   const role = user?.role;
   const workspaceId = user?.workspaceId;

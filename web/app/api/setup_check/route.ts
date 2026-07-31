@@ -48,9 +48,18 @@ export async function GET() {
   const GH = process.env.GH_TOKEN;
 
   const notes: string[] = [];
-  if (!HF) notes.push("HUGGINGFACE_TOKEN missing — /api/chat will fall back to HF Inference direct but no Qwen-3B-on-GPU without it.");
-  if (!SPACE_URL) notes.push("AEON_HF_SPACE_URL missing — /api/chat will use the HF Inference API direct path (high rate-limit exposure, no AEON tools).");
-  if (!SB_URL && !PUBLIC_SB_URL) notes.push("SUPABASE_URL + NEXT_PUBLIC_SUPABASE_URL both missing — Memory panel will be empty.");
+  if (!HF)
+    notes.push(
+      "HUGGINGFACE_TOKEN missing — /api/chat will fall back to HF Inference direct but no Qwen-3B-on-GPU without it."
+    );
+  if (!SPACE_URL)
+    notes.push(
+      "AEON_HF_SPACE_URL missing — /api/chat will use the HF Inference API direct path (high rate-limit exposure, no AEON tools)."
+    );
+  if (!SB_URL && !PUBLIC_SB_URL)
+    notes.push(
+      "SUPABASE_URL + NEXT_PUBLIC_SUPABASE_URL both missing — Memory panel will be empty."
+    );
   if (!GH) notes.push("GH_TOKEN missing — GitHub code search capped at 10/min/IP.");
 
   return NextResponse.json({

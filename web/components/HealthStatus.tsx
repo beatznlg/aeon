@@ -35,8 +35,8 @@ export default function HealthStatus({ initial }: { initial?: Health | null }) {
     health === null
       ? "Connecting..."
       : health.ok
-      ? `System Online · ${health.backend || "stub"}`
-      : "Connecting...";
+        ? `System Online · ${health.backend || "stub"}`
+        : "Connecting...";
 
   return (
     <div className="sidebar-status">

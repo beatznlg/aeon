@@ -8,7 +8,13 @@ import { useTheme } from "@/components/ThemeProvider";
 import { isWorkspaceAdmin, isModuleEnabled } from "@/lib/theme-config";
 import { resolveEnabledComponents, DashboardComponent } from "@/lib/dashboard-registry";
 import ThreeBackground from "@/components/ThreeBackground";
-import { motion, FadeIn, StaggerContainer, StaggerItem, ScaleOnHover } from "@/components/animations";
+import {
+  motion,
+  FadeIn,
+  StaggerContainer,
+  StaggerItem,
+  ScaleOnHover,
+} from "@/components/animations";
 
 /* ─── Types ─── */
 
@@ -37,17 +43,116 @@ interface CommandModule {
 /* ─── Module definitions ─── */
 
 const ALL_MODULES: CommandModule[] = [
-  { id: "security", moduleId: "cybersecurity", name: "Security Command", icon: "🛡️", color: "#ef4444", status: "active" as const, tools: 12, desc: "Threat intelligence, vulnerability scanning, and compliance monitoring" },
-  { id: "health", moduleId: "health", name: "Health Command", icon: "🏥", color: "#10b981", status: "active" as const, tools: 8, desc: "AI diagnostics, patient monitoring, drug interaction checks" },
-  { id: "finance", moduleId: "finance", name: "Finance Command", icon: "💰", color: "#f59e0b", status: "active" as const, tools: 10, desc: "Risk analysis, market forecasting, fraud detection" },
-  { id: "retail", moduleId: "retail", name: "Commerce Command", icon: "📦", color: "#6366f1", status: "active" as const, tools: 9, desc: "Demand forecasting, inventory optimization, pricing" },
-  { id: "transport", moduleId: "transport", name: "Transport Command", icon: "🚌", color: "#06b6d4", status: "active" as const, tools: 7, desc: "Traffic management, fleet scheduling, route optimization" },
-  { id: "manufacturing", moduleId: "manufacturing", name: "Factory Command", icon: "🏭", color: "#ec4899", status: "active" as const, tools: 6, desc: "Predictive maintenance, quality control, smart logistics" },
-  { id: "tourism", moduleId: "tourism", name: "Hospitality Command", icon: "🏨", color: "#8b5cf6", status: "active" as const, tools: 7, desc: "Booking optimization, dynamic pricing, automated concierge" },
-  { id: "cultural", moduleId: "cultural_heritage", name: "Cultural Command", icon: "🏛️", color: "#14b8a6", status: "active" as const, tools: 6, desc: "Visitor engagement, exhibition planning, virtual tours" },
-  { id: "professional", moduleId: "professional", name: "Professional Hub", icon: "📋", color: "#a855f7", status: "active" as const, tools: 5, desc: "Document parsing, accounting workflows, data management" },
-  { id: "utilities", moduleId: "utilities", name: "Utilities Command", icon: "💡", color: "#eab308", status: "active" as const, tools: 6, desc: "Resource optimization, waste management, energy grid" },
-  { id: "sme", moduleId: "sme", name: "SME Business Suite", icon: "🏢", color: "#3b82f6", status: "active" as const, tools: 8, desc: "Workflow automation, document processing, AI support" },
+  {
+    id: "security",
+    moduleId: "cybersecurity",
+    name: "Security Command",
+    icon: "🛡️",
+    color: "#ef4444",
+    status: "active" as const,
+    tools: 12,
+    desc: "Threat intelligence, vulnerability scanning, and compliance monitoring",
+  },
+  {
+    id: "health",
+    moduleId: "health",
+    name: "Health Command",
+    icon: "🏥",
+    color: "#10b981",
+    status: "active" as const,
+    tools: 8,
+    desc: "AI diagnostics, patient monitoring, drug interaction checks",
+  },
+  {
+    id: "finance",
+    moduleId: "finance",
+    name: "Finance Command",
+    icon: "💰",
+    color: "#f59e0b",
+    status: "active" as const,
+    tools: 10,
+    desc: "Risk analysis, market forecasting, fraud detection",
+  },
+  {
+    id: "retail",
+    moduleId: "retail",
+    name: "Commerce Command",
+    icon: "📦",
+    color: "#6366f1",
+    status: "active" as const,
+    tools: 9,
+    desc: "Demand forecasting, inventory optimization, pricing",
+  },
+  {
+    id: "transport",
+    moduleId: "transport",
+    name: "Transport Command",
+    icon: "🚌",
+    color: "#06b6d4",
+    status: "active" as const,
+    tools: 7,
+    desc: "Traffic management, fleet scheduling, route optimization",
+  },
+  {
+    id: "manufacturing",
+    moduleId: "manufacturing",
+    name: "Factory Command",
+    icon: "🏭",
+    color: "#ec4899",
+    status: "active" as const,
+    tools: 6,
+    desc: "Predictive maintenance, quality control, smart logistics",
+  },
+  {
+    id: "tourism",
+    moduleId: "tourism",
+    name: "Hospitality Command",
+    icon: "🏨",
+    color: "#8b5cf6",
+    status: "active" as const,
+    tools: 7,
+    desc: "Booking optimization, dynamic pricing, automated concierge",
+  },
+  {
+    id: "cultural",
+    moduleId: "cultural_heritage",
+    name: "Cultural Command",
+    icon: "🏛️",
+    color: "#14b8a6",
+    status: "active" as const,
+    tools: 6,
+    desc: "Visitor engagement, exhibition planning, virtual tours",
+  },
+  {
+    id: "professional",
+    moduleId: "professional",
+    name: "Professional Hub",
+    icon: "📋",
+    color: "#a855f7",
+    status: "active" as const,
+    tools: 5,
+    desc: "Document parsing, accounting workflows, data management",
+  },
+  {
+    id: "utilities",
+    moduleId: "utilities",
+    name: "Utilities Command",
+    icon: "💡",
+    color: "#eab308",
+    status: "active" as const,
+    tools: 6,
+    desc: "Resource optimization, waste management, energy grid",
+  },
+  {
+    id: "sme",
+    moduleId: "sme",
+    name: "SME Business Suite",
+    icon: "🏢",
+    color: "#3b82f6",
+    status: "active" as const,
+    tools: 8,
+    desc: "Workflow automation, document processing, AI support",
+  },
 ];
 
 /* ─── Hooks ─── */
@@ -63,7 +168,9 @@ function useFilteredModules() {
     return enabled || admin;
   }).map((mod) => ({
     ...mod,
-    status: isModuleEnabled(config, mod.moduleId, true) ? "active" as const : "inactive" as const,
+    status: isModuleEnabled(config, mod.moduleId, true)
+      ? ("active" as const)
+      : ("inactive" as const),
   }));
 
   return { modules, admin, config };
@@ -71,7 +178,11 @@ function useFilteredModules() {
 
 /* ─── Animated counter ─── */
 
-function AnimatedStat({ value, label, color }: {
+function AnimatedStat({
+  value,
+  label,
+  color,
+}: {
   value: string | number;
   label: string;
   color: string;
@@ -81,7 +192,10 @@ function AnimatedStat({ value, label, color }: {
 
   useEffect(() => {
     const target = typeof value === "string" ? parseFloat(value.replace(/[^0-9.]/g, "")) : value;
-    if (isNaN(target)) { setDisplay(String(value)); return; }
+    if (isNaN(target)) {
+      setDisplay(String(value));
+      return;
+    }
     if (!animRef.current) {
       animRef.current = true;
       const duration = 1200;
@@ -107,7 +221,9 @@ function AnimatedStat({ value, label, color }: {
 
   return (
     <div className="stat-card text-center">
-      <div className="stat-value" style={{ color }}>{display}</div>
+      <div className="stat-value" style={{ color }}>
+        {display}
+      </div>
       <div className="stat-label">{label}</div>
     </div>
   );
@@ -130,18 +246,25 @@ function WelcomeBannerSection({
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <span className="flex h-2 w-2 rounded-full bg-green-400 shadow-[0_0_8px_rgba(34,197,94,0.5)]" />
-            <span className="text-xs font-medium uppercase tracking-widest text-green-400/80">System Online</span>
+            <span className="text-xs font-medium uppercase tracking-widest text-green-400/80">
+              System Online
+            </span>
           </div>
           <h1 className="text-2xl font-bold text-white">
             {config.companyName} — <span className="text-gradient">{config.productName}</span>
           </h1>
           <p className="max-w-2xl text-sm text-slate-400">
-            Your autonomous AI operating system with {activeModules.length} active command centers and {totalTools} tools ready to automate, secure, and scale your operations.
+            Your autonomous AI operating system with {activeModules.length} active command centers
+            and {totalTools} tools ready to automate, secure, and scale your operations.
           </p>
         </div>
         <div className="flex gap-3">
-          <Link href="/os" className="pill-btn pill-btn-primary">⊞ Launch OS</Link>
-          <Link href="/settings/branding" className="pill-btn">Customize</Link>
+          <Link href="/os" className="pill-btn pill-btn-primary">
+            ⊞ Launch OS
+          </Link>
+          <Link href="/settings/branding" className="pill-btn">
+            Customize
+          </Link>
         </div>
       </div>
     </div>
@@ -159,42 +282,68 @@ function StatusBarSection({
 }) {
   return (
     <StaggerContainer className="status-bar">
-      <StaggerItem><div className="status-bar-card">
-        <div className="status-bar-icon" style={{ background: "rgba(99,102,241,0.12)", color: "var(--aeon-primary)" }}>⟁</div>
-        <div className="status-bar-info">
-          <span className="status-bar-label">System Status</span>
-          <span className="status-bar-value" style={{ color: "var(--aeon-success)" }}>
-            {health === null ? "..." : health.ok ? "Online" : "Connecting"}
-          </span>
-          <span className="status-bar-sub">{health?.backend || "AEON stub"}</span>
+      <StaggerItem>
+        <div className="status-bar-card">
+          <div
+            className="status-bar-icon"
+            style={{ background: "rgba(99,102,241,0.12)", color: "var(--aeon-primary)" }}
+          >
+            ⟁
+          </div>
+          <div className="status-bar-info">
+            <span className="status-bar-label">System Status</span>
+            <span className="status-bar-value" style={{ color: "var(--aeon-success)" }}>
+              {health === null ? "..." : health.ok ? "Online" : "Connecting"}
+            </span>
+            <span className="status-bar-sub">{health?.backend || "AEON stub"}</span>
+          </div>
         </div>
-      </div>
-      <div className="status-bar-card">
-        <div className="status-bar-icon" style={{ background: "rgba(16,185,129,0.12)", color: "var(--aeon-success)" }}>⊞</div>
-        <div className="status-bar-info">
-          <span className="status-bar-label">Active Modules</span>
-          <span className="status-bar-value">{activeModules.length}</span>
-          <span className="status-bar-sub">Operational</span>
+        <div className="status-bar-card">
+          <div
+            className="status-bar-icon"
+            style={{ background: "rgba(16,185,129,0.12)", color: "var(--aeon-success)" }}
+          >
+            ⊞
+          </div>
+          <div className="status-bar-info">
+            <span className="status-bar-label">Active Modules</span>
+            <span className="status-bar-value">{activeModules.length}</span>
+            <span className="status-bar-sub">Operational</span>
+          </div>
         </div>
-      </div>
-      <div className="status-bar-card">
-        <div className="status-bar-icon" style={{ background: "rgba(245,158,11,0.12)", color: "var(--aeon-warning)" }}>⚡</div>
-        <div className="status-bar-info">
-          <span className="status-bar-label">Smart Tools</span>
-          <span className="status-bar-value">{totalTools}</span>
-          <span className="status-bar-sub">AI-powered capabilities</span>
+        <div className="status-bar-card">
+          <div
+            className="status-bar-icon"
+            style={{ background: "rgba(245,158,11,0.12)", color: "var(--aeon-warning)" }}
+          >
+            ⚡
+          </div>
+          <div className="status-bar-info">
+            <span className="status-bar-label">Smart Tools</span>
+            <span className="status-bar-value">{totalTools}</span>
+            <span className="status-bar-sub">AI-powered capabilities</span>
+          </div>
         </div>
-      </div>
-      <div className="status-bar-card">
-        <div className="status-bar-icon" style={{ background: "rgba(6,182,212,0.12)", color: "#06b6d4" }}>◈</div>
-        <div className="status-bar-info">
-          <span className="status-bar-label">LLM Backend</span>
-          <span className="status-bar-value text-sm">
-            {health?.backend === "aeon-kernel" ? "AEON Kernel" : health?.backend === "hf-inference" ? "HF Inference" : "Stub"}
-          </span>
-          <span className="status-bar-sub">Pluggable · Hot-swappable</span>
+        <div className="status-bar-card">
+          <div
+            className="status-bar-icon"
+            style={{ background: "rgba(6,182,212,0.12)", color: "#06b6d4" }}
+          >
+            ◈
+          </div>
+          <div className="status-bar-info">
+            <span className="status-bar-label">LLM Backend</span>
+            <span className="status-bar-value text-sm">
+              {health?.backend === "aeon-kernel"
+                ? "AEON Kernel"
+                : health?.backend === "hf-inference"
+                  ? "HF Inference"
+                  : "Stub"}
+            </span>
+            <span className="status-bar-sub">Pluggable · Hot-swappable</span>
+          </div>
         </div>
-      </div></StaggerItem>
+      </StaggerItem>
     </StaggerContainer>
   );
 }
@@ -215,14 +364,17 @@ function LiveMetricsSection({
       <div className="mb-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <h2 className="text-sm font-semibold text-slate-300">Live Metrics</h2>
-          {lastUpdated && <span className="text-xs text-slate-500">· {lastUpdated.toLocaleTimeString()}</span>}
+          {lastUpdated && (
+            <span className="text-xs text-slate-500">· {lastUpdated.toLocaleTimeString()}</span>
+          )}
         </div>
         <button
           onClick={fetchStats}
           disabled={loading}
           className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium text-slate-400 transition hover:bg-white/[0.04] hover:text-slate-200 disabled:opacity-50"
         >
-          <span className={`inline-block h-2 w-2 rounded-full ${loading ? "animate-pulse bg-amber-400" : "bg-emerald-400"}`}
+          <span
+            className={`inline-block h-2 w-2 rounded-full ${loading ? "animate-pulse bg-amber-400" : "bg-emerald-400"}`}
             style={!loading ? { boxShadow: "0 0 6px rgba(34,197,94,0.5)" } : {}}
           />
           {loading ? "Refreshing..." : "Live"}
@@ -246,43 +398,44 @@ function LiveMetricsSection({
   );
 }
 
-function ModuleGridSection({
-  modules,
-  admin,
-}: {
-  modules: CommandModule[];
-  admin: boolean;
-}) {
+function ModuleGridSection({ modules, admin }: { modules: CommandModule[]; admin: boolean }) {
   return (
     <FadeIn delay={0.2}>
       <h2 className="dashboard-section-title mt-8">Command Centers</h2>
       <StaggerContainer className="module-grid">
         {modules.map((mod) => (
           <StaggerItem key={mod.id}>
-          <Link
-            href={`/os/${mod.moduleId}`}
-            className={`module-card ${mod.status === "inactive" ? "opacity-50" : ""}`}
-            style={{ textDecoration: "none" }}
-          >
-            <div className="flex items-center gap-3">
-              <div className="module-card-icon" style={{ background: `${mod.color}18`, color: mod.color }}>
-                {mod.icon || "⊞"}
-              </div>
-              <div>
-                <div className="module-card-title">{mod.name}</div>
-                <div className="module-card-meta" style={{ borderTop: "none", paddingTop: 0 }}>
-                  <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wider ${mod.status === "active" ? "text-green-400 bg-green-400/10" : "text-slate-500 bg-slate-500/10"}`}>
-                    {mod.status}
-                  </span>
-                  <span className="text-[0.65rem] text-slate-500">{mod.tools} tools</span>
+            <Link
+              href={`/os/${mod.moduleId}`}
+              className={`module-card ${mod.status === "inactive" ? "opacity-50" : ""}`}
+              style={{ textDecoration: "none" }}
+            >
+              <div className="flex items-center gap-3">
+                <div
+                  className="module-card-icon"
+                  style={{ background: `${mod.color}18`, color: mod.color }}
+                >
+                  {mod.icon || "⊞"}
+                </div>
+                <div>
+                  <div className="module-card-title">{mod.name}</div>
+                  <div className="module-card-meta" style={{ borderTop: "none", paddingTop: 0 }}>
+                    <span
+                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wider ${mod.status === "active" ? "text-green-400 bg-green-400/10" : "text-slate-500 bg-slate-500/10"}`}
+                    >
+                      {mod.status}
+                    </span>
+                    <span className="text-[0.65rem] text-slate-500">{mod.tools} tools</span>
+                  </div>
                 </div>
               </div>
-            </div>
-            <div className="module-card-desc">{mod.desc}</div>
-            {mod.status === "inactive" && admin && (
-              <div className="text-[0.65rem] text-slate-500 mt-1">Disabled in workspace settings</div>
-            )}
-          </Link>
+              <div className="module-card-desc">{mod.desc}</div>
+              {mod.status === "inactive" && admin && (
+                <div className="text-[0.65rem] text-slate-500 mt-1">
+                  Disabled in workspace settings
+                </div>
+              )}
+            </Link>
           </StaggerItem>
         ))}
       </StaggerContainer>
@@ -296,24 +449,54 @@ function PlatformFeaturesSection() {
       <h2 className="dashboard-section-title mt-8">Platform Capabilities</h2>
       <StaggerContainer className="feature-grid">
         {[
-          { title: "LLM Agnostic", icon: "🔌", text: "OpenAI · Anthropic · HF · Ollama · Qwen", badge: "Plug any provider" },
-          { title: "Autonomous Agent", icon: "🤖", text: "Self-improving · Reflective · Goal-driven", badge: "CodeEvolver" },
-          { title: "Enterprise Security", icon: "🔒", text: "Sandboxed · Audited", badge: "Causal Credit" },
-          { title: "Multi-Vertical", icon: "🏢", text: "11 Industry Modules", badge: "Gov · Enterprise · SME" },
-          { title: "Memory & Learning", icon: "🧠", text: "Episodic · Semantic · Procedural", badge: "Persistent" },
-          { title: "Revenue Model", icon: "💰", text: "Bounties · Ledger · Services", badge: "Token economy" },
+          {
+            title: "LLM Agnostic",
+            icon: "🔌",
+            text: "OpenAI · Anthropic · HF · Ollama · Qwen",
+            badge: "Plug any provider",
+          },
+          {
+            title: "Autonomous Agent",
+            icon: "🤖",
+            text: "Self-improving · Reflective · Goal-driven",
+            badge: "CodeEvolver",
+          },
+          {
+            title: "Enterprise Security",
+            icon: "🔒",
+            text: "Sandboxed · Audited",
+            badge: "Causal Credit",
+          },
+          {
+            title: "Multi-Vertical",
+            icon: "🏢",
+            text: "11 Industry Modules",
+            badge: "Gov · Enterprise · SME",
+          },
+          {
+            title: "Memory & Learning",
+            icon: "🧠",
+            text: "Episodic · Semantic · Procedural",
+            badge: "Persistent",
+          },
+          {
+            title: "Revenue Model",
+            icon: "💰",
+            text: "Bounties · Ledger · Services",
+            badge: "Token economy",
+          },
         ].map((feat) => (
           <StaggerItem key={feat.title}>
-          <ScaleOnHover>
-          <div className="feature-card">
-            <div className="feature-card-header">
-              <span className="feature-card-title">{feat.title}</span>
-              <span style={{ fontSize: "1.2rem" }}>{feat.icon}</span>
-            </div>
-            <div className="feature-card-text">{feat.text}</div>
-            <div className="feature-card-badge mt-2">{feat.badge}</div>
-          </div>
-          </ScaleOnHover>
+            <ScaleOnHover>
+              <div className="feature-card">
+                <div className="feature-card-header">
+                  <span className="feature-card-title">{feat.title}</span>
+                  <span style={{ fontSize: "1.2rem" }}>{feat.icon}</span>
+                </div>
+                <div className="feature-card-text">{feat.text}</div>
+                <div className="feature-card-badge mt-2">{feat.badge}</div>
+              </div>
+            </ScaleOnHover>
           </StaggerItem>
         ))}
       </StaggerContainer>
@@ -365,7 +548,12 @@ export default function DashboardPage() {
       .then((r) => r.json())
       .then((d) => {
         if (d?.apps?.[0]?.allowed_tools) {
-          setVitals({ total_tools: d.apps.reduce((s: number, a: any) => s + (a.allowed_tools?.length || 0), 0) });
+          setVitals({
+            total_tools: d.apps.reduce(
+              (s: number, a: any) => s + (a.allowed_tools?.length || 0),
+              0
+            ),
+          });
         }
       })
       .catch(() => {});
@@ -383,31 +571,55 @@ export default function DashboardPage() {
     automations: liveStats?.automations ?? 0,
     anomalies: liveStats?.anomalies ?? 0,
     incidents: liveStats?.open_incidents ?? 0,
-    tasks: ((liveStats?.automation_executions_30d ?? 0) + (liveStats?.automations ?? 0) * 10).toLocaleString(),
+    tasks: (
+      (liveStats?.automation_executions_30d ?? 0) +
+      (liveStats?.automations ?? 0) * 10
+    ).toLocaleString(),
   };
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }}>
       <ThreeBackground />
-      <div className="fixed inset-0 -z-10 pointer-events-none"
+      <div
+        className="fixed inset-0 -z-10 pointer-events-none"
         style={{
-          background: "radial-gradient(ellipse at 20% 50%, rgba(99, 102, 241, 0.03) 0%, transparent 60%), radial-gradient(ellipse at 80% 20%, rgba(168, 85, 247, 0.02) 0%, transparent 50%)"
+          background:
+            "radial-gradient(ellipse at 20% 50%, rgba(99, 102, 241, 0.03) 0%, transparent 60%), radial-gradient(ellipse at 80% 20%, rgba(168, 85, 247, 0.02) 0%, transparent 50%)",
         }}
       />
       <div className="dashboard-page">
         {enabledIds.has("welcome_banner") && (
-          <FadeIn key="welcome"><WelcomeBannerSection config={config} activeModules={activeModules} totalTools={totalTools} /></FadeIn>
+          <FadeIn key="welcome">
+            <WelcomeBannerSection
+              config={config}
+              activeModules={activeModules}
+              totalTools={totalTools}
+            />
+          </FadeIn>
         )}
         {enabledIds.has("system_status_bar") && (
-          <FadeIn key="status" delay={0.1}><StatusBarSection health={health} activeModules={activeModules} totalTools={totalTools} /></FadeIn>
+          <FadeIn key="status" delay={0.1}>
+            <StatusBarSection
+              health={health}
+              activeModules={activeModules}
+              totalTools={totalTools}
+            />
+          </FadeIn>
         )}
         {enabledIds.has("live_metrics") && (
           <FadeIn key="metrics" delay={0.15}>
-            <LiveMetricsSection stats={stats} loading={loading} lastUpdated={lastUpdated} fetchStats={fetchStats} />
+            <LiveMetricsSection
+              stats={stats}
+              loading={loading}
+              lastUpdated={lastUpdated}
+              fetchStats={fetchStats}
+            />
           </FadeIn>
         )}
         {enabledIds.has("command_centers") && (
-          <FadeIn key="modules" delay={0.2}><ModuleGridSection modules={modules} admin={admin} /></FadeIn>
+          <FadeIn key="modules" delay={0.2}>
+            <ModuleGridSection modules={modules} admin={admin} />
+          </FadeIn>
         )}
         {enabledIds.has("alerts") && (
           <FadeIn key="alerts" delay={0.25}>
@@ -425,7 +637,9 @@ export default function DashboardPage() {
           </FadeIn>
         )}
         {enabledIds.has("platform_features") && (
-          <FadeIn key="features" delay={0.35}><PlatformFeaturesSection /></FadeIn>
+          <FadeIn key="features" delay={0.35}>
+            <PlatformFeaturesSection />
+          </FadeIn>
         )}
       </div>
     </motion.div>

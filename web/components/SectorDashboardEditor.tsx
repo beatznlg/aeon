@@ -5,81 +5,105 @@ import SectorInlineEditor from "./SectorInlineEditor";
 
 // ─── Tool definitions for each sector ────────────────────────────────────────
 
-const SECTOR_TOOLS: Record<
-  string,
-  { path: string; label: string; icon: string; color: string }[]
-> = {
-  cybersecurity: [
-    { path: "threats", label: "Threat Intelligence", icon: "⚠️", color: "#ef4444" },
-    { path: "vulnerabilities", label: "Vulnerability Scan", icon: "🔓", color: "#ef4444" },
-    { path: "compliance", label: "Compliance Posture", icon: "✓", color: "#ef4444" },
-    { path: "ip-reputation", label: "IP Reputation", icon: "🌐", color: "#ef4444" },
-    { path: "news", label: "Security News", icon: "📰", color: "#ef4444" },
-  ],
-  health: [
-    { path: "diagnostics", label: "Diagnostic Analysis", icon: "🔬", color: "#22c55e" },
-    { path: "vitals", label: "Patient Vitals", icon: "📈", color: "#22c55e" },
-    { path: "drug-interactions", label: "Drug Interactions", icon: "💊", color: "#22c55e" },
-    { path: "telehealth", label: "Telehealth Triage", icon: "📹", color: "#22c55e" },
-  ],
-  finance: [
-    { path: "risk", label: "Risk Assessment", icon: "📊", color: "#f59e0b" },
-    { path: "market", label: "Market Forecast", icon: "📈", color: "#f59e0b" },
-    { path: "fraud", label: "Fraud Detection", icon: "🔍", color: "#f59e0b" },
-    { path: "credit", label: "Credit Scoring", icon: "💳", color: "#f59e0b" },
-    { path: "payments", label: "Payment Analysis", icon: "💸", color: "#f59e0b" },
-  ],
-  retail: [
-    { path: "forecast", label: "Demand Forecast", icon: "📊", color: "#a855f7" },
-    { path: "inventory", label: "Inventory Status", icon: "📋", color: "#a855f7" },
-    { path: "suppliers", label: "Supplier Risk", icon: "🚚", color: "#a855f7" },
-    { path: "pricing", label: "Price Elasticity", icon: "🏷️", color: "#a855f7" },
-  ],
-  transport: [
-    { path: "traffic", label: "Traffic Zones", icon: "🚦", color: "#3b82f6" },
-    { path: "fleet", label: "Fleet Scheduling", icon: "🚛", color: "#3b82f6" },
-    { path: "routes", label: "Route Planning", icon: "🗺️", color: "#3b82f6" },
-  ],
-  manufacturing: [
-    { path: "maintenance", label: "Machine Health", icon: "⚙️", color: "#f97316" },
-    { path: "quality", label: "Quality Control", icon: "✓", color: "#f97316" },
-    { path: "logistics", label: "Smart Logistics", icon: "🚚", color: "#f97316" },
-  ],
-  tourism: [
-    { path: "bookings", label: "Booking Optimization", icon: "📅", color: "#ec4899" },
-    { path: "pricing", label: "Dynamic Pricing", icon: "💰", color: "#ec4899" },
-    { path: "concierge", label: "Concierge Triage", icon: "🤵", color: "#ec4899" },
-    { path: "visitors", label: "Visitor Analytics", icon: "👥", color: "#ec4899" },
-  ],
-  utilities: [
-    { path: "resources", label: "Resource Optimization", icon: "💧", color: "#06b6d4" },
-    { path: "services", label: "Public Services KPI", icon: "🏛️", color: "#06b6d4" },
-    { path: "waste", label: "Waste Management", icon: "♻️", color: "#06b6d4" },
-    { path: "grid", label: "Energy Grid", icon: "🔌", color: "#06b6d4" },
-  ],
-  cultural_heritage: [
-    { path: "visitors", label: "Visitor Engagement", icon: "👥", color: "#14b8a6" },
-    { path: "sites", label: "Heritage Sites", icon: "🏛️", color: "#14b8a6" },
-    { path: "exhibitions", label: "Exhibition Planning", icon: "🖼️", color: "#14b8a6" },
-    { path: "tours", label: "Virtual Tours", icon: "🎧", color: "#14b8a6" },
-  ],
-  sme: [
-    { path: "workflows", label: "Workflow Automation", icon: "🤖", color: "#6366f1" },
-    { path: "documents", label: "Document Processing", icon: "📄", color: "#6366f1" },
-    { path: "support", label: "AI Support Desk", icon: "🎧", color: "#6366f1" },
-    { path: "supply-chain", label: "Supply Chain", icon: "🔗", color: "#6366f1" },
-  ],
-};
+const SECTOR_TOOLS: Record<string, { path: string; label: string; icon: string; color: string }[]> =
+  {
+    cybersecurity: [
+      { path: "threats", label: "Threat Intelligence", icon: "⚠️", color: "#ef4444" },
+      { path: "vulnerabilities", label: "Vulnerability Scan", icon: "🔓", color: "#ef4444" },
+      { path: "compliance", label: "Compliance Posture", icon: "✓", color: "#ef4444" },
+      { path: "ip-reputation", label: "IP Reputation", icon: "🌐", color: "#ef4444" },
+      { path: "news", label: "Security News", icon: "📰", color: "#ef4444" },
+    ],
+    health: [
+      { path: "diagnostics", label: "Diagnostic Analysis", icon: "🔬", color: "#22c55e" },
+      { path: "vitals", label: "Patient Vitals", icon: "📈", color: "#22c55e" },
+      { path: "drug-interactions", label: "Drug Interactions", icon: "💊", color: "#22c55e" },
+      { path: "telehealth", label: "Telehealth Triage", icon: "📹", color: "#22c55e" },
+    ],
+    finance: [
+      { path: "risk", label: "Risk Assessment", icon: "📊", color: "#f59e0b" },
+      { path: "market", label: "Market Forecast", icon: "📈", color: "#f59e0b" },
+      { path: "fraud", label: "Fraud Detection", icon: "🔍", color: "#f59e0b" },
+      { path: "credit", label: "Credit Scoring", icon: "💳", color: "#f59e0b" },
+      { path: "payments", label: "Payment Analysis", icon: "💸", color: "#f59e0b" },
+    ],
+    retail: [
+      { path: "forecast", label: "Demand Forecast", icon: "📊", color: "#a855f7" },
+      { path: "inventory", label: "Inventory Status", icon: "📋", color: "#a855f7" },
+      { path: "suppliers", label: "Supplier Risk", icon: "🚚", color: "#a855f7" },
+      { path: "pricing", label: "Price Elasticity", icon: "🏷️", color: "#a855f7" },
+    ],
+    transport: [
+      { path: "traffic", label: "Traffic Zones", icon: "🚦", color: "#3b82f6" },
+      { path: "fleet", label: "Fleet Scheduling", icon: "🚛", color: "#3b82f6" },
+      { path: "routes", label: "Route Planning", icon: "🗺️", color: "#3b82f6" },
+    ],
+    manufacturing: [
+      { path: "maintenance", label: "Machine Health", icon: "⚙️", color: "#f97316" },
+      { path: "quality", label: "Quality Control", icon: "✓", color: "#f97316" },
+      { path: "logistics", label: "Smart Logistics", icon: "🚚", color: "#f97316" },
+    ],
+    tourism: [
+      { path: "bookings", label: "Booking Optimization", icon: "📅", color: "#ec4899" },
+      { path: "pricing", label: "Dynamic Pricing", icon: "💰", color: "#ec4899" },
+      { path: "concierge", label: "Concierge Triage", icon: "🤵", color: "#ec4899" },
+      { path: "visitors", label: "Visitor Analytics", icon: "👥", color: "#ec4899" },
+    ],
+    utilities: [
+      { path: "resources", label: "Resource Optimization", icon: "💧", color: "#06b6d4" },
+      { path: "services", label: "Public Services KPI", icon: "🏛️", color: "#06b6d4" },
+      { path: "waste", label: "Waste Management", icon: "♻️", color: "#06b6d4" },
+      { path: "grid", label: "Energy Grid", icon: "🔌", color: "#06b6d4" },
+    ],
+    cultural_heritage: [
+      { path: "visitors", label: "Visitor Engagement", icon: "👥", color: "#14b8a6" },
+      { path: "sites", label: "Heritage Sites", icon: "🏛️", color: "#14b8a6" },
+      { path: "exhibitions", label: "Exhibition Planning", icon: "🖼️", color: "#14b8a6" },
+      { path: "tours", label: "Virtual Tours", icon: "🎧", color: "#14b8a6" },
+    ],
+    sme: [
+      { path: "workflows", label: "Workflow Automation", icon: "🤖", color: "#6366f1" },
+      { path: "documents", label: "Document Processing", icon: "📄", color: "#6366f1" },
+      { path: "support", label: "AI Support Desk", icon: "🎧", color: "#6366f1" },
+      { path: "supply-chain", label: "Supply Chain", icon: "🔗", color: "#6366f1" },
+    ],
+  };
 
 // ─── ID field detection ──────────────────────────────────────────────────────
 
 const ID_FIELD_CANDIDATES = [
-  "id", "cve", "sku", "supplier", "transaction_id",
-  "applicant_id", "account_id", "zone", "depot", "stops", "machine_id",
-  "batch_id", "route_id", "property", "room", "guest_id", "venue",
-  "resource", "service", "district", "region", "site", "theme",
-  "process", "document_type", "query", "chain_id", "analyzed_symptoms",
-  "patient_id", "medications", "symptoms", "indicator",
+  "id",
+  "cve",
+  "sku",
+  "supplier",
+  "transaction_id",
+  "applicant_id",
+  "account_id",
+  "zone",
+  "depot",
+  "stops",
+  "machine_id",
+  "batch_id",
+  "route_id",
+  "property",
+  "room",
+  "guest_id",
+  "venue",
+  "resource",
+  "service",
+  "district",
+  "region",
+  "site",
+  "theme",
+  "process",
+  "document_type",
+  "query",
+  "chain_id",
+  "analyzed_symptoms",
+  "patient_id",
+  "medications",
+  "symptoms",
+  "indicator",
 ];
 
 function detectIdField(records: Record<string, unknown>[]): string {
@@ -92,12 +116,38 @@ function detectIdField(records: Record<string, unknown>[]): string {
 }
 
 const DATA_KEY_CANDIDATES = [
-  "threats", "vulnerabilities", "diagnostics", "vitals",
-  "interactions", "triage", "fraud_cases", "applications", "accounts",
-  "forecast", "suppliers", "zones", "fleet", "routes", "machines",
-  "batches", "shipments", "bookings", "pricing", "requests", "venues",
-  "resources", "services", "districts", "regions", "sites", "exhibitions",
-  "tours", "workflows", "documents", "tickets", "chains",
+  "threats",
+  "vulnerabilities",
+  "diagnostics",
+  "vitals",
+  "interactions",
+  "triage",
+  "fraud_cases",
+  "applications",
+  "accounts",
+  "forecast",
+  "suppliers",
+  "zones",
+  "fleet",
+  "routes",
+  "machines",
+  "batches",
+  "shipments",
+  "bookings",
+  "pricing",
+  "requests",
+  "venues",
+  "resources",
+  "services",
+  "districts",
+  "regions",
+  "sites",
+  "exhibitions",
+  "tours",
+  "workflows",
+  "documents",
+  "tickets",
+  "chains",
 ];
 
 function detectDataKey(data: Record<string, unknown>): string {
@@ -123,11 +173,7 @@ function getColumnKeys(records: Record<string, unknown>[]): string[] {
 
 // ─── Editor Panel ────────────────────────────────────────────────────────────
 
-export default function SectorDashboardEditor({
-  sectorId,
-}: {
-  sectorId: string | undefined;
-}) {
+export default function SectorDashboardEditor({ sectorId }: { sectorId: string | undefined }) {
   const [open, setOpen] = useState(false);
   const [toolStates, setToolStates] = useState<
     Record<string, { data: Record<string, unknown> | null; loading: boolean }>
@@ -182,7 +228,9 @@ export default function SectorDashboardEditor({
     return (
       <div className="sector-dash-editor-active">
         <div className="sector-dash-editor-bar">
-          <span>✏️ Editing: <strong>{meta?.label || editingTool}</strong></span>
+          <span>
+            ✏️ Editing: <strong>{meta?.label || editingTool}</strong>
+          </span>
           <button
             className="btn btn-xs"
             onClick={() => setEditingTool(null)}
@@ -228,16 +276,12 @@ export default function SectorDashboardEditor({
     <div className="sector-dash-edit-panel">
       <div className="sector-dash-edit-panel-header">
         <h3>✏️ Edit Data Sources</h3>
-        <button
-          className="sector-dash-edit-close"
-          onClick={() => setOpen(false)}
-        >
+        <button className="sector-dash-edit-close" onClick={() => setOpen(false)}>
           ×
         </button>
       </div>
       <p className="sector-dash-edit-panel-sub">
-        Select a tool endpoint to view and edit its data. Changes are saved
-        immediately via the API.
+        Select a tool endpoint to view and edit its data. Changes are saved immediately via the API.
       </p>
       <div className="sector-dash-edit-tools">
         {tools.map((tool) => {

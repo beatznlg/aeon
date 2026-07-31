@@ -58,8 +58,12 @@ print('___AEON_OS_RETAIL___' + json.dumps(result))
     });
     let stdout = "";
     let stderr = "";
-    proc.stdout.on("data", (d) => { stdout += d.toString(); });
-    proc.stderr.on("data", (d) => { stderr += d.toString(); });
+    proc.stdout.on("data", (d) => {
+      stdout += d.toString();
+    });
+    proc.stderr.on("data", (d) => {
+      stderr += d.toString();
+    });
     proc.on("close", (code) => {
       if (code !== 0) {
         return reject(new Error(stderr || "aeon os retail dashboard failed"));
@@ -75,7 +79,10 @@ export async function GET() {
     const stdout = await runRetailDashboard();
     const marker = stdout.indexOf("___AEON_OS_RETAIL___");
     if (marker === -1) {
-      return NextResponse.json({ ok: false, error: "no retail data from aeon os" }, { status: 500 });
+      return NextResponse.json(
+        { ok: false, error: "no retail data from aeon os" },
+        { status: 500 }
+      );
     }
     const result = JSON.parse(stdout.slice(marker + "___AEON_OS_RETAIL___".length).split("\n")[0]);
     return NextResponse.json(result);

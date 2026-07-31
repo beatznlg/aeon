@@ -10,7 +10,13 @@ interface EmptyStateProps {
   className?: string;
 }
 
-export default function EmptyState({ title = "Nothing here yet", description, icon, children, className = "" }: EmptyStateProps) {
+export default function EmptyState({
+  title = "Nothing here yet",
+  description,
+  icon,
+  children,
+  className = "",
+}: EmptyStateProps) {
   return (
     <div className={`flex flex-col items-center justify-center gap-3 p-8 text-center ${className}`}>
       {icon ? (

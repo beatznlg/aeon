@@ -2,20 +2,9 @@ import { DEFAULT_PROVIDER } from "./llm";
 
 export const PROVIDER_STORAGE_KEY = "aeon_provider";
 
-export type StoredProvider =
-  | "openrouter"
-  | "openai"
-  | "anthropic"
-  | "hf"
-  | "stub";
+export type StoredProvider = "openrouter" | "openai" | "anthropic" | "hf" | "stub";
 
-export const ALL_PROVIDERS: StoredProvider[] = [
-  "openrouter",
-  "openai",
-  "anthropic",
-  "hf",
-  "stub",
-];
+export const ALL_PROVIDERS: StoredProvider[] = ["openrouter", "openai", "anthropic", "hf", "stub"];
 
 export function getStoredProvider(): StoredProvider {
   if (typeof window === "undefined") return DEFAULT_PROVIDER as StoredProvider;

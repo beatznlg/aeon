@@ -10,7 +10,9 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   }
   try {
     const { id } = params;
-    const res = await fetch(`${PYTHON_URL}/integrations/${encodeURIComponent(id)}`, { cache: "no-store" });
+    const res = await fetch(`${PYTHON_URL}/integrations/${encodeURIComponent(id)}`, {
+      cache: "no-store",
+    });
     const data = await res.json();
     return NextResponse.json(data);
   } catch (e) {

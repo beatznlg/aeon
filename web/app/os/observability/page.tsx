@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 
- type UsageSummary = {
+type UsageSummary = {
   period_days: number;
   workspace_id?: string;
   total_events: number;
@@ -63,10 +63,30 @@ function useFetch<T>(url: string) {
   return { data, loading, error };
 }
 
-function Card({ title, children, className = "" }: { title?: string; children: React.ReactNode; className?: string }) {
+function Card({
+  title,
+  children,
+  className = "",
+}: {
+  title?: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
   return (
     <div className={`os-card ${className}`} style={{ padding: 20 }}>
-      {title && <h3 style={{ margin: "0 0 16px", fontSize: "0.95rem", textTransform: "uppercase", letterSpacing: 1, color: "var(--fg-mute)" }}>{title}</h3>}
+      {title && (
+        <h3
+          style={{
+            margin: "0 0 16px",
+            fontSize: "0.95rem",
+            textTransform: "uppercase",
+            letterSpacing: 1,
+            color: "var(--fg-mute)",
+          }}
+        >
+          {title}
+        </h3>
+      )}
       {children}
     </div>
   );
@@ -76,12 +96,29 @@ function Progress({ value, label }: { value: number; label: string }) {
   const pct = Math.min(100, Math.max(0, value));
   return (
     <div style={{ marginBottom: 12 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem", marginBottom: 4 }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          fontSize: "0.85rem",
+          marginBottom: 4,
+        }}
+      >
         <span>{label}</span>
         <span>{pct.toFixed(1)}%</span>
       </div>
-      <div style={{ height: 8, background: "var(--bg-elevated)", borderRadius: 4, overflow: "hidden" }}>
-        <div style={{ width: `${pct}%`, height: "100%", background: "var(--accent)", borderRadius: 4, transition: "width 0.3s ease" }} />
+      <div
+        style={{ height: 8, background: "var(--bg-elevated)", borderRadius: 4, overflow: "hidden" }}
+      >
+        <div
+          style={{
+            width: `${pct}%`,
+            height: "100%",
+            background: "var(--accent)",
+            borderRadius: 4,
+            transition: "width 0.3s ease",
+          }}
+        />
       </div>
     </div>
   );
@@ -92,7 +129,16 @@ function BarChart({ data }: { data: { label: string; value: number }[] }) {
   return (
     <div style={{ display: "flex", alignItems: "flex-end", gap: 8, height: 120, paddingTop: 10 }}>
       {data.map((d, i) => (
-        <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+        <div
+          key={i}
+          style={{
+            flex: 1,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 4,
+          }}
+        >
           <div
             style={{
               width: "100%",
@@ -103,7 +149,9 @@ function BarChart({ data }: { data: { label: string; value: number }[] }) {
               opacity: 0.85,
             }}
           />
-          <span style={{ fontSize: "0.7rem", color: "var(--fg-mute)", textAlign: "center" }}>{d.label}</span>
+          <span style={{ fontSize: "0.7rem", color: "var(--fg-mute)", textAlign: "center" }}>
+            {d.label}
+          </span>
         </div>
       ))}
     </div>
@@ -114,10 +162,19 @@ export default function ObservabilityPage() {
   const { data: session } = useSession();
   const workspaceId = ((session?.user as any)?.workspaceId as string) || "default";
 
-  const { data: usage, loading: usageLoading } = useFetch<{ ok: boolean; summary: UsageSummary }>("/api/os/observability/usage");
-  const { data: billing, loading: billingLoading } = useFetch<{ ok: boolean; billing: BillingStatus }>("/api/os/observability/billing");
-  const { data: health, loading: healthLoading } = useFetch<{ ok: boolean } & HealthStatus>("/api/os/observability/health");
-  const { data: metrics } = useFetch<{ ok: boolean; metrics: UsageSummary }>("/api/os/observability/metrics");
+  const { data: usage, loading: usageLoading } = useFetch<{ ok: boolean; summary: UsageSummary }>(
+    "/api/os/observability/usage"
+  );
+  const { data: billing, loading: billingLoading } = useFetch<{
+    ok: boolean;
+    billing: BillingStatus;
+  }>("/api/os/observability/billing");
+  const { data: health, loading: healthLoading } = useFetch<{ ok: boolean } & HealthStatus>(
+    "/api/os/observability/health"
+  );
+  const { data: metrics } = useFetch<{ ok: boolean; metrics: UsageSummary }>(
+    "/api/os/observability/metrics"
+  );
 
   const actionBars = useMemo(() => {
     const byAction = usage?.summary?.by_action || {};
@@ -131,29 +188,51 @@ export default function ObservabilityPage() {
 
   const dailyBars = useMemo(() => {
     const byDay = metrics?.metrics?.by_day || usage?.summary?.by_day || {};
-    return Object.entries(byDay).slice(-14).map(([k, v]) => ({ label: k.slice(5), value: v.count || 0 }));
+    return Object.entries(byDay)
+      .slice(-14)
+      .map(([k, v]) => ({ label: k.slice(5), value: v.count || 0 }));
   }, [metrics, usage]);
 
   return (
     <div className="os-page">
       <header className="os-header">
         <div>
-          <h1 style={{ background: "var(--grad)", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>
+          <h1
+            style={{
+              background: "var(--grad)",
+              WebkitBackgroundClip: "text",
+              backgroundClip: "text",
+              color: "transparent",
+            }}
+          >
             📊 Observability & Billing
           </h1>
-          <p className="dashboard-subtitle">Usage metering, cost visibility, and system health for AEON OS</p>
+          <p className="dashboard-subtitle">
+            Usage metering, cost visibility, and system health for AEON OS
+          </p>
         </div>
-        <Link href="/os" className="btn btn-sm">← OS Launcher</Link>
+        <Link href="/os" className="btn btn-sm">
+          ← OS Launcher
+        </Link>
       </header>
 
       {(usageLoading || billingLoading || healthLoading) && (
         <div className="skeleton-page" role="status" aria-label="Loading observability">
           <span className="sr-only">Loading observability data…</span>
-          <div className="os-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
-            {[1,2,3,4].map(i => (
+          <div
+            className="os-grid"
+            style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}
+          >
+            {[1, 2, 3, 4].map((i) => (
               <div key={i} className="skeleton-card" style={{ flexDirection: "column" }}>
-                <div className="skeleton-shimmer" style={{ height: "0.7rem", width: "40%", marginBottom: "0.75rem" }} />
-                <div className="skeleton-shimmer" style={{ height: "2rem", width: "30%", marginBottom: "0.5rem" }} />
+                <div
+                  className="skeleton-shimmer"
+                  style={{ height: "0.7rem", width: "40%", marginBottom: "0.75rem" }}
+                />
+                <div
+                  className="skeleton-shimmer"
+                  style={{ height: "2rem", width: "30%", marginBottom: "0.5rem" }}
+                />
               </div>
             ))}
           </div>
@@ -161,32 +240,66 @@ export default function ObservabilityPage() {
       )}
 
       {/* KPIs */}
-      <section className="os-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
+      <section
+        className="os-grid"
+        style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}
+      >
         <Card title="Total Events">
-          <div style={{ fontSize: "2rem", fontWeight: 700 }}>{usage?.summary?.total_events ?? 0}</div>
-          <div style={{ fontSize: "0.85rem", color: "var(--fg-mute)" }}>Last {usage?.summary?.period_days ?? 30} days</div>
+          <div style={{ fontSize: "2rem", fontWeight: 700 }}>
+            {usage?.summary?.total_events ?? 0}
+          </div>
+          <div style={{ fontSize: "0.85rem", color: "var(--fg-mute)" }}>
+            Last {usage?.summary?.period_days ?? 30} days
+          </div>
         </Card>
         <Card title="Compute Units">
-          <div style={{ fontSize: "2rem", fontWeight: 700 }}>{(usage?.summary?.total_quantity ?? 0).toLocaleString()}</div>
-          <div style={{ fontSize: "0.85rem", color: "var(--fg-mute)" }}>Tokens / requests / ticks</div>
+          <div style={{ fontSize: "2rem", fontWeight: 700 }}>
+            {(usage?.summary?.total_quantity ?? 0).toLocaleString()}
+          </div>
+          <div style={{ fontSize: "0.85rem", color: "var(--fg-mute)" }}>
+            Tokens / requests / ticks
+          </div>
         </Card>
         <Card title="Estimated Cost">
-          <div style={{ fontSize: "2rem", fontWeight: 700 }}>${(billing?.billing?.estimated_cost ?? 0).toFixed(4)}</div>
+          <div style={{ fontSize: "2rem", fontWeight: 700 }}>
+            ${(billing?.billing?.estimated_cost ?? 0).toFixed(4)}
+          </div>
           <div style={{ fontSize: "0.85rem", color: "var(--fg-mute)" }}>Based on plan pricing</div>
         </Card>
         <Card title="Queue Health">
           <div style={{ fontSize: "2rem", fontWeight: 700 }}>{health?.queue?.size ?? 0}</div>
-          <div style={{ fontSize: "0.85rem", color: "var(--fg-mute)" }}>{health?.queue?.status ?? "unknown"}</div>
+          <div style={{ fontSize: "0.85rem", color: "var(--fg-mute)" }}>
+            {health?.queue?.status ?? "unknown"}
+          </div>
         </Card>
       </section>
 
       {/* Billing & Usage */}
-      <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 24, marginTop: 24 }}>
+      <section
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+          gap: 24,
+          marginTop: 24,
+        }}
+      >
         <Card title="Plan & Quotas" className="billing-card">
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-            <span style={{ fontSize: "1.1rem", fontWeight: 600 }}>{billing?.billing?.plan?.name ?? "Free"}</span>
-            <span style={{ fontSize: "0.85rem", color: "var(--fg-mute)" }}>Workspace: {workspaceId}</span>
-          </div>            {billing?.billing?.plan?.limits &&
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: 16,
+            }}
+          >
+            <span style={{ fontSize: "1.1rem", fontWeight: 600 }}>
+              {billing?.billing?.plan?.name ?? "Free"}
+            </span>
+            <span style={{ fontSize: "0.85rem", color: "var(--fg-mute)" }}>
+              Workspace: {workspaceId}
+            </span>
+          </div>{" "}
+          {billing?.billing?.plan?.limits &&
             Object.entries(billing.billing.plan.limits).map(([key]) => {
               const pct = billing.billing?.quota_usage_pct?.[key] ?? 0;
               return <Progress key={key} label={key} value={pct} />;
@@ -196,7 +309,14 @@ export default function ObservabilityPage() {
               <span>Credits</span>
               <span>${(billing?.billing?.credits ?? 0).toFixed(2)}</span>
             </div>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.9rem", marginTop: 4 }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                fontSize: "0.9rem",
+                marginTop: 4,
+              }}
+            >
               <span>Remaining</span>
               <span>${(billing?.billing?.remaining_credits ?? 0).toFixed(2)}</span>
             </div>
@@ -204,28 +324,59 @@ export default function ObservabilityPage() {
         </Card>
 
         <Card title="Usage by Action">
-          {actionBars.length > 0 ? <BarChart data={actionBars} /> : <div style={{ color: "var(--fg-mute)", padding: 20, textAlign: "center" }}>No usage yet</div>}
+          {actionBars.length > 0 ? (
+            <BarChart data={actionBars} />
+          ) : (
+            <div style={{ color: "var(--fg-mute)", padding: 20, textAlign: "center" }}>
+              No usage yet
+            </div>
+          )}
         </Card>
 
         <Card title="Usage by Module">
-          {moduleBars.length > 0 ? <BarChart data={moduleBars} /> : <div style={{ color: "var(--fg-mute)", padding: 20, textAlign: "center" }}>No module usage yet</div>}
+          {moduleBars.length > 0 ? (
+            <BarChart data={moduleBars} />
+          ) : (
+            <div style={{ color: "var(--fg-mute)", padding: 20, textAlign: "center" }}>
+              No module usage yet
+            </div>
+          )}
         </Card>
       </section>
 
       {/* Time series & Health */}
-      <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 24, marginTop: 24 }}>
+      <section
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+          gap: 24,
+          marginTop: 24,
+        }}
+      >
         <Card title="Daily Activity" className="chart-card">
-          {dailyBars.length > 0 ? <BarChart data={dailyBars} /> : <div style={{ color: "var(--fg-mute)", padding: 20, textAlign: "center" }}>No daily data yet</div>}
+          {dailyBars.length > 0 ? (
+            <BarChart data={dailyBars} />
+          ) : (
+            <div style={{ color: "var(--fg-mute)", padding: 20, textAlign: "center" }}>
+              No daily data yet
+            </div>
+          )}
         </Card>
 
         <Card title="System Health">
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
             <span>Kernel</span>
-            <span className={`settings-status ${health?.kernel?.status === "ok" ? "connected" : "disconnected"}`}>{health?.kernel?.status ?? "unknown"}</span>
+            <span
+              className={`settings-status ${health?.kernel?.status === "ok" ? "connected" : "disconnected"}`}
+            >
+              {health?.kernel?.status ?? "unknown"}
+            </span>
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
             <span>Backend</span>
-            <span style={{ fontFamily: "monospace", fontSize: "0.8rem" }}>{health?.kernel?.backend ?? "unknown"}</span>
+            <span style={{ fontFamily: "monospace", fontSize: "0.8rem" }}>
+              {health?.kernel?.backend ?? "unknown"}
+            </span>
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
             <span>Active Agents</span>
@@ -245,14 +396,27 @@ export default function ObservabilityPage() {
           {health?.agents?.length ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {health.agents.map((agent) => (
-                <div key={agent.app_id} style={{ display: "flex", justifyContent: "space-between", padding: "8px 12px", background: "var(--bg-elevated)", borderRadius: 8 }}>
+                <div
+                  key={agent.app_id}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    padding: "8px 12px",
+                    background: "var(--bg-elevated)",
+                    borderRadius: 8,
+                  }}
+                >
                   <span>{agent.app_id}</span>
-                  <span style={{ fontSize: "0.8rem", color: "var(--fg-mute)" }}>{agent.ticks} ticks</span>
+                  <span style={{ fontSize: "0.8rem", color: "var(--fg-mute)" }}>
+                    {agent.ticks} ticks
+                  </span>
                 </div>
               ))}
             </div>
           ) : (
-            <div style={{ color: "var(--fg-mute)", padding: 20, textAlign: "center" }}>No active agents</div>
+            <div style={{ color: "var(--fg-mute)", padding: 20, textAlign: "center" }}>
+              No active agents
+            </div>
           )}
         </Card>
       </section>

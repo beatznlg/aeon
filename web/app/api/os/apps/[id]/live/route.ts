@@ -21,12 +21,18 @@ function timeVaryingString(seed: number, options: string[]): string {
   return options[Math.abs(seed) % options.length];
 }
 
-const STATUS_OPTIONS = ["healthy", "healthy", "healthy", "warning", "healthy", "healthy", "critical", "healthy"];
+const STATUS_OPTIONS = [
+  "healthy",
+  "healthy",
+  "healthy",
+  "warning",
+  "healthy",
+  "healthy",
+  "critical",
+  "healthy",
+];
 
-export async function GET(
-  req: Request,
-  { params }: { params: { id: string } },
-) {
+export async function GET(req: Request, { params }: { params: { id: string } }) {
   const id = params.id;
   const session = await auth();
   const userId = (session?.user as any)?.id;
@@ -74,8 +80,8 @@ export async function GET(
   return NextResponse.json(live, {
     headers: {
       "Cache-Control": "no-cache, no-store, must-revalidate",
-      "Pragma": "no-cache",
-      "Expires": "0",
+      Pragma: "no-cache",
+      Expires: "0",
     },
   });
 }
@@ -87,53 +93,115 @@ function getAppMetrics(appId: string, seed: number): Record<string, number | str
       value: timeVaryingValue(seed + i * 10, 10, 100),
       prev: timeVaryingValue(seed + i * 10 + 5, 10, 100),
       unit: "%",
-      status: timeVaryingString(seed + i * 10 + 3, ["ok", "ok", "warn", "ok", "danger", "ok"]) as string,
+      status: timeVaryingString(seed + i * 10 + 3, [
+        "ok",
+        "ok",
+        "warn",
+        "ok",
+        "danger",
+        "ok",
+      ]) as string,
     }));
 
   switch (appId) {
     case "cybersecurity":
       return generate(6, "threat", [
-        "Threats Blocked", "Vulns Scanned", "IP Checks", "Compliance %", "Active Alerts", "Patch Coverage",
+        "Threats Blocked",
+        "Vulns Scanned",
+        "IP Checks",
+        "Compliance %",
+        "Active Alerts",
+        "Patch Coverage",
       ]);
     case "health":
       return generate(6, "vital", [
-        "Patients Triage", "Diag Accuracy", "Bed Occupancy", "Drug Check", "Telehealth", "ER Wait",
+        "Patients Triage",
+        "Diag Accuracy",
+        "Bed Occupancy",
+        "Drug Check",
+        "Telehealth",
+        "ER Wait",
       ]);
     case "finance":
       return generate(6, "metric", [
-        "Risk Score", "Market Sentiment", "Fraud Detected", "Payment Volume", "Approval Rate", "Portfolio VaR",
+        "Risk Score",
+        "Market Sentiment",
+        "Fraud Detected",
+        "Payment Volume",
+        "Approval Rate",
+        "Portfolio VaR",
       ]);
     case "retail":
       return generate(6, "kpi", [
-        "Sales Velocity", "Stock Health", "Order Fulfill", "Return Rate", "Customer Sat", "Inventory Turn",
+        "Sales Velocity",
+        "Stock Health",
+        "Order Fulfill",
+        "Return Rate",
+        "Customer Sat",
+        "Inventory Turn",
       ]);
     case "transport":
       return generate(6, "zone", [
-        "Traffic Flow", "Fleet Util", "On-Time Rate", "Incident Clear", "Route Efficiency", "Fuel Savings",
+        "Traffic Flow",
+        "Fleet Util",
+        "On-Time Rate",
+        "Incident Clear",
+        "Route Efficiency",
+        "Fuel Savings",
       ]);
     case "manufacturing":
       return generate(6, "machine", [
-        "OEE Score", "Defect Rate", "Machine Health", "Throughput", "Energy Eff", "MTBF Hours",
+        "OEE Score",
+        "Defect Rate",
+        "Machine Health",
+        "Throughput",
+        "Energy Eff",
+        "MTBF Hours",
       ]);
     case "tourism":
       return generate(6, "property", [
-        "Occupancy", "RevPAR", "Booking Pace", "Guest Sat", "No-Show Rate", "Upsell Conv",
+        "Occupancy",
+        "RevPAR",
+        "Booking Pace",
+        "Guest Sat",
+        "No-Show Rate",
+        "Upsell Conv",
       ]);
     case "cultural_heritage":
       return generate(6, "venue", [
-        "Visitor Flow", "Engagement", "Ticket Sales", "Tour Bookings", "Exhibit Pop", "Member Retent",
+        "Visitor Flow",
+        "Engagement",
+        "Ticket Sales",
+        "Tour Bookings",
+        "Exhibit Pop",
+        "Member Retent",
       ]);
     case "professional":
       return generate(6, "service", [
-        "Doc Throughput", "Contract Cycle", "Invoice Accuracy", "Compliance", "Client Sat", "Billable Hours",
+        "Doc Throughput",
+        "Contract Cycle",
+        "Invoice Accuracy",
+        "Compliance",
+        "Client Sat",
+        "Billable Hours",
       ]);
     case "utilities":
       return generate(6, "grid", [
-        "Grid Load", "Water Supply", "Waste Proc", "Renewable %", "Service Uptime", "Citizen Sat",
+        "Grid Load",
+        "Water Supply",
+        "Waste Proc",
+        "Renewable %",
+        "Service Uptime",
+        "Citizen Sat",
       ]);
     case "sme":
       return generate(6, "process", [
-        "Workflow Auto", "Doc Proc", "Ticket Res", "Supply Chain", "Cost Savings", "Employee Prod",
+        "Workflow Auto",
+        "Doc Proc",
+        "Ticket Res",
+        "Supply Chain",
+        "Cost Savings",
+        "Employee Prod",
       ]);
     default:
       return generate(4, "general", ["Performance", "Reliability", "Throughput", "Efficiency"]);

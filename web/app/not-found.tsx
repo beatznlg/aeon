@@ -4,9 +4,11 @@ export default function NotFound() {
   return (
     <div className="aeon-page flex items-center justify-center min-h-screen">
       {/* Background effects */}
-      <div className="fixed inset-0 -z-10 pointer-events-none"
+      <div
+        className="fixed inset-0 -z-10 pointer-events-none"
         style={{
-          background: "radial-gradient(ellipse at 20% 50%, rgba(99, 102, 241, 0.03) 0%, transparent 60%), radial-gradient(ellipse at 80% 20%, rgba(168, 85, 247, 0.02) 0%, transparent 50%)"
+          background:
+            "radial-gradient(ellipse at 20% 50%, rgba(99, 102, 241, 0.03) 0%, transparent 60%), radial-gradient(ellipse at 80% 20%, rgba(168, 85, 247, 0.02) 0%, transparent 50%)",
         }}
       />
 
@@ -44,12 +46,10 @@ export default function NotFound() {
 
         {/* Glass card with message */}
         <div className="glass-card-static p-8 mb-8">
-          <h1 className="text-xl font-bold text-aeon-fg mb-3">
-            This dimension doesn&apos;t exist
-          </h1>
+          <h1 className="text-xl font-bold text-aeon-fg mb-3">This dimension doesn&apos;t exist</h1>
           <p className="text-sm text-aeon-fg-soft leading-relaxed mb-6">
-            The page you&apos;re looking for has either been moved, never existed,
-            or is orbiting in a parallel AEON kernel. Let&apos;s get you back on course.
+            The page you&apos;re looking for has either been moved, never existed, or is orbiting in
+            a parallel AEON kernel. Let&apos;s get you back on course.
           </p>
 
           <div className="flex flex-wrap gap-3 justify-center">

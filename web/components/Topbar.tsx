@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 export default function Topbar({
-  backend,        // "auto" | "aeon-kernel" | "hf-inference"
+  backend, // "auto" | "aeon-kernel" | "hf-inference"
   onBackend,
   onToggleSidebar,
   version = "v2.1",
@@ -16,9 +16,9 @@ export default function Topbar({
   const [theme, setTheme] = useState<"dark" | "light">("dark");
 
   useEffect(() => {
-    const saved = (typeof window !== "undefined"
-      ? window.localStorage.getItem("aeon-theme")
-      : null) as "dark" | "light" | null;
+    const saved = (
+      typeof window !== "undefined" ? window.localStorage.getItem("aeon-theme") : null
+    ) as "dark" | "light" | null;
     const t = saved || "dark";
     setTheme(t);
     document.documentElement.classList.toggle("light", t === "light");

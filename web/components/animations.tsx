@@ -182,7 +182,11 @@ interface HoverGlowProps {
   color?: string;
 }
 
-export function HoverGlow({ children, className, color = "rgba(99, 102, 241, 0.08)" }: HoverGlowProps) {
+export function HoverGlow({
+  children,
+  className,
+  color = "rgba(99, 102, 241, 0.08)",
+}: HoverGlowProps) {
   return (
     <motion.div
       className={className}

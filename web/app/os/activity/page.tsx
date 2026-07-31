@@ -136,7 +136,14 @@ export default function ActivityStreamPage() {
     <div className="os-page" style={{ padding: 24 }}>
       <header className="os-header" style={{ marginBottom: 20 }}>
         <div>
-          <h1 style={{ background: "var(--grad)", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>
+          <h1
+            style={{
+              background: "var(--grad)",
+              WebkitBackgroundClip: "text",
+              backgroundClip: "text",
+              color: "transparent",
+            }}
+          >
             ⚡ Live Activity Stream
           </h1>
           <p className="dashboard-subtitle">
@@ -218,10 +225,10 @@ export default function ActivityStreamPage() {
                     transition: "background 0.15s ease",
                   }}
                   onMouseEnter={(e) => {
-                    (e.currentTarget.style.background = "var(--bg-1)");
+                    e.currentTarget.style.background = "var(--bg-1)";
                   }}
                   onMouseLeave={(e) => {
-                    (e.currentTarget.style.background = "transparent");
+                    e.currentTarget.style.background = "transparent";
                   }}
                 >
                   <div
@@ -240,7 +247,9 @@ export default function ActivityStreamPage() {
                     {meta.icon}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <div
+                      style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}
+                    >
                       <span
                         style={{
                           fontSize: "0.72rem",
@@ -263,7 +272,14 @@ export default function ActivityStreamPage() {
                       {eventTitle(ev)}
                     </div>
                     {eventBody(ev) && (
-                      <div style={{ color: "var(--fg-soft)", fontSize: "0.85rem", marginTop: 2, lineHeight: 1.5 }}>
+                      <div
+                        style={{
+                          color: "var(--fg-soft)",
+                          fontSize: "0.85rem",
+                          marginTop: 2,
+                          lineHeight: 1.5,
+                        }}
+                      >
                         {eventBody(ev)}
                       </div>
                     )}

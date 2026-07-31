@@ -47,10 +47,7 @@ export default function DeployGuidePanel({
 
   return (
     <>
-      <div
-        className={"drawer-backdrop" + (open ? " open" : "")}
-        onClick={onClose}
-      ></div>
+      <div className={"drawer-backdrop" + (open ? " open" : "")} onClick={onClose}></div>
       <aside className={"drawer" + (open ? " open" : "")} aria-hidden={!open}>
         <button className="close" onClick={onClose} title="Close">
           ×
@@ -72,10 +69,10 @@ export default function DeployGuidePanel({
                       {s.state === "ok"
                         ? "✅"
                         : s.state === "warn"
-                        ? "🟡"
-                        : s.state === "external"
-                        ? "↗"
-                        : "❌"}
+                          ? "🟡"
+                          : s.state === "external"
+                            ? "↗"
+                            : "❌"}
                     </span>
                     <div className="deploy-step-body">
                       <div className="deploy-step-title">{s.title}</div>

@@ -22,13 +22,19 @@ export async function GET() {
   try {
     // Gather system stats
     const { count: userCount } = await sb.from("users").select("*", { count: "exact", head: true });
-    const { count: workspaceCount } = await sb.from("workspaces").select("*", { count: "exact", head: true });
-    const { count: membershipCount } = await sb.from("memberships").select("*", { count: "exact", head: true });
+    const { count: workspaceCount } = await sb
+      .from("workspaces")
+      .select("*", { count: "exact", head: true });
+    const { count: membershipCount } = await sb
+      .from("memberships")
+      .select("*", { count: "exact", head: true });
 
     // Role distribution
     const { data: roleDist } = await sb.from("users").select("role");
 
-    let admins = 0, operators = 0, viewers = 0;
+    let admins = 0,
+      operators = 0,
+      viewers = 0;
     for (const u of roleDist || []) {
       if (u.role === "ADMIN") admins++;
       else if (u.role === "OPERATOR") operators++;
@@ -37,7 +43,9 @@ export async function GET() {
 
     // Plan distribution
     const { data: planDist } = await sb.from("workspaces").select("plan");
-    let free = 0, team = 0, enterprise = 0;
+    let free = 0,
+      team = 0,
+      enterprise = 0;
     for (const w of planDist || []) {
       if (w.plan === "free") free++;
       else if (w.plan === "team") team++;
@@ -52,7 +60,9 @@ export async function GET() {
         const res = await fetch(`${url}/governance/audit?limit=1`, { cache: "no-store" });
         const data = await res.json();
         recentAudits = data.count || 0;
-      } catch { /* stats are best-effort */ }
+      } catch {
+        /* stats are best-effort */
+      }
     }
 
     return NextResponse.json({

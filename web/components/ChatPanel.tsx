@@ -6,8 +6,11 @@ import type { ReactNode } from "react";
 import { getStoredProvider, type StoredProvider } from "@/lib/provider";
 
 type Episode = {
-  id: number; ts: number;
-  kind: "user" | "bot" | "obs"; text: string; ref: string | null;
+  id: number;
+  ts: number;
+  kind: "user" | "bot" | "obs";
+  text: string;
+  ref: string | null;
 };
 
 /* --------- lightweight markdown (bold, italic, inline code, fenced code,
@@ -24,7 +27,12 @@ function renderInline(s: string): ReactNode[] {
     else if (m[3]) out.push(<em>{m[3].slice(1, -1)}</em>);
     else if (m[4]) {
       const lm = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(m[4]);
-      if (lm) out.push(<a href={lm[2]} target="_blank" rel="noopener noreferrer">{lm[1]}</a>);
+      if (lm)
+        out.push(
+          <a href={lm[2]} target="_blank" rel="noopener noreferrer">
+            {lm[1]}
+          </a>
+        );
     }
     last = m.index + m[0].length;
   }
@@ -45,13 +53,14 @@ function Markdown({ text }: { text: string }) {
       const buf: string[] = [];
       i++;
       while (i < lines.length && !lines[i].startsWith("```")) {
-        buf.push(lines[i]); i++;
+        buf.push(lines[i]);
+        i++;
       }
       i++; // skip closing fence
       blocks.push(
         <pre className="md-code" key={blocks.length + ":" + lang}>
           <code>{buf.join("\n")}</code>
-        </pre>,
+        </pre>
       );
       continue;
     }
@@ -61,26 +70,37 @@ function Markdown({ text }: { text: string }) {
     if (hm) {
       const lvl = hm[1].length;
       const Tag = ("h" + lvl) as "h1" | "h2" | "h3";
-      blocks.push(<Tag key={blocks.length} className={"md-h md-h" + lvl}>{hm[2]}</Tag>);
-      i++; continue;
+      blocks.push(
+        <Tag key={blocks.length} className={"md-h md-h" + lvl}>
+          {hm[2]}
+        </Tag>
+      );
+      i++;
+      continue;
     }
 
     // unordered list
     if (/^[-*]\s+/.test(line)) {
       const items: string[] = [];
       while (i < lines.length && /^[-*]\s+/.test(lines[i])) {
-        items.push(lines[i].replace(/^[-*]\s+/, "")); i++;
+        items.push(lines[i].replace(/^[-*]\s+/, ""));
+        i++;
       }
       blocks.push(
         <ul key={blocks.length} className="md-ul">
-          {items.map((it, k) => <li key={k}>{renderInline(it)}</li>)}
-        </ul>,
+          {items.map((it, k) => (
+            <li key={k}>{renderInline(it)}</li>
+          ))}
+        </ul>
       );
       continue;
     }
 
     // blank line → skip
-    if (!line.trim()) { i++; continue; }
+    if (!line.trim()) {
+      i++;
+      continue;
+    }
 
     // paragraph (collect continguous non-special lines)
     const para: string[] = [line];
@@ -92,12 +112,13 @@ function Markdown({ text }: { text: string }) {
       !/^#{1,3}\s/.test(lines[i]) &&
       !/^[-*]\s/.test(lines[i])
     ) {
-      para.push(lines[i]); i++;
+      para.push(lines[i]);
+      i++;
     }
     blocks.push(
       <p key={blocks.length} className="md-p">
         {renderInline(para.join(" "))}
-      </p>,
+      </p>
     );
   }
   return <div className="md">{blocks}</div>;
@@ -124,13 +145,12 @@ export default function ChatPanel({
     return () => window.removeEventListener("storage", onStorage);
   }, []);
 
-  const { messages, input, handleInputChange, handleSubmit, status, setMessages } =
-    useChat({
-      api: "/api/chat",
-      body: { backend },
-      headers: { "x-aeon-provider": provider },
-      onFinish: (msg) => onMemoryWrite("bot", msg.content),
-    });
+  const { messages, input, handleInputChange, handleSubmit, status, setMessages } = useChat({
+    api: "/api/chat",
+    body: { backend },
+    headers: { "x-aeon-provider": provider },
+    onFinish: (msg) => onMemoryWrite("bot", msg.content),
+  });
 
   const resetChat = () => setMessages([]);
 
@@ -165,9 +185,7 @@ export default function ChatPanel({
               key={m.id}
               className={"msg " + (m.role === "user" ? "user" : "bot") + " msg-slide"}
             >
-              <div className={"role " + (m.role === "user" ? "" : "bot")}>
-                {m.role}
-              </div>
+              <div className={"role " + (m.role === "user" ? "" : "bot")}>{m.role}</div>
               {m.role === "user" ? (
                 <div style={{ whiteSpace: "pre-wrap" }}>{m.content}</div>
               ) : (
@@ -179,7 +197,11 @@ export default function ChatPanel({
         {status === "submitted" || status === "streaming" ? (
           <div className="msg bot msg-slide">
             <div className="role bot">assistant</div>
-            <div className="typing-dots"><span></span><span></span><span></span></div>
+            <div className="typing-dots">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
           </div>
         ) : null}
         {!isEmpty ? (

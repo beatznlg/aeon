@@ -12,13 +12,7 @@
 
 "use client";
 
-import {
-  createContext,
-  useContext,
-  useState,
-  useCallback,
-  type ReactNode,
-} from "react";
+import { createContext, useContext, useState, useCallback, type ReactNode } from "react";
 
 /* ─── Types ─── */
 
@@ -122,21 +116,13 @@ function ToastContainer() {
   return (
     <div className="toast-container" aria-live="polite" aria-label="Notifications">
       {toasts.map((t) => (
-        <div
-          key={t.id}
-          className={`toast-item toast-${t.type}`}
-          role="alert"
-        >
+        <div key={t.id} className={`toast-item toast-${t.type}`} role="alert">
           <div className="toast-icon">{ICONS[t.type]}</div>
           <div className="toast-body">
             <div className="toast-title">{t.title}</div>
             {t.message && <div className="toast-message">{t.message}</div>}
           </div>
-          <button
-            className="toast-close"
-            onClick={() => dismiss(t.id)}
-            aria-label="Dismiss"
-          >
+          <button className="toast-close" onClick={() => dismiss(t.id)} aria-label="Dismiss">
             ✕
           </button>
         </div>

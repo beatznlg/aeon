@@ -52,9 +52,7 @@ export default function CommandPalette() {
     if (!query.trim()) return [];
     const q = query.trim().toLowerCase();
     return ALL_NAV_LINKS.filter(
-      (item) =>
-        item.label.toLowerCase().includes(q) ||
-        item.section.toLowerCase().includes(q)
+      (item) => item.label.toLowerCase().includes(q) || item.section.toLowerCase().includes(q)
     ).map((item) => ({
       id: `nav-${item.href}`,
       type: "nav",
@@ -76,10 +74,9 @@ export default function CommandPalette() {
     const fetchResults = async () => {
       setLoading(true);
       try {
-        const res = await fetch(
-          `/api/search?q=${encodeURIComponent(debouncedQuery)}&limit=20`,
-          { cache: "no-store" }
-        );
+        const res = await fetch(`/api/search?q=${encodeURIComponent(debouncedQuery)}&limit=20`, {
+          cache: "no-store",
+        });
         const data = await res.json();
         if (data.ok) {
           setResults(data.results || []);
@@ -235,9 +232,7 @@ export default function CommandPalette() {
                   <div
                     key={`${item.type}-${item.id}`}
                     data-index={index}
-                    className={`cmd-palette-item ${
-                      index === selectedIndex ? "selected" : ""
-                    }`}
+                    className={`cmd-palette-item ${index === selectedIndex ? "selected" : ""}`}
                     onClick={() => navigateTo(item.href)}
                     onMouseEnter={() => setSelectedIndex(index)}
                   >

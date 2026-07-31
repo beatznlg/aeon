@@ -66,11 +66,27 @@ function useFetch<T>(url: string | null) {
   return { data, loading, error };
 }
 
-function Card({ title, children, className = "" }: { title?: string; children: React.ReactNode; className?: string }) {
+function Card({
+  title,
+  children,
+  className = "",
+}: {
+  title?: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
   return (
     <div className={`os-card ${className}`} style={{ padding: 20 }}>
       {title && (
-        <h3 style={{ margin: "0 0 16px", fontSize: "0.95rem", textTransform: "uppercase", letterSpacing: 1, color: "var(--fg-mute)" }}>
+        <h3
+          style={{
+            margin: "0 0 16px",
+            fontSize: "0.95rem",
+            textTransform: "uppercase",
+            letterSpacing: 1,
+            color: "var(--fg-mute)",
+          }}
+        >
           {title}
         </h3>
       )}
@@ -84,7 +100,18 @@ function MiniBar({ data }: { data: { label: string; value: number; color?: strin
   return (
     <div style={{ display: "flex", alignItems: "flex-end", gap: 8, height: 160, paddingTop: 10 }}>
       {data.map((d, i) => (
-        <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4, height: "100%", justifyContent: "flex-end" }}>
+        <div
+          key={i}
+          style={{
+            flex: 1,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 4,
+            height: "100%",
+            justifyContent: "flex-end",
+          }}
+        >
           <div
             style={{
               width: "100%",
@@ -95,7 +122,9 @@ function MiniBar({ data }: { data: { label: string; value: number; color?: strin
               opacity: 0.85,
             }}
           />
-          <span style={{ fontSize: "0.7rem", color: "var(--fg-mute)", textAlign: "center" }}>{d.label}</span>
+          <span style={{ fontSize: "0.7rem", color: "var(--fg-mute)", textAlign: "center" }}>
+            {d.label}
+          </span>
         </div>
       ))}
     </div>
@@ -110,8 +139,16 @@ export default function AutomationMetricsPage() {
   const workspaceUrl = `/api/automations/metrics?days=${days}`;
   const ruleUrl = ruleId ? `/api/automations/${ruleId}/metrics?days=${days}` : null;
 
-  const { data: workspaceMetrics, loading: workspaceLoading, error: workspaceError } = useFetch<MetricsResponse>(workspaceUrl);
-  const { data: ruleMetrics, loading: ruleLoading, error: ruleError } = useFetch<MetricsResponse>(ruleUrl);
+  const {
+    data: workspaceMetrics,
+    loading: workspaceLoading,
+    error: workspaceError,
+  } = useFetch<MetricsResponse>(workspaceUrl);
+  const {
+    data: ruleMetrics,
+    loading: ruleLoading,
+    error: ruleError,
+  } = useFetch<MetricsResponse>(ruleUrl);
 
   const metrics = ruleId ? ruleMetrics : workspaceMetrics;
   const loading = workspaceLoading || (ruleId ? ruleLoading : false);
@@ -136,17 +173,30 @@ export default function AutomationMetricsPage() {
 
   const dailyData = useMemo(() => {
     if (!metrics?.daily_counts) return [];
-    return metrics.daily_counts.map((d) => ({ label: d.date.slice(5), value: d.runs, color: "#6366f1" }));
+    return metrics.daily_counts.map((d) => ({
+      label: d.date.slice(5),
+      value: d.runs,
+      color: "#6366f1",
+    }));
   }, [metrics]);
 
   return (
     <div className="os-page">
       <header className="os-header">
         <div>
-          <h1 style={{ background: "var(--grad)", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>
+          <h1
+            style={{
+              background: "var(--grad)",
+              WebkitBackgroundClip: "text",
+              backgroundClip: "text",
+              color: "transparent",
+            }}
+          >
             🤖 Automation Metrics
           </h1>
-          <p className="dashboard-subtitle">Execution health, success rates, and daily trends for automation rules</p>
+          <p className="dashboard-subtitle">
+            Execution health, success rates, and daily trends for automation rules
+          </p>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <Link href="/os" className="btn btn-sm">
@@ -156,10 +206,31 @@ export default function AutomationMetricsPage() {
       </header>
 
       {/* Controls */}
-      <section style={{ display: "flex", gap: 16, alignItems: "flex-end", flexWrap: "wrap", marginBottom: 24 }}>
+      <section
+        style={{
+          display: "flex",
+          gap: 16,
+          alignItems: "flex-end",
+          flexWrap: "wrap",
+          marginBottom: 24,
+        }}
+      >
         <div>
-          <label style={{ display: "block", fontSize: "0.75rem", color: "var(--fg-mute)", marginBottom: 4 }}>Lookback Period</label>
-          <select className="os-input" value={days} onChange={(e) => setDays(Number(e.target.value))}>
+          <label
+            style={{
+              display: "block",
+              fontSize: "0.75rem",
+              color: "var(--fg-mute)",
+              marginBottom: 4,
+            }}
+          >
+            Lookback Period
+          </label>
+          <select
+            className="os-input"
+            value={days}
+            onChange={(e) => setDays(Number(e.target.value))}
+          >
             <option value={1}>Last 24 hours</option>
             <option value={7}>Last 7 days</option>
             <option value={30}>Last 30 days</option>
@@ -167,7 +238,16 @@ export default function AutomationMetricsPage() {
           </select>
         </div>
         <div>
-          <label style={{ display: "block", fontSize: "0.75rem", color: "var(--fg-mute)", marginBottom: 4 }}>Rule Filter (optional)</label>
+          <label
+            style={{
+              display: "block",
+              fontSize: "0.75rem",
+              color: "var(--fg-mute)",
+              marginBottom: 4,
+            }}
+          >
+            Rule Filter (optional)
+          </label>
           <input
             className="os-input"
             type="text"
@@ -187,7 +267,9 @@ export default function AutomationMetricsPage() {
       {error && <div className="module-alert danger">{error}</div>}
 
       {loading && !metrics && (
-        <div style={{ color: "var(--fg-mute)", padding: 40, textAlign: "center" }}>Loading automation metrics…</div>
+        <div style={{ color: "var(--fg-mute)", padding: 40, textAlign: "center" }}>
+          Loading automation metrics…
+        </div>
       )}
 
       {metrics && !metrics.ok && (
@@ -197,65 +279,173 @@ export default function AutomationMetricsPage() {
       {metrics?.ok && (
         <>
           {/* KPI Cards */}
-          <section className="os-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
+          <section
+            className="os-grid"
+            style={{ gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}
+          >
             {kpi?.map((item) => (
               <Card key={item.label} title={item.label}>
-                <div style={{ fontSize: "2rem", fontWeight: 700, color: item.color }}>{item.value.toLocaleString()}</div>
+                <div style={{ fontSize: "2rem", fontWeight: 700, color: item.color }}>
+                  {item.value.toLocaleString()}
+                </div>
               </Card>
             ))}
             <Card title="Success Rate">
-              <div style={{ fontSize: "2rem", fontWeight: 700, color: "#22c55e" }}>{(metrics.success_rate ?? 0).toFixed(1)}%</div>
+              <div style={{ fontSize: "2rem", fontWeight: 700, color: "#22c55e" }}>
+                {(metrics.success_rate ?? 0).toFixed(1)}%
+              </div>
             </Card>
             <Card title="Failure Rate">
-              <div style={{ fontSize: "2rem", fontWeight: 700, color: "#ef4444" }}>{(metrics.failure_rate ?? 0).toFixed(1)}%</div>
+              <div style={{ fontSize: "2rem", fontWeight: 700, color: "#ef4444" }}>
+                {(metrics.failure_rate ?? 0).toFixed(1)}%
+              </div>
             </Card>
             <Card title="Avg Runtime">
-              <div style={{ fontSize: "2rem", fontWeight: 700, color: "#6366f1" }}>{(metrics.average_runtime_ms ?? 0).toFixed(0)} ms</div>
+              <div style={{ fontSize: "2rem", fontWeight: 700, color: "#6366f1" }}>
+                {(metrics.average_runtime_ms ?? 0).toFixed(0)} ms
+              </div>
             </Card>
           </section>
 
           {/* Charts & Top Rules */}
-          <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 24, marginTop: 24 }}>
+          <section
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+              gap: 24,
+              marginTop: 24,
+            }}
+          >
             <Card title="Daily Runs" className="chart-card">
-              {dailyData.length > 0 ? <MiniBar data={dailyData} /> : <div style={{ color: "var(--fg-mute)", padding: 20, textAlign: "center" }}>No daily data yet</div>}
+              {dailyData.length > 0 ? (
+                <MiniBar data={dailyData} />
+              ) : (
+                <div style={{ color: "var(--fg-mute)", padding: 20, textAlign: "center" }}>
+                  No daily data yet
+                </div>
+              )}
             </Card>
 
             <Card title="Status Breakdown" className="chart-card">
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                 <div>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem", marginBottom: 4 }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      fontSize: "0.85rem",
+                      marginBottom: 4,
+                    }}
+                  >
                     <span>Completed</span>
                     <span>{metrics.completed_count}</span>
                   </div>
-                  <div style={{ height: 8, background: "var(--bg-elevated)", borderRadius: 4, overflow: "hidden" }}>
-                    <div style={{ width: `${metrics.total_runs ? (metrics.completed_count / metrics.total_runs) * 100 : 0}%`, height: "100%", background: "#22c55e", borderRadius: 4 }} />
+                  <div
+                    style={{
+                      height: 8,
+                      background: "var(--bg-elevated)",
+                      borderRadius: 4,
+                      overflow: "hidden",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: `${metrics.total_runs ? (metrics.completed_count / metrics.total_runs) * 100 : 0}%`,
+                        height: "100%",
+                        background: "#22c55e",
+                        borderRadius: 4,
+                      }}
+                    />
                   </div>
                 </div>
                 <div>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem", marginBottom: 4 }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      fontSize: "0.85rem",
+                      marginBottom: 4,
+                    }}
+                  >
                     <span>Failed</span>
                     <span>{metrics.failed_count}</span>
                   </div>
-                  <div style={{ height: 8, background: "var(--bg-elevated)", borderRadius: 4, overflow: "hidden" }}>
-                    <div style={{ width: `${metrics.total_runs ? (metrics.failed_count / metrics.total_runs) * 100 : 0}%`, height: "100%", background: "#ef4444", borderRadius: 4 }} />
+                  <div
+                    style={{
+                      height: 8,
+                      background: "var(--bg-elevated)",
+                      borderRadius: 4,
+                      overflow: "hidden",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: `${metrics.total_runs ? (metrics.failed_count / metrics.total_runs) * 100 : 0}%`,
+                        height: "100%",
+                        background: "#ef4444",
+                        borderRadius: 4,
+                      }}
+                    />
                   </div>
                 </div>
                 <div>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem", marginBottom: 4 }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      fontSize: "0.85rem",
+                      marginBottom: 4,
+                    }}
+                  >
                     <span>Throttled</span>
                     <span>{metrics.throttled_count}</span>
                   </div>
-                  <div style={{ height: 8, background: "var(--bg-elevated)", borderRadius: 4, overflow: "hidden" }}>
-                    <div style={{ width: `${metrics.total_runs ? (metrics.throttled_count / metrics.total_runs) * 100 : 0}%`, height: "100%", background: "#f59e0b", borderRadius: 4 }} />
+                  <div
+                    style={{
+                      height: 8,
+                      background: "var(--bg-elevated)",
+                      borderRadius: 4,
+                      overflow: "hidden",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: `${metrics.total_runs ? (metrics.throttled_count / metrics.total_runs) * 100 : 0}%`,
+                        height: "100%",
+                        background: "#f59e0b",
+                        borderRadius: 4,
+                      }}
+                    />
                   </div>
                 </div>
                 <div>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem", marginBottom: 4 }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      fontSize: "0.85rem",
+                      marginBottom: 4,
+                    }}
+                  >
                     <span>Pending Approval</span>
                     <span>{metrics.pending_count}</span>
                   </div>
-                  <div style={{ height: 8, background: "var(--bg-elevated)", borderRadius: 4, overflow: "hidden" }}>
-                    <div style={{ width: `${metrics.total_runs ? (metrics.pending_count / metrics.total_runs) * 100 : 0}%`, height: "100%", background: "#94a3b8", borderRadius: 4 }} />
+                  <div
+                    style={{
+                      height: 8,
+                      background: "var(--bg-elevated)",
+                      borderRadius: 4,
+                      overflow: "hidden",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: `${metrics.total_runs ? (metrics.pending_count / metrics.total_runs) * 100 : 0}%`,
+                        height: "100%",
+                        background: "#94a3b8",
+                        borderRadius: 4,
+                      }}
+                    />
                   </div>
                 </div>
               </div>
@@ -278,13 +468,19 @@ export default function AutomationMetricsPage() {
                       }}
                       onClick={() => setRuleId(rule.rule_id)}
                     >
-                      <span style={{ fontSize: "0.85rem", fontFamily: "monospace" }}>{rule.rule_id}</span>
-                      <span style={{ fontSize: "0.85rem", color: "var(--fg-mute)" }}>{rule.runs} runs</span>
+                      <span style={{ fontSize: "0.85rem", fontFamily: "monospace" }}>
+                        {rule.rule_id}
+                      </span>
+                      <span style={{ fontSize: "0.85rem", color: "var(--fg-mute)" }}>
+                        {rule.runs} runs
+                      </span>
                     </div>
                   ))}
                 </div>
               ) : (
-                <div style={{ color: "var(--fg-mute)", padding: 20, textAlign: "center" }}>No rule data yet</div>
+                <div style={{ color: "var(--fg-mute)", padding: 20, textAlign: "center" }}>
+                  No rule data yet
+                </div>
               )}
             </Card>
           </section>

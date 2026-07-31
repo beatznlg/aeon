@@ -5,7 +5,8 @@ import React, { useState, useEffect, useCallback, useRef, forwardRef } from "rea
 // ── Types ────────────────────────────────────────────────────────────────
 
 type SwarmRole = "planner" | "executor" | "reviewer" | "summarizer";
-type SwarmPhase = "pending" | "planning" | "executing" | "reflecting" | "summarizing" | "done" | "failed";
+type SwarmPhase =
+  "pending" | "planning" | "executing" | "reflecting" | "summarizing" | "done" | "failed";
 
 interface SwarmTaskResult {
   id: string;
@@ -60,19 +61,45 @@ interface SwarmTimelineEvent {
   label: string;
   description: string;
   icon: string;
-  category: "lifecycle" | "phase" | "task" | "message" | "reflection" | "summary" | "evolution" | "error";
+  category:
+    "lifecycle" | "phase" | "task" | "message" | "reflection" | "summary" | "evolution" | "error";
   status: "pending" | "active" | "done" | "error";
   meta?: Record<string, string>;
 }
 
 // ── Constants ────────────────────────────────────────────────────────────
 
-const ROLE_OPTIONS: { id: SwarmRole; label: string; icon: string; color: string; desc: string }[] = [
-  { id: "planner", label: "Planner", icon: "📋", color: "#6366f1", desc: "Breaks tasks into actionable plans" },
-  { id: "executor", label: "Executor", icon: "⚡", color: "#22c55e", desc: "Carries out assigned tasks" },
-  { id: "reviewer", label: "Reviewer", icon: "🔍", color: "#f59e0b", desc: "Reflects on outputs for quality" },
-  { id: "summarizer", label: "Summarizer", icon: "📝", color: "#06b6d4", desc: "Synthesizes into final answer" },
-];
+const ROLE_OPTIONS: { id: SwarmRole; label: string; icon: string; color: string; desc: string }[] =
+  [
+    {
+      id: "planner",
+      label: "Planner",
+      icon: "📋",
+      color: "#6366f1",
+      desc: "Breaks tasks into actionable plans",
+    },
+    {
+      id: "executor",
+      label: "Executor",
+      icon: "⚡",
+      color: "#22c55e",
+      desc: "Carries out assigned tasks",
+    },
+    {
+      id: "reviewer",
+      label: "Reviewer",
+      icon: "🔍",
+      color: "#f59e0b",
+      desc: "Reflects on outputs for quality",
+    },
+    {
+      id: "summarizer",
+      label: "Summarizer",
+      icon: "📝",
+      color: "#06b6d4",
+      desc: "Synthesizes into final answer",
+    },
+  ];
 
 const ROLE_ICONS: Record<string, string> = {
   planner: "📋",
@@ -142,12 +169,14 @@ function formatDuration(ms: number): string {
 
 function formatAbsoluteTime(ts: number): string {
   const d = new Date(ts * 1000);
-  return d.toLocaleTimeString("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  }) + `.${String(d.getMilliseconds()).padStart(3, "0")}`;
+  return (
+    d.toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    }) + `.${String(d.getMilliseconds()).padStart(3, "0")}`
+  );
 }
 
 function isRunning(phase: SwarmPhase): boolean {
@@ -194,17 +223,26 @@ function PhaseProgressBar({ currentPhase }: { currentPhase: SwarmPhase }) {
           <div key={phase} className="swarm-phase-step">
             <div
               className={`swarm-phase-dot ${completed ? "done" : active ? "active" : "pending"}`}
-              style={{ borderColor: cfg.color, background: completed || active ? cfg.color : undefined }}
+              style={{
+                borderColor: cfg.color,
+                background: completed || active ? cfg.color : undefined,
+              }}
             >
               {active ? <SwarmSpinner color="#fff" size={14} /> : completed ? "✓" : idx + 1}
             </div>
-            <div className="swarm-phase-label" style={{ color: active || completed ? cfg.color : undefined }}>
+            <div
+              className="swarm-phase-label"
+              style={{ color: active || completed ? cfg.color : undefined }}
+            >
               {cfg.label}
             </div>
           </div>
         );
       })}
-      <div className="swarm-phase-connector" style={{ background: currentIdx >= 0 ? "var(--accent)" : undefined }} />
+      <div
+        className="swarm-phase-connector"
+        style={{ background: currentIdx >= 0 ? "var(--accent)" : undefined }}
+      />
     </div>
   );
 }
@@ -250,7 +288,7 @@ function SwarmTimeline({ events, running }: { events: SwarmTimelineEvent[]; runn
             let currentGroup: SwarmTimelineEvent[] = [];
             let lastTs = 0;
             for (const evt of events) {
-              if (lastTs && (evt.timestamp - lastTs) > 1.5) {
+              if (lastTs && evt.timestamp - lastTs > 1.5) {
                 if (currentGroup.length > 0) {
                   grouped.push(currentGroup);
                   currentGroup = [];
@@ -265,10 +303,14 @@ function SwarmTimeline({ events, running }: { events: SwarmTimelineEvent[]; runn
             <div key={gi} className="swarm-timeline-group">
               {group.map((evt, ei) => {
                 const catColor = CATEGORY_COLORS[evt.category] || "#6366f1";
-                const isLatest = running && ei === group.length - 1 && gi === (() => {
-                  const g = ([] as SwarmTimelineEvent[][]).concat(...[]);
-                  return 0;
-                })();
+                const isLatest =
+                  running &&
+                  ei === group.length - 1 &&
+                  gi ===
+                    (() => {
+                      const g = ([] as SwarmTimelineEvent[][]).concat(...[]);
+                      return 0;
+                    })();
                 return (
                   <div
                     key={evt.id}
@@ -276,7 +318,13 @@ function SwarmTimeline({ events, running }: { events: SwarmTimelineEvent[]; runn
                     style={{ "--event-color": catColor } as React.CSSProperties}
                   >
                     {/* Timeline dot */}
-                    <div className="swarm-timeline-dot" style={{ borderColor: catColor, background: evt.status === "done" ? catColor : undefined }}>
+                    <div
+                      className="swarm-timeline-dot"
+                      style={{
+                        borderColor: catColor,
+                        background: evt.status === "done" ? catColor : undefined,
+                      }}
+                    >
                       {evt.status === "active" ? (
                         <SwarmSpinner color="#fff" size={10} />
                       ) : evt.status === "done" ? (
@@ -289,17 +337,26 @@ function SwarmTimeline({ events, running }: { events: SwarmTimelineEvent[]; runn
                     </div>
 
                     {/* Event content */}
-                    <div className="swarm-timeline-content" style={evt.status === "active" ? { borderColor: catColor } : {}}>
+                    <div
+                      className="swarm-timeline-content"
+                      style={evt.status === "active" ? { borderColor: catColor } : {}}
+                    >
                       <div className="swarm-timeline-header">
                         <span className="swarm-timeline-icon">{evt.icon}</span>
                         <span className="swarm-timeline-label">{evt.label}</span>
-                        <span className="swarm-timeline-badge" style={{ background: `${catColor}18`, color: catColor }}>
+                        <span
+                          className="swarm-timeline-badge"
+                          style={{ background: `${catColor}18`, color: catColor }}
+                        >
                           {evt.category}
                         </span>
                       </div>
                       <div className="swarm-timeline-desc">{evt.description}</div>
                       <div className="swarm-timeline-footer">
-                        <span className="swarm-timeline-time" title={new Date(evt.timestamp * 1000).toISOString()}>
+                        <span
+                          className="swarm-timeline-time"
+                          title={new Date(evt.timestamp * 1000).toISOString()}
+                        >
                           ⏱ {formatAbsoluteTime(evt.timestamp)}
                         </span>
                         {evt.duration !== undefined && (
@@ -307,13 +364,17 @@ function SwarmTimeline({ events, running }: { events: SwarmTimelineEvent[]; runn
                             ─ {formatDuration(evt.duration)}
                           </span>
                         )}
-                        {evt.meta && Object.entries(evt.meta).map(([k, v]) => (
-                          <span key={k} className="swarm-timeline-meta">
-                            {k}: {v}
-                          </span>
-                        ))}
+                        {evt.meta &&
+                          Object.entries(evt.meta).map(([k, v]) => (
+                            <span key={k} className="swarm-timeline-meta">
+                              {k}: {v}
+                            </span>
+                          ))}
                         {evt.status === "active" && (
-                          <span className="swarm-live-indicator" style={{ marginLeft: "auto", fontSize: "0.65rem" }}>
+                          <span
+                            className="swarm-live-indicator"
+                            style={{ marginLeft: "auto", fontSize: "0.65rem" }}
+                          >
                             <SwarmSpinner color="#22c55e" size={8} />
                             In Progress
                           </span>
@@ -343,10 +404,13 @@ function generateTimelineEvents(
   swarm: SwarmWithPhase,
   messages: SwarmMessageItem[],
   previousEvents: SwarmTimelineEvent[],
-  swarmCreationTime: number,
+  swarmCreationTime: number
 ): SwarmTimelineEvent[] {
   const events: SwarmTimelineEvent[] = [];
-  const lastTs = previousEvents.length > 0 ? previousEvents[previousEvents.length - 1].timestamp : swarmCreationTime;
+  const lastTs =
+    previousEvents.length > 0
+      ? previousEvents[previousEvents.length - 1].timestamp
+      : swarmCreationTime;
 
   // Helper to add an event if it doesn't exist yet
   const addEvent = (opts: {
@@ -358,10 +422,13 @@ function generateTimelineEvents(
     meta?: Record<string, string>;
     forceTs?: number;
   }) => {
-    const exists = previousEvents.some((e) => e.label === opts.label && e.category === opts.category);
+    const exists = previousEvents.some(
+      (e) => e.label === opts.label && e.category === opts.category
+    );
     if (exists) return;
     const ts = opts.forceTs || Math.max(lastTs + 0.1, Date.now() / 1000);
-    const duration = events.length > 0 ? Math.round((ts - events[events.length - 1].timestamp) * 1000) : undefined;
+    const duration =
+      events.length > 0 ? Math.round((ts - events[events.length - 1].timestamp) * 1000) : undefined;
     events.push({
       id: nextEventId(),
       timestamp: ts,
@@ -378,13 +445,21 @@ function generateTimelineEvents(
       icon: "🐝",
       category: "lifecycle",
       status: "done",
-      meta: { agents: String(swarm.agents.length), prompt: swarm.prompt.slice(0, 60) + (swarm.prompt.length > 60 ? "..." : "") },
+      meta: {
+        agents: String(swarm.agents.length),
+        prompt: swarm.prompt.slice(0, 60) + (swarm.prompt.length > 60 ? "..." : ""),
+      },
       forceTs: swarmCreationTime,
     });
   }
 
   // 2. Phase-based events
-  if (swarm.phase === "planning" || swarm.phase === "executing" || swarm.phase === "reflecting" || swarm.phase === "summarizing") {
+  if (
+    swarm.phase === "planning" ||
+    swarm.phase === "executing" ||
+    swarm.phase === "reflecting" ||
+    swarm.phase === "summarizing"
+  ) {
     addEvent({
       label: `Phase: ${PHASE_CONFIG[swarm.phase].label}`,
       description: `Swarm entered the ${swarm.phase} phase`,
@@ -469,7 +544,10 @@ function generateTimelineEvents(
       icon: "✅",
       category: "lifecycle",
       status: "done",
-      meta: { tasks: String(swarm.tasks.length), results: String(Object.keys(swarm.results).length) },
+      meta: {
+        tasks: String(swarm.tasks.length),
+        results: String(Object.keys(swarm.results).length),
+      },
     });
   }
 
@@ -496,16 +574,20 @@ async function exportGraphSVG(wrapper: HTMLDivElement): Promise<void> {
   const svg = wrapper.querySelector("svg");
   if (!svg) return;
   const clone = svg.cloneNode(true) as SVGElement;
-  clone.querySelectorAll(".swarm-graph-pulse-dot, .swarm-graph-node-active, .swarm-graph-edge-msg, .swarm-graph-edge-dep, .swarm-graph-edge-task, .swarm-graph-task-active").forEach((el) => {
-    el.classList.remove(
-      "swarm-graph-pulse-dot",
-      "swarm-graph-node-active",
-      "swarm-graph-edge-msg",
-      "swarm-graph-edge-dep",
-      "swarm-graph-edge-task",
-      "swarm-graph-task-active"
-    );
-  });
+  clone
+    .querySelectorAll(
+      ".swarm-graph-pulse-dot, .swarm-graph-node-active, .swarm-graph-edge-msg, .swarm-graph-edge-dep, .swarm-graph-edge-task, .swarm-graph-task-active"
+    )
+    .forEach((el) => {
+      el.classList.remove(
+        "swarm-graph-pulse-dot",
+        "swarm-graph-node-active",
+        "swarm-graph-edge-msg",
+        "swarm-graph-edge-dep",
+        "swarm-graph-edge-task",
+        "swarm-graph-task-active"
+      );
+    });
   // Remove filter references that depend on document-level defs
   clone.querySelectorAll("[filter]").forEach((el) => el.removeAttribute("filter"));
   const serializer = new XMLSerializer();
@@ -564,11 +646,14 @@ function downloadBlob(blob: Blob, filename: string): void {
 
 // ── Graph Visualization ───────────────────────────────────────────────────
 
-const SwarmGraph = forwardRef<HTMLDivElement, {
-  swarm: SwarmWithPhase;
-  messages: SwarmMessageItem[];
-  running: boolean;
-}>(({ swarm, messages, running }, ref) => {
+const SwarmGraph = forwardRef<
+  HTMLDivElement,
+  {
+    swarm: SwarmWithPhase;
+    messages: SwarmMessageItem[];
+    running: boolean;
+  }
+>(({ swarm, messages, running }, ref) => {
   const agents = swarm.agents;
   const roleMap = swarm.roles;
   const tasks = swarm.tasks;
@@ -620,12 +705,7 @@ const SwarmGraph = forwardRef<HTMLDivElement, {
 
   return (
     <div className="swarm-graph-wrapper" ref={ref}>
-      <svg
-        width={svgW}
-        height={svgH}
-        viewBox={`0 0 ${svgW} ${svgH}`}
-        className="swarm-graph-svg"
-      >
+      <svg width={svgW} height={svgH} viewBox={`0 0 ${svgW} ${svgH}`} className="swarm-graph-svg">
         <defs>
           {/* Arrow marker for edges */}
           <marker id="arrow-msg" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
@@ -634,7 +714,14 @@ const SwarmGraph = forwardRef<HTMLDivElement, {
           <marker id="arrow-dep" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
             <polygon points="0,0 8,3 0,6" fill="#6366f1" />
           </marker>
-          <marker id="arrow-task" markerWidth="6" markerHeight="5" refX="6" refY="2.5" orient="auto">
+          <marker
+            id="arrow-task"
+            markerWidth="6"
+            markerHeight="5"
+            refX="6"
+            refY="2.5"
+            orient="auto"
+          >
             <polygon points="0,0 6,2.5 0,5" fill="#475569" />
           </marker>
           {/* Glow filter for active nodes */}
@@ -649,35 +736,56 @@ const SwarmGraph = forwardRef<HTMLDivElement, {
 
         {/* ── Background grid ── */}
         <rect width={svgW} height={svgH} fill="#0f172a" rx="10" />
-        <line x1={PADDING} y1={GY_AGENT} x2={svgW - PADDING} y2={GY_AGENT} stroke="#1e293b" strokeWidth="1" strokeDasharray="4,4" />
-        <text x={PADDING} y={GY_AGENT - 4} fill="#475569" fontSize="9" fontFamily="monospace">Agents</text>
-        <text x={PADDING} y={GY_TASK - 4} fill="#475569" fontSize="9" fontFamily="monospace">Tasks</text>
+        <line
+          x1={PADDING}
+          y1={GY_AGENT}
+          x2={svgW - PADDING}
+          y2={GY_AGENT}
+          stroke="#1e293b"
+          strokeWidth="1"
+          strokeDasharray="4,4"
+        />
+        <text x={PADDING} y={GY_AGENT - 4} fill="#475569" fontSize="9" fontFamily="monospace">
+          Agents
+        </text>
+        <text x={PADDING} y={GY_TASK - 4} fill="#475569" fontSize="9" fontFamily="monospace">
+          Tasks
+        </text>
 
         {/* ── Role dependency arrows (planner → executor → reviewer → summarizer) ── */}
-        {roleSequence.length >= 2 && roleSequence.map((a, i) => {
-          if (i === roleSequence.length - 1) return null;
-          const from = agentPositions[agents.indexOf(a)];
-          const to = agentPositions[agents.indexOf(roleSequence[i + 1])];
-          if (!from || !to) return null;
-          const cx = (from.x + to.x) / 2;
-          return (
-            <g key={`dep-${i}`}>
-              <path
-                d={`M ${from.x} ${from.y + AGENT_H / 2} Q ${from.x} ${GY_AGENT + 10} ${cx} ${GY_AGENT + 10} L ${to.x} ${to.y + AGENT_H / 2}`}
-                fill="none"
-                stroke="#6366f1"
-                strokeWidth="1.5"
-                strokeDasharray="4,3"
-                markerEnd="url(#arrow-dep)"
-                className={running ? "swarm-graph-edge-dep" : ""}
-                opacity={0.6}
-              />
-              <text x={cx} y={GY_AGENT + 6} fill="#6366f1" fontSize="8" textAnchor="middle" fontFamily="monospace" opacity={0.7}>
-                {roleOrder[i]} →
-              </text>
-            </g>
-          );
-        })}
+        {roleSequence.length >= 2 &&
+          roleSequence.map((a, i) => {
+            if (i === roleSequence.length - 1) return null;
+            const from = agentPositions[agents.indexOf(a)];
+            const to = agentPositions[agents.indexOf(roleSequence[i + 1])];
+            if (!from || !to) return null;
+            const cx = (from.x + to.x) / 2;
+            return (
+              <g key={`dep-${i}`}>
+                <path
+                  d={`M ${from.x} ${from.y + AGENT_H / 2} Q ${from.x} ${GY_AGENT + 10} ${cx} ${GY_AGENT + 10} L ${to.x} ${to.y + AGENT_H / 2}`}
+                  fill="none"
+                  stroke="#6366f1"
+                  strokeWidth="1.5"
+                  strokeDasharray="4,3"
+                  markerEnd="url(#arrow-dep)"
+                  className={running ? "swarm-graph-edge-dep" : ""}
+                  opacity={0.6}
+                />
+                <text
+                  x={cx}
+                  y={GY_AGENT + 6}
+                  fill="#6366f1"
+                  fontSize="8"
+                  textAnchor="middle"
+                  fontFamily="monospace"
+                  opacity={0.7}
+                >
+                  {roleOrder[i]} →
+                </text>
+              </g>
+            );
+          })}
 
         {/* ── Message flow edges between agents ── */}
         {Array.from(msgPairs.entries()).map(([key, count], i) => {
@@ -702,8 +810,22 @@ const SwarmGraph = forwardRef<HTMLDivElement, {
                 className={active ? "swarm-graph-edge-msg" : ""}
                 opacity={active ? 0.9 : 0.45}
               />
-              <circle cx={midX} cy={arcY} r={3} fill={active ? "#22c55e" : "#06b6d4"} opacity={0.6} />
-              <text x={midX} y={arcY - 6} fill="#06b6d4" fontSize="8" textAnchor="middle" fontFamily="monospace" opacity={0.8}>
+              <circle
+                cx={midX}
+                cy={arcY}
+                r={3}
+                fill={active ? "#22c55e" : "#06b6d4"}
+                opacity={0.6}
+              />
+              <text
+                x={midX}
+                y={arcY - 6}
+                fill="#06b6d4"
+                fontSize="8"
+                textAnchor="middle"
+                fontFamily="monospace"
+                opacity={0.8}
+              >
                 {count} msg
               </text>
             </g>
@@ -747,7 +869,11 @@ const SwarmGraph = forwardRef<HTMLDivElement, {
           const pos = agentPositions[i];
           const isActive = running && role === phase;
           return (
-            <g key={`agent-${agent}`} className="swarm-graph-agent" transform={`translate(${pos.x - AGENT_W / 2}, ${pos.y - AGENT_H / 2})`}>
+            <g
+              key={`agent-${agent}`}
+              className="swarm-graph-agent"
+              transform={`translate(${pos.x - AGENT_W / 2}, ${pos.y - AGENT_H / 2})`}
+            >
               {/* Node background */}
               <rect
                 width={AGENT_W}
@@ -756,7 +882,10 @@ const SwarmGraph = forwardRef<HTMLDivElement, {
                 fill={isActive ? `${color}18` : "#1e293b"}
                 stroke={isActive ? color : "#334155"}
                 strokeWidth={isActive ? 2 : 1}
-                className={(isActive ? "swarm-graph-node-active" : "") + (running && phase === "done" ? " swarm-graph-node-done" : "")}
+                className={
+                  (isActive ? "swarm-graph-node-active" : "") +
+                  (running && phase === "done" ? " swarm-graph-node-done" : "")
+                }
                 filter={isActive ? "url(#glow)" : undefined}
               />
               {/* Role icon */}
@@ -764,16 +893,40 @@ const SwarmGraph = forwardRef<HTMLDivElement, {
                 {isActive ? "⚡" : icon}
               </text>
               {/* Agent name */}
-              <text x={30} y={20} fill="#f1f5f9" fontSize="11" fontWeight="600" fontFamily="sans-serif">
+              <text
+                x={30}
+                y={20}
+                fill="#f1f5f9"
+                fontSize="11"
+                fontWeight="600"
+                fontFamily="sans-serif"
+              >
                 {agent.length > 12 ? agent.slice(0, 10) + "…" : agent}
               </text>
               {/* Role badge */}
               <rect x={12} y={32} width={AGENT_W - 24} height={16} rx="4" fill={`${color}18`} />
-              <text x={AGENT_W / 2} y={40} fill={color} fontSize="9" fontWeight="600" textAnchor="middle" fontFamily="monospace" style={{ textTransform: "uppercase" }}>
+              <text
+                x={AGENT_W / 2}
+                y={40}
+                fill={color}
+                fontSize="9"
+                fontWeight="600"
+                textAnchor="middle"
+                fontFamily="monospace"
+                style={{ textTransform: "uppercase" }}
+              >
                 {role}
               </text>
               {/* Status dot */}
-              {isActive && <circle cx={AGENT_W - 12} cy={12} r={4} fill="#22c55e" className="swarm-graph-pulse-dot" />}
+              {isActive && (
+                <circle
+                  cx={AGENT_W - 12}
+                  cy={12}
+                  r={4}
+                  fill="#22c55e"
+                  className="swarm-graph-pulse-dot"
+                />
+              )}
             </g>
           );
         })}
@@ -798,7 +951,11 @@ const SwarmGraph = forwardRef<HTMLDivElement, {
               const isActive = running && task.status === "running";
               const done = task.status === "done";
               rows.push(
-                <g key={`task-${task.id}`} className="swarm-graph-task" transform={`translate(${taskX}, ${GY_TASK})`}>
+                <g
+                  key={`task-${task.id}`}
+                  className="swarm-graph-task"
+                  transform={`translate(${taskX}, ${GY_TASK})`}
+                >
                   <rect
                     width={TASK_W}
                     height={TASK_H}
@@ -806,19 +963,40 @@ const SwarmGraph = forwardRef<HTMLDivElement, {
                     fill={done ? "#22c55e12" : isActive ? "#f59e0b12" : "#0f172a"}
                     stroke={done ? "#22c55e" : isActive ? "#f59e0b" : "#1e293b"}
                     strokeWidth={isActive ? 2 : 1}
-                    className={isActive ? "swarm-graph-task-active" : done ? "swarm-graph-task-done" : ""}
+                    className={
+                      isActive ? "swarm-graph-task-active" : done ? "swarm-graph-task-done" : ""
+                    }
                   />
                   {/* Task icon */}
-                  <text x={8} y={TASK_H / 2 + 1} fontSize="10" textAnchor="middle" dominantBaseline="central">
+                  <text
+                    x={8}
+                    y={TASK_H / 2 + 1}
+                    fontSize="10"
+                    textAnchor="middle"
+                    dominantBaseline="central"
+                  >
                     {done ? "✓" : isActive ? "⏳" : "○"}
                   </text>
                   {/* Task ID */}
-                  <text x={18} y={TASK_H / 2 + 1} fill={done ? "#22c55e" : isActive ? "#f59e0b" : "#94a3b8"} fontSize="8" fontFamily="monospace" dominantBaseline="central">
+                  <text
+                    x={18}
+                    y={TASK_H / 2 + 1}
+                    fill={done ? "#22c55e" : isActive ? "#f59e0b" : "#94a3b8"}
+                    fontSize="8"
+                    fontFamily="monospace"
+                    dominantBaseline="central"
+                  >
                     {task.id.length > 8 ? task.id.slice(0, 6) + "…" : task.id}
                   </text>
                   {/* Status indicator */}
                   {isActive && (
-                    <circle cx={TASK_W - 8} cy={TASK_H / 2} r={3} fill="#f59e0b" className="swarm-graph-pulse-dot" />
+                    <circle
+                      cx={TASK_W - 8}
+                      cy={TASK_H / 2}
+                      r={3}
+                      fill="#f59e0b"
+                      className="swarm-graph-pulse-dot"
+                    />
                   )}
                 </g>
               );
@@ -831,11 +1009,35 @@ const SwarmGraph = forwardRef<HTMLDivElement, {
         <g transform={`translate(${PADDING}, ${svgH - 22})`}>
           <rect x={0} y={-2} width={200} height={16} rx="4" fill="#1e293b88" />
           <circle cx={10} cy={6} r={3} fill="#6366f1" className="swarm-graph-pulse-dot" />
-          <text x={18} y={8} fill="#94a3b8" fontSize="8" fontFamily="monospace">Active</text>
-          <line x1={58} y1={6} x2={78} y2={6} stroke="#6366f1" strokeWidth="1.5" strokeDasharray="4,3" opacity={0.5} />
-          <text x={82} y={8} fill="#94a3b8" fontSize="8" fontFamily="monospace">Dependency</text>
-          <line x1={160} y1={6} x2={180} y2={6} stroke="#06b6d4" strokeWidth="1.5" markerEnd="url(#arrow-msg)" opacity={0.5} />
-          <text x={184} y={8} fill="#94a3b8" fontSize="8" fontFamily="monospace">Message</text>
+          <text x={18} y={8} fill="#94a3b8" fontSize="8" fontFamily="monospace">
+            Active
+          </text>
+          <line
+            x1={58}
+            y1={6}
+            x2={78}
+            y2={6}
+            stroke="#6366f1"
+            strokeWidth="1.5"
+            strokeDasharray="4,3"
+            opacity={0.5}
+          />
+          <text x={82} y={8} fill="#94a3b8" fontSize="8" fontFamily="monospace">
+            Dependency
+          </text>
+          <line
+            x1={160}
+            y1={6}
+            x2={180}
+            y2={6}
+            stroke="#06b6d4"
+            strokeWidth="1.5"
+            markerEnd="url(#arrow-msg)"
+            opacity={0.5}
+          />
+          <text x={184} y={8} fill="#94a3b8" fontSize="8" fontFamily="monospace">
+            Message
+          </text>
         </g>
       </svg>
     </div>
@@ -873,7 +1075,10 @@ export default function SwarmsPage() {
 
   // ── Create swarm ─────────────────────────────────────────────────────
   const createSwarm = async () => {
-    const appIds = agentInput.split(",").map((s) => s.trim()).filter(Boolean);
+    const appIds = agentInput
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
     if (appIds.length === 0 || !prompt.trim()) return;
 
     setCreating(true);
@@ -1040,8 +1245,8 @@ export default function SwarmsPage() {
             )}
           </h1>
           <p className="swarm-subtitle">
-            Orchestrate multi-agent collaborations with role-based task allocation,
-            reflection loops, and inter-agent messaging.
+            Orchestrate multi-agent collaborations with role-based task allocation, reflection
+            loops, and inter-agent messaging.
           </p>
         </div>
         <button
@@ -1056,7 +1261,11 @@ export default function SwarmsPage() {
       {error && (
         <div className="swarm-alert danger">
           <span>⚠️</span> {error}
-          <button className="btn-icon" onClick={() => setError(null)} style={{ marginLeft: "auto" }}>
+          <button
+            className="btn-icon"
+            onClick={() => setError(null)}
+            style={{ marginLeft: "auto" }}
+          >
             ✕
           </button>
         </div>
@@ -1067,8 +1276,8 @@ export default function SwarmsPage() {
         <div className="swarm-form-card">
           <h2 className="swarm-form-title">🐝 Create Agent Swarm</h2>
           <p className="swarm-form-desc">
-            Define the agents, their roles, and the task prompt. The swarm manager
-            will plan, execute, reflect, and summarize.
+            Define the agents, their roles, and the task prompt. The swarm manager will plan,
+            execute, reflect, and summarize.
           </p>
 
           <div className="swarm-form-group">
@@ -1084,24 +1293,28 @@ export default function SwarmsPage() {
           <div className="swarm-form-group">
             <label className="swarm-label">Roles</label>
             <div className="swarm-roles-grid">
-              {agentInput.split(",").map((a) => a.trim()).filter(Boolean).map((agent) => (
-                <div key={agent} className="swarm-role-row">
-                  <span className="swarm-role-agent">{agent}</span>
-                  <select
-                    className="swarm-select"
-                    value={roles[agent] || "executor"}
-                    onChange={(e) =>
-                      setRoles((prev) => ({ ...prev, [agent]: e.target.value as SwarmRole }))
-                    }
-                  >
-                    {ROLE_OPTIONS.map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {r.icon} {r.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              ))}
+              {agentInput
+                .split(",")
+                .map((a) => a.trim())
+                .filter(Boolean)
+                .map((agent) => (
+                  <div key={agent} className="swarm-role-row">
+                    <span className="swarm-role-agent">{agent}</span>
+                    <select
+                      className="swarm-select"
+                      value={roles[agent] || "executor"}
+                      onChange={(e) =>
+                        setRoles((prev) => ({ ...prev, [agent]: e.target.value as SwarmRole }))
+                      }
+                    >
+                      {ROLE_OPTIONS.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.icon} {r.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
             </div>
           </div>
 
@@ -1181,7 +1394,11 @@ export default function SwarmsPage() {
                     <span className="swarm-list-id">#{s.swarm_id}</span>
                     <span
                       className={`swarm-list-badge ${isRunning(s.phase) ? "running" : "ok"}`}
-                      style={isRunning(s.phase) ? { borderColor: phaseCfg.color, color: phaseCfg.color } : {}}
+                      style={
+                        isRunning(s.phase)
+                          ? { borderColor: phaseCfg.color, color: phaseCfg.color }
+                          : {}
+                      }
                     >
                       {isRunning(s.phase) ? (
                         <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
@@ -1193,7 +1410,10 @@ export default function SwarmsPage() {
                       )}
                     </span>
                   </div>
-                  <div className="swarm-list-prompt">{s.prompt.slice(0, 80)}{s.prompt.length > 80 ? "..." : ""}</div>
+                  <div className="swarm-list-prompt">
+                    {s.prompt.slice(0, 80)}
+                    {s.prompt.length > 80 ? "..." : ""}
+                  </div>
                   <div className="swarm-list-meta">
                     <span>{s.agents.length} agents</span>
                     <span>{s.tasks.length} tasks</span>
@@ -1219,7 +1439,9 @@ export default function SwarmsPage() {
           ) : (
             <div className="swarm-detail">
               {/* Swarm Info Header */}
-              <div className={`swarm-detail-header ${isRunning(selectedSwarm.phase) ? "running" : ""}`}>
+              <div
+                className={`swarm-detail-header ${isRunning(selectedSwarm.phase) ? "running" : ""}`}
+              >
                 <div>
                   <h2 className="swarm-detail-title">
                     Swarm #{selectedSwarm.swarm_id}
@@ -1233,7 +1455,14 @@ export default function SwarmsPage() {
                 </div>
                 <span
                   className={`swarm-list-badge ${isRunning(selectedSwarm.phase) ? "running" : "ok"}`}
-                  style={isRunning(selectedSwarm.phase) ? { borderColor: PHASE_CONFIG[selectedSwarm.phase].color, color: PHASE_CONFIG[selectedSwarm.phase].color } : {}}
+                  style={
+                    isRunning(selectedSwarm.phase)
+                      ? {
+                          borderColor: PHASE_CONFIG[selectedSwarm.phase].color,
+                          color: PHASE_CONFIG[selectedSwarm.phase].color,
+                        }
+                      : {}
+                  }
                 >
                   {isRunning(selectedSwarm.phase) ? (
                     <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -1249,7 +1478,16 @@ export default function SwarmsPage() {
                   className="swarm-report-btn"
                   target="_blank"
                 >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                     <polyline points="14 2 14 8 20 8" />
                     <line x1="16" y1="13" x2="8" y2="13" />
@@ -1280,10 +1518,14 @@ export default function SwarmsPage() {
                     </div>
                     <div className="swarm-live-status-text">
                       <strong>{PHASE_CONFIG[selectedSwarm.phase].label}</strong>
-                      {selectedSwarm.phase === "planning" && " — Breaking prompt into tasks and assigning roles..."}
-                      {selectedSwarm.phase === "executing" && " — Running agent tasks and collecting outputs..."}
-                      {selectedSwarm.phase === "reflecting" && " — Reviewing outputs and checking quality..."}
-                      {selectedSwarm.phase === "summarizing" && " — Synthesizing results into final answer..."}
+                      {selectedSwarm.phase === "planning" &&
+                        " — Breaking prompt into tasks and assigning roles..."}
+                      {selectedSwarm.phase === "executing" &&
+                        " — Running agent tasks and collecting outputs..."}
+                      {selectedSwarm.phase === "reflecting" &&
+                        " — Reviewing outputs and checking quality..."}
+                      {selectedSwarm.phase === "summarizing" &&
+                        " — Synthesizing results into final answer..."}
                     </div>
                   </div>
                 </div>
@@ -1321,7 +1563,16 @@ export default function SwarmsPage() {
                         }
                       }}
                     >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                         <polyline points="7 10 12 15 17 10" />
                         <line x1="12" y1="15" x2="12" y2="3" />
@@ -1339,7 +1590,16 @@ export default function SwarmsPage() {
                         }
                       }}
                     >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
                         <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
                         <circle cx="8.5" cy="8.5" r="1.5" />
                         <polyline points="21 15 16 10 5 21" />
@@ -1355,7 +1615,16 @@ export default function SwarmsPage() {
                         setTimeout(() => setExportMsg(null), 2000);
                       }}
                     >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
                         <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
                         <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
                       </svg>
@@ -1388,8 +1657,15 @@ export default function SwarmsPage() {
                     const color = ROLE_COLORS[role] || "#6366f1";
                     const busy = isRunning(selectedSwarm.phase) && role === selectedSwarm.phase;
                     return (
-                      <div key={agent} className={`swarm-agent-card ${busy ? "busy" : ""}`} style={{ borderTopColor: color }}>
-                        <div className="swarm-agent-icon" style={{ background: `${color}20`, color }}>
+                      <div
+                        key={agent}
+                        className={`swarm-agent-card ${busy ? "busy" : ""}`}
+                        style={{ borderTopColor: color }}
+                      >
+                        <div
+                          className="swarm-agent-icon"
+                          style={{ background: `${color}20`, color }}
+                        >
                           {busy ? <SwarmSpinner color={color} size={18} /> : icon}
                         </div>
                         <div className="swarm-agent-info">
@@ -1418,13 +1694,20 @@ export default function SwarmsPage() {
                   {selectedSwarm.tasks.map((task) => {
                     const isActive = isRunning(selectedSwarm.phase) && task.status === "running";
                     return (
-                      <div key={task.id} className={`swarm-task-item ${task.status} ${isActive ? "pulsing" : ""}`}>
+                      <div
+                        key={task.id}
+                        className={`swarm-task-item ${task.status} ${isActive ? "pulsing" : ""}`}
+                      >
                         <div className="swarm-task-header">
                           <span className="swarm-task-role">
                             {isActive ? (
                               <SwarmSpinner color="#f59e0b" size={14} />
                             ) : (
-                              <span>{ROLE_ICONS[task.description.split(":")[0]?.trim()?.toLowerCase()] || "📋"}</span>
+                              <span>
+                                {ROLE_ICONS[
+                                  task.description.split(":")[0]?.trim()?.toLowerCase()
+                                ] || "📋"}
+                              </span>
                             )}{" "}
                             {task.id}
                           </span>
@@ -1441,7 +1724,10 @@ export default function SwarmsPage() {
                         {task.output ? (
                           <details className="swarm-task-output" open={isActive}>
                             <summary>{isActive ? "Live Output" : "View Output"}</summary>
-                            <pre className={isActive ? "streaming" : ""}>{task.output.slice(0, 500)}{task.output.length > 500 ? "..." : ""}</pre>
+                            <pre className={isActive ? "streaming" : ""}>
+                              {task.output.slice(0, 500)}
+                              {task.output.length > 500 ? "..." : ""}
+                            </pre>
                           </details>
                         ) : isRunning(selectedSwarm.phase) ? (
                           <div className="swarm-task-waiting">
@@ -1463,7 +1749,9 @@ export default function SwarmsPage() {
                     <div className="swarm-reflection-agent">
                       Reviewed by: <strong>{selectedSwarm.reflection.agent}</strong>
                     </div>
-                    <p className="swarm-reflection-text">{selectedSwarm.reflection.answer.slice(0, 600)}</p>
+                    <p className="swarm-reflection-text">
+                      {selectedSwarm.reflection.answer.slice(0, 600)}
+                    </p>
                   </div>
                 </div>
               )}
@@ -1479,24 +1767,24 @@ export default function SwarmsPage() {
               )}
 
               {/* Evolution Suggestions */}
-              {selectedSwarm.evolution_suggestions && selectedSwarm.evolution_suggestions.length > 0 && (
-                <div className="swarm-detail-section">
-                  <h3 className="swarm-detail-section-title">🧬 Evolution Suggestions</h3>
-                  <div className="swarm-evolution-list">
-                    {selectedSwarm.evolution_suggestions.map((sug, i) => (
-                      <div key={i} className="swarm-evolution-item">
-                        <pre>{JSON.stringify(sug, null, 2)}</pre>
-                      </div>
-                    ))}
+              {selectedSwarm.evolution_suggestions &&
+                selectedSwarm.evolution_suggestions.length > 0 && (
+                  <div className="swarm-detail-section">
+                    <h3 className="swarm-detail-section-title">🧬 Evolution Suggestions</h3>
+                    <div className="swarm-evolution-list">
+                      {selectedSwarm.evolution_suggestions.map((sug, i) => (
+                        <div key={i} className="swarm-evolution-item">
+                          <pre>{JSON.stringify(sug, null, 2)}</pre>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
 
               {/* Messages */}
               <div className="swarm-detail-section">
                 <h3 className="swarm-detail-section-title">
-                  💬 Message Bus{" "}
-                  <span className="swarm-count">{swarmMessages.length}</span>
+                  💬 Message Bus <span className="swarm-count">{swarmMessages.length}</span>
                   {isRunning(selectedSwarm.phase) && (
                     <span className="swarm-live-indicator">
                       <SwarmSpinner color="#22c55e" size={10} />
@@ -1507,7 +1795,14 @@ export default function SwarmsPage() {
                 {swarmMessages.length === 0 ? (
                   <div className="swarm-empty-messages">
                     {isRunning(selectedSwarm.phase) ? (
-                      <span style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "center" }}>
+                      <span
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          justifyContent: "center",
+                        }}
+                      >
                         <SwarmSpinner color="#6366f1" size={14} />
                         Waiting for messages...
                       </span>
@@ -1520,12 +1815,18 @@ export default function SwarmsPage() {
                     {swarmMessages.map((msg, i) => (
                       <div key={i} className="swarm-message-item new">
                         <div className="swarm-message-header">
-                          <span className="swarm-message-sender" style={{ color: ROLE_COLORS[msg.msg_type] || "#6366f1" }}>
+                          <span
+                            className="swarm-message-sender"
+                            style={{ color: ROLE_COLORS[msg.msg_type] || "#6366f1" }}
+                          >
                             {msg.sender}
                           </span>
                           <span className="swarm-message-arrow">→</span>
                           <span className="swarm-message-recipient">{msg.recipient}</span>
-                          <span className="swarm-message-type" style={{ color: ROLE_COLORS[msg.msg_type] || "#6366f1" }}>
+                          <span
+                            className="swarm-message-type"
+                            style={{ color: ROLE_COLORS[msg.msg_type] || "#6366f1" }}
+                          >
                             [{msg.msg_type}]
                           </span>
                           <span className="swarm-message-time">{formatTime(msg.timestamp)}</span>

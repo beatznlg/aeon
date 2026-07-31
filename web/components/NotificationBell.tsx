@@ -154,9 +154,7 @@ export default function NotificationBell() {
       >
         🔔
         {unreadCount > 0 && (
-          <span className="notif-bell-badge">
-            {unreadCount > 99 ? "99+" : unreadCount}
-          </span>
+          <span className="notif-bell-badge">{unreadCount > 99 ? "99+" : unreadCount}</span>
         )}
       </button>
 
@@ -166,7 +164,14 @@ export default function NotificationBell() {
             <h4>
               🔔 Notifications
               {unreadCount > 0 && (
-                <span style={{ color: "var(--fg-mute)", fontWeight: 400, marginLeft: 6, fontSize: "0.78rem" }}>
+                <span
+                  style={{
+                    color: "var(--fg-mute)",
+                    fontWeight: 400,
+                    marginLeft: 6,
+                    fontSize: "0.78rem",
+                  }}
+                >
                   ({unreadCount} new)
                 </span>
               )}
@@ -194,7 +199,14 @@ export default function NotificationBell() {
 
           <div className="notif-bell-list">
             {recent.length === 0 ? (
-              <div style={{ padding: "24px 16px", textAlign: "center", color: "var(--fg-mute)", fontSize: "0.82rem" }}>
+              <div
+                style={{
+                  padding: "24px 16px",
+                  textAlign: "center",
+                  color: "var(--fg-mute)",
+                  fontSize: "0.82rem",
+                }}
+              >
                 All caught up! 🎉
               </div>
             ) : (

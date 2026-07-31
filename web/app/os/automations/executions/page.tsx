@@ -103,12 +103,30 @@ export default function ExecutionsPage() {
 
   return (
     <div className="os-page" style={{ padding: 24 }}>
-      <header style={{ marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+      <header
+        style={{
+          marginBottom: 20,
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          flexWrap: "wrap",
+          gap: 12,
+        }}
+      >
         <div>
-          <h1 style={{ background: "var(--grad)", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>
+          <h1
+            style={{
+              background: "var(--grad)",
+              WebkitBackgroundClip: "text",
+              backgroundClip: "text",
+              color: "transparent",
+            }}
+          >
             📊 Automation Executions
           </h1>
-          <p className="dashboard-subtitle">History of every automation run across your workspace.</p>
+          <p className="dashboard-subtitle">
+            History of every automation run across your workspace.
+          </p>
         </div>
         <div style={{ display: "flex", gap: 12 }}>
           <Link href="/os/automations" className="btn btn-sm">
@@ -126,41 +144,99 @@ export default function ExecutionsPage() {
         </div>
       )}
 
-      <section style={{ border: "1px solid var(--border)", borderRadius: 12, padding: 16, background: "var(--bg)", marginBottom: 24 }}>
+      <section
+        style={{
+          border: "1px solid var(--border)",
+          borderRadius: 12,
+          padding: 16,
+          background: "var(--bg)",
+          marginBottom: 24,
+        }}
+      >
         <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "end" }}>
           <div>
-            <label style={{ display: "block", marginBottom: 6, fontSize: "0.8rem", fontWeight: 600 }}>Status</label>
-            <select className="input" value={statusFilter} onChange={(e) => { setOffset(0); setStatusFilter(e.target.value); }}>
+            <label
+              style={{ display: "block", marginBottom: 6, fontSize: "0.8rem", fontWeight: 600 }}
+            >
+              Status
+            </label>
+            <select
+              className="input"
+              value={statusFilter}
+              onChange={(e) => {
+                setOffset(0);
+                setStatusFilter(e.target.value);
+              }}
+            >
               <option value="">All</option>
               <option value="triggered">Triggered</option>
               <option value="failed">Failed</option>
             </select>
           </div>
           <div>
-            <label style={{ display: "block", marginBottom: 6, fontSize: "0.8rem", fontWeight: 600 }}>Event Type</label>
-            <select className="input" value={eventTypeFilter} onChange={(e) => { setOffset(0); setEventTypeFilter(e.target.value); }}>
+            <label
+              style={{ display: "block", marginBottom: 6, fontSize: "0.8rem", fontWeight: 600 }}
+            >
+              Event Type
+            </label>
+            <select
+              className="input"
+              value={eventTypeFilter}
+              onChange={(e) => {
+                setOffset(0);
+                setEventTypeFilter(e.target.value);
+              }}
+            >
               <option value="">All</option>
               {eventTypes.map((t) => (
-                <option key={t} value={t}>{t}</option>
+                <option key={t} value={t}>
+                  {t}
+                </option>
               ))}
             </select>
           </div>
           <div>
-            <label style={{ display: "block", marginBottom: 6, fontSize: "0.8rem", fontWeight: 600 }}>Rule</label>
-            <select className="input" value={ruleFilter} onChange={(e) => { setOffset(0); setRuleFilter(e.target.value); }}>
+            <label
+              style={{ display: "block", marginBottom: 6, fontSize: "0.8rem", fontWeight: 600 }}
+            >
+              Rule
+            </label>
+            <select
+              className="input"
+              value={ruleFilter}
+              onChange={(e) => {
+                setOffset(0);
+                setRuleFilter(e.target.value);
+              }}
+            >
               <option value="">All</option>
               {rules.map((r) => (
-                <option key={r.id} value={r.id}>{r.name}</option>
+                <option key={r.id} value={r.id}>
+                  {r.name}
+                </option>
               ))}
             </select>
           </div>
-          <button className="btn btn-sm" onClick={() => { setOffset(0); loadExecutions(); }}>
+          <button
+            className="btn btn-sm"
+            onClick={() => {
+              setOffset(0);
+              loadExecutions();
+            }}
+          >
             Refresh
           </button>
         </div>
       </section>
 
-      <section style={{ border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden", background: "var(--bg)" }}>
+      <section
+        style={{
+          border: "1px solid var(--border)",
+          borderRadius: 12,
+          overflow: "hidden",
+          background: "var(--bg)",
+        }}
+      >
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ background: "var(--bg-2)", textAlign: "left" }}>
@@ -174,11 +250,15 @@ export default function ExecutionsPage() {
           <tbody>
             {loading && executions.length === 0 ? (
               <tr>
-                <td colSpan={5} style={{ padding: 24, textAlign: "center" }}>Loading…</td>
+                <td colSpan={5} style={{ padding: 24, textAlign: "center" }}>
+                  Loading…
+                </td>
               </tr>
             ) : executions.length === 0 ? (
               <tr>
-                <td colSpan={5} style={{ padding: 24, textAlign: "center" }}>No executions found.</td>
+                <td colSpan={5} style={{ padding: 24, textAlign: "center" }}>
+                  No executions found.
+                </td>
               </tr>
             ) : (
               executions.map((e) => (
@@ -193,7 +273,8 @@ export default function ExecutionsPage() {
                         borderRadius: 999,
                         fontSize: "0.75rem",
                         fontWeight: 600,
-                        background: e.status === "failed" ? "rgba(239,68,68,0.15)" : "rgba(34,197,94,0.15)",
+                        background:
+                          e.status === "failed" ? "rgba(239,68,68,0.15)" : "rgba(34,197,94,0.15)",
                         color: e.status === "failed" ? "#ef4444" : "#22c55e",
                       }}
                     >
@@ -202,8 +283,12 @@ export default function ExecutionsPage() {
                   </td>
                   <td style={{ padding: 12, fontSize: "0.85rem" }}>{formatDate(e.created_at)}</td>
                   <td style={{ padding: 12, display: "flex", gap: 8 }}>
-                    <button className="btn btn-sm" onClick={() => setSelected(e)}>View</button>
-                    <button className="btn btn-sm" onClick={() => retryRule(e.rule_id)}>Retry</button>
+                    <button className="btn btn-sm" onClick={() => setSelected(e)}>
+                      View
+                    </button>
+                    <button className="btn btn-sm" onClick={() => retryRule(e.rule_id)}>
+                      Retry
+                    </button>
                   </td>
                 </tr>
               ))
@@ -212,12 +297,27 @@ export default function ExecutionsPage() {
         </table>
       </section>
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 16 }}>
-        <button className="btn btn-sm" disabled={offset === 0} onClick={() => setOffset((o) => Math.max(0, o - PAGE_SIZE))}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginTop: 16,
+        }}
+      >
+        <button
+          className="btn btn-sm"
+          disabled={offset === 0}
+          onClick={() => setOffset((o) => Math.max(0, o - PAGE_SIZE))}
+        >
           ← Previous
         </button>
         <span style={{ fontSize: "0.85rem" }}>Offset: {offset}</span>
-        <button className="btn btn-sm" disabled={executions.length < PAGE_SIZE} onClick={() => setOffset((o) => o + PAGE_SIZE)}>
+        <button
+          className="btn btn-sm"
+          disabled={executions.length < PAGE_SIZE}
+          onClick={() => setOffset((o) => o + PAGE_SIZE)}
+        >
           Next →
         </button>
       </div>
@@ -250,26 +350,61 @@ export default function ExecutionsPage() {
               padding: 24,
             }}
           >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: 16,
+              }}
+            >
               <h3 style={{ margin: 0 }}>Execution Details</h3>
-              <button className="btn btn-sm" onClick={() => setSelected(null)}>Close</button>
+              <button className="btn btn-sm" onClick={() => setSelected(null)}>
+                Close
+              </button>
             </div>
-            <p><strong>ID:</strong> {selected.id}</p>
-            <p><strong>Rule:</strong> {selected.rule_name || selected.rule_id}</p>
-            <p><strong>Event Type:</strong> {selected.event_type}</p>
-            <p><strong>Status:</strong> {selected.status}</p>
-            <p><strong>Created At:</strong> {formatDate(selected.created_at)}</p>
+            <p>
+              <strong>ID:</strong> {selected.id}
+            </p>
+            <p>
+              <strong>Rule:</strong> {selected.rule_name || selected.rule_id}
+            </p>
+            <p>
+              <strong>Event Type:</strong> {selected.event_type}
+            </p>
+            <p>
+              <strong>Status:</strong> {selected.status}
+            </p>
+            <p>
+              <strong>Created At:</strong> {formatDate(selected.created_at)}
+            </p>
 
             <div style={{ marginTop: 16 }}>
               <h4 style={{ marginBottom: 8 }}>Event Payload</h4>
-              <pre style={{ background: "var(--bg-2)", padding: 12, borderRadius: 8, overflow: "auto", fontSize: "0.8rem" }}>
+              <pre
+                style={{
+                  background: "var(--bg-2)",
+                  padding: 12,
+                  borderRadius: 8,
+                  overflow: "auto",
+                  fontSize: "0.8rem",
+                }}
+              >
                 {JSON.stringify(selected.event_payload, null, 2)}
               </pre>
             </div>
 
             <div style={{ marginTop: 16 }}>
               <h4 style={{ marginBottom: 8 }}>Result</h4>
-              <pre style={{ background: "var(--bg-2)", padding: 12, borderRadius: 8, overflow: "auto", fontSize: "0.8rem" }}>
+              <pre
+                style={{
+                  background: "var(--bg-2)",
+                  padding: 12,
+                  borderRadius: 8,
+                  overflow: "auto",
+                  fontSize: "0.8rem",
+                }}
+              >
                 {JSON.stringify(selected.result, null, 2)}
               </pre>
             </div>

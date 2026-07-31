@@ -16,12 +16,72 @@ interface ProviderMeta {
 }
 
 const FALLBACK_PROVIDERS: ProviderMeta[] = [
-  { id: "stub", name: "Stub (No AI)", icon: "◇", color: "#71717a", models: ["deterministic stub"], configured: true, active: false, env_var: null, desc: "Fallback mode for testing. Returns deterministic responses." },
-  { id: "openai", name: "OpenAI", icon: "⚡", color: "#10a37f", models: ["gpt-4o-mini", "gpt-4o"], configured: false, active: false, env_var: "OPENAI_API_KEY", desc: "Industry-leading language models with strong reasoning and coding capabilities." },
-  { id: "anthropic", name: "Anthropic (Claude)", icon: "✦", color: "#d97706", models: ["claude-3-5-sonnet", "claude-3-haiku"], configured: false, active: false, env_var: "ANTHROPIC_API_KEY", desc: "Advanced AI with exceptional reasoning and analysis." },
-  { id: "ollama", name: "Ollama (Local)", icon: "🦙", color: "#8b5cf6", models: ["llama3", "mistral", "gemma"], configured: true, active: false, env_var: "OLLAMA_BASE_URL", desc: "Run LLMs locally on your infrastructure." },
-  { id: "hf", name: "Hugging Face", icon: "🤗", color: "#fbbf24", models: ["Qwen2.5-3B-Instruct", "Phi-3"], configured: false, active: false, env_var: "HUGGINGFACE_TOKEN", desc: "Access thousands of open-source models via the HF Inference API." },
-  { id: "qwen", name: "Qwen Local (GPU)", icon: "🧠", color: "#6366f1", models: ["Qwen2.5-3B (quantized)"], configured: true, active: false, env_var: null, desc: "Built-in small language model on GPU. Downloads automatically." },
+  {
+    id: "stub",
+    name: "Stub (No AI)",
+    icon: "◇",
+    color: "#71717a",
+    models: ["deterministic stub"],
+    configured: true,
+    active: false,
+    env_var: null,
+    desc: "Fallback mode for testing. Returns deterministic responses.",
+  },
+  {
+    id: "openai",
+    name: "OpenAI",
+    icon: "⚡",
+    color: "#10a37f",
+    models: ["gpt-4o-mini", "gpt-4o"],
+    configured: false,
+    active: false,
+    env_var: "OPENAI_API_KEY",
+    desc: "Industry-leading language models with strong reasoning and coding capabilities.",
+  },
+  {
+    id: "anthropic",
+    name: "Anthropic (Claude)",
+    icon: "✦",
+    color: "#d97706",
+    models: ["claude-3-5-sonnet", "claude-3-haiku"],
+    configured: false,
+    active: false,
+    env_var: "ANTHROPIC_API_KEY",
+    desc: "Advanced AI with exceptional reasoning and analysis.",
+  },
+  {
+    id: "ollama",
+    name: "Ollama (Local)",
+    icon: "🦙",
+    color: "#8b5cf6",
+    models: ["llama3", "mistral", "gemma"],
+    configured: true,
+    active: false,
+    env_var: "OLLAMA_BASE_URL",
+    desc: "Run LLMs locally on your infrastructure.",
+  },
+  {
+    id: "hf",
+    name: "Hugging Face",
+    icon: "🤗",
+    color: "#fbbf24",
+    models: ["Qwen2.5-3B-Instruct", "Phi-3"],
+    configured: false,
+    active: false,
+    env_var: "HUGGINGFACE_TOKEN",
+    desc: "Access thousands of open-source models via the HF Inference API.",
+  },
+  {
+    id: "qwen",
+    name: "Qwen Local (GPU)",
+    icon: "🧠",
+    color: "#6366f1",
+    models: ["Qwen2.5-3B (quantized)"],
+    configured: true,
+    active: false,
+    env_var: null,
+    desc: "Built-in small language model on GPU. Downloads automatically.",
+  },
 ];
 
 export default function LLMPage() {
@@ -65,9 +125,7 @@ export default function LLMPage() {
       const data = await res.json();
       if (data.ok) {
         setActiveProvider(id);
-        setProviders((prev) =>
-          prev.map((p) => ({ ...p, active: p.id === id }))
-        );
+        setProviders((prev) => prev.map((p) => ({ ...p, active: p.id === id })));
       } else {
         setError(data.error || "Failed to switch provider");
       }
@@ -138,52 +196,61 @@ export default function LLMPage() {
       </div>
 
       {/* Status Banner */}
-      <div style={{
-        background: "rgba(99,102,241,0.08)",
-        border: "1px solid rgba(99,102,241,0.2)",
-        borderRadius: "var(--radius)",
-        padding: "16px 20px",
-        marginBottom: 24,
-        display: "flex",
-        alignItems: "center",
-        gap: 12,
-      }}>
+      <div
+        style={{
+          background: "rgba(99,102,241,0.08)",
+          border: "1px solid rgba(99,102,241,0.2)",
+          borderRadius: "var(--radius)",
+          padding: "16px 20px",
+          marginBottom: 24,
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+        }}
+      >
         <span style={{ fontSize: "1.2rem" }}>💡</span>
         <div>
           <div style={{ fontWeight: 600, marginBottom: 2 }}>Plug-and-Play Architecture</div>
           <div style={{ fontSize: "0.82rem", color: "var(--fg-soft)" }}>
-            AEON OS can switch between any LLM provider at runtime. Active provider: <strong>{activeProvider || "stub"}</strong>.
-            Set your API keys in the <strong>Keys / API Keys</strong> tab, then switch here.
+            AEON OS can switch between any LLM provider at runtime. Active provider:{" "}
+            <strong>{activeProvider || "stub"}</strong>. Set your API keys in the{" "}
+            <strong>Keys / API Keys</strong> tab, then switch here.
           </div>
         </div>
       </div>
 
       {/* Error Banner */}
       {error && (
-        <div style={{
-          background: "rgba(239,68,68,0.08)",
-          border: "1px solid rgba(239,68,68,0.2)",
-          borderRadius: "var(--radius)",
-          padding: "12px 16px",
-          marginBottom: 16,
-          color: "var(--danger)",
-          fontSize: "0.85rem",
-        }}>
+        <div
+          style={{
+            background: "rgba(239,68,68,0.08)",
+            border: "1px solid rgba(239,68,68,0.2)",
+            borderRadius: "var(--radius)",
+            padding: "12px 16px",
+            marginBottom: 16,
+            color: "var(--danger)",
+            fontSize: "0.85rem",
+          }}
+        >
           {error}
         </div>
       )}
 
       {/* Test Result Banner */}
       {testResult && (
-        <div style={{
-          background: testResult.startsWith("✅") ? "rgba(16,185,129,0.08)" : "rgba(239,68,68,0.08)",
-          border: `1px solid ${testResult.startsWith("✅") ? "rgba(16,185,129,0.2)" : "rgba(239,68,68,0.2)"}`,
-          borderRadius: "var(--radius)",
-          padding: "12px 16px",
-          marginBottom: 16,
-          fontSize: "0.85rem",
-          fontFamily: "ui-monospace, monospace",
-        }}>
+        <div
+          style={{
+            background: testResult.startsWith("✅")
+              ? "rgba(16,185,129,0.08)"
+              : "rgba(239,68,68,0.08)",
+            border: `1px solid ${testResult.startsWith("✅") ? "rgba(16,185,129,0.2)" : "rgba(239,68,68,0.2)"}`,
+            borderRadius: "var(--radius)",
+            padding: "12px 16px",
+            marginBottom: 16,
+            fontSize: "0.85rem",
+            fontFamily: "ui-monospace, monospace",
+          }}
+        >
           {testResult}
         </div>
       )}
@@ -195,18 +262,21 @@ export default function LLMPage() {
             <div
               key={provider.id}
               className={`llm-provider-card ${selectedProvider === provider.id ? "active" : ""} ${provider.active ? "provider-active" : ""}`}
-              onClick={() => setSelectedProvider(provider.id === selectedProvider ? null : provider.id)}
+              onClick={() =>
+                setSelectedProvider(provider.id === selectedProvider ? null : provider.id)
+              }
             >
               <div className="llm-provider-header">
-                <div className="llm-provider-icon" style={{ background: `${provider.color}15`, color: provider.color }}>
+                <div
+                  className="llm-provider-icon"
+                  style={{ background: `${provider.color}15`, color: provider.color }}
+                >
                   {provider.icon}
                 </div>
                 <div>
                   <div className="llm-provider-name">
                     {provider.name}
-                    {provider.active && (
-                      <span className="status-badge active-badge">Active</span>
-                    )}
+                    {provider.active && <span className="status-badge active-badge">Active</span>}
                     {!provider.configured && !provider.active && (
                       <span className="status-badge missing-key-badge">No Key</span>
                     )}
@@ -230,8 +300,8 @@ export default function LLMPage() {
                   {switchLoading === provider.id
                     ? "Switching..."
                     : provider.active
-                    ? "✓ Active"
-                    : `Activate`}
+                      ? "✓ Active"
+                      : `Activate`}
                 </button>
                 <button
                   className="btn btn-sm"
@@ -280,13 +350,19 @@ export default function LLMPage() {
                           <>
                             <button
                               className="btn btn-sm"
-                              onClick={(e) => { e.stopPropagation(); toggleShowKey(provider.id); }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleShowKey(provider.id);
+                              }}
                             >
                               {showKeys[provider.id] ? "Hide" : "Show"}
                             </button>
                             <button
                               className="btn btn-sm btn-primary"
-                              onClick={(e) => { e.stopPropagation(); copyToClipboard(provider.env_var!); }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                copyToClipboard(provider.env_var!);
+                              }}
                             >
                               {copied === provider.env_var ? "Copied!" : "Copy"}
                             </button>
@@ -295,7 +371,17 @@ export default function LLMPage() {
                       </div>
                       {provider.env_var && (
                         <p style={{ fontSize: "0.72rem", color: "var(--fg-mute)", marginTop: 8 }}>
-                          Set <code style={{ background: "var(--bg-elevated)", padding: "2px 4px", borderRadius: 4 }}>{provider.env_var}</code> in the <strong>Keys / API Keys</strong> tab, then refresh this page.
+                          Set{" "}
+                          <code
+                            style={{
+                              background: "var(--bg-elevated)",
+                              padding: "2px 4px",
+                              borderRadius: 4,
+                            }}
+                          >
+                            {provider.env_var}
+                          </code>{" "}
+                          in the <strong>Keys / API Keys</strong> tab, then refresh this page.
                         </p>
                       )}
                     </div>
@@ -309,20 +395,32 @@ export default function LLMPage() {
 
       {/* Architecture Diagram */}
       <div className="arch-diagram">
-        <h3 style={{ fontSize: "1rem", fontWeight: 600, marginBottom: 16 }}>Architecture: How AEON Routes to Your LLM</h3>
+        <h3 style={{ fontSize: "1rem", fontWeight: 600, marginBottom: 16 }}>
+          Architecture: How AEON Routes to Your LLM
+        </h3>
         <div className="arch-tree">
-          <div>┌─ <strong>User Query</strong></div>
+          <div>
+            ┌─ <strong>User Query</strong>
+          </div>
           <div>│</div>
-          <div>├─→ <strong className="accent">AEON OS Kernel</strong> (reflection, goals, memory)</div>
+          <div>
+            ├─→ <strong className="accent">AEON OS Kernel</strong> (reflection, goals, memory)
+          </div>
           <div>│</div>
-          <div>├─→ <strong className="success">LLM Provider Bridge</strong> (UI selector or AEON_LLM_PROVIDER env)</div>
+          <div>
+            ├─→ <strong className="success">LLM Provider Bridge</strong> (UI selector or
+            AEON_LLM_PROVIDER env)
+          </div>
           {providers.map((p) => (
             <div key={p.id}>
-              │   {p.active ? "●" : "○"}── {p.name}{p.active ? " ← active" : ""}
+              │ {p.active ? "●" : "○"}── {p.name}
+              {p.active ? " ← active" : ""}
             </div>
           ))}
           <div>│</div>
-          <div>└─→ <strong>Response</strong> (streamed to UI)</div>
+          <div>
+            └─→ <strong>Response</strong> (streamed to UI)
+          </div>
         </div>
       </div>
     </div>

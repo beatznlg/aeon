@@ -39,9 +39,7 @@ export default function RootError({
 
         {/* Glass card */}
         <div className="glass-card-static p-8 mb-8">
-          <h1 className="text-xl font-bold text-aeon-fg mb-2">
-            Something went wrong
-          </h1>
+          <h1 className="text-xl font-bold text-aeon-fg mb-2">Something went wrong</h1>
           <p className="text-sm text-aeon-fg-soft leading-relaxed mb-6">
             The AEON OS encountered an unexpected error. This has been logged.
             {error.digest && (
@@ -52,10 +50,7 @@ export default function RootError({
           </p>
 
           <div className="flex flex-wrap gap-3 justify-center">
-            <button
-              onClick={reset}
-              className="pill-btn pill-btn-primary"
-            >
+            <button onClick={reset} className="pill-btn pill-btn-primary">
               🔄 Try Again
             </button>
             <a href="/" className="pill-btn">

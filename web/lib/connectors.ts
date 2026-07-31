@@ -169,7 +169,7 @@ export async function testConnector(config: ConnectorConfig): Promise<ConnectorR
 
 export async function queryConnector(
   config: ConnectorConfig,
-  sql: string,
+  sql: string
 ): Promise<ConnectorResult> {
   const def = CONNECTORS[config.type];
   if (!def) return { ok: false, error: "unknown connector type" };

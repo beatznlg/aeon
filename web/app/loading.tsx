@@ -9,28 +9,19 @@ export default function RootLoading() {
         <span className="sr-only">Loading AEON OS…</span>
 
         {/* Welcome banner skeleton */}
-        <div
-          className="welcome-banner"
-          style={{ padding: "1.75rem", marginBottom: "1.5rem" }}
-        >
+        <div className="welcome-banner" style={{ padding: "1.75rem", marginBottom: "1.5rem" }}>
           <div className="flex items-center gap-2 mb-3">
             <div
               className="skeleton-shimmer"
               style={{ width: 8, height: 8, borderRadius: "50%" }}
             />
-            <div
-              className="skeleton-shimmer"
-              style={{ height: "0.7rem", width: 100 }}
-            />
+            <div className="skeleton-shimmer" style={{ height: "0.7rem", width: 100 }} />
           </div>
           <div
             className="skeleton-shimmer"
             style={{ height: "1.5rem", width: "50%", marginBottom: "0.75rem" }}
           />
-          <div
-            className="skeleton-shimmer"
-            style={{ height: "0.8rem", width: "70%" }}
-          />
+          <div className="skeleton-shimmer" style={{ height: "0.8rem", width: "70%" }} />
         </div>
 
         {/* Status bar skeletons */}
@@ -47,14 +38,8 @@ export default function RootLoading() {
                 }}
               />
               <div className="flex-1 space-y-1.5">
-                <div
-                  className="skeleton-shimmer"
-                  style={{ height: "0.65rem", width: "60%" }}
-                />
-                <div
-                  className="skeleton-shimmer"
-                  style={{ height: "1rem", width: "40%" }}
-                />
+                <div className="skeleton-shimmer" style={{ height: "0.65rem", width: "60%" }} />
+                <div className="skeleton-shimmer" style={{ height: "1rem", width: "40%" }} />
               </div>
             </div>
           ))}
@@ -72,17 +57,17 @@ export default function RootLoading() {
                   borderRadius: "var(--aeon-radius)",
                 }}
               />
-              <div
-                className="skeleton-shimmer"
-                style={{ height: "0.7rem", width: "50%" }}
-              />
+              <div className="skeleton-shimmer" style={{ height: "0.7rem", width: "50%" }} />
             </div>
           ))}
         </div>
 
         {/* Module grid skeletons */}
         <div className="mt-8">
-          <div className="skeleton-shimmer" style={{ height: "1rem", width: "25%", marginBottom: "1rem" }} />
+          <div
+            className="skeleton-shimmer"
+            style={{ height: "1rem", width: "25%", marginBottom: "1rem" }}
+          />
           <div className="module-grid">
             {[1, 2, 3, 4, 5, 6].map((i) => (
               <div key={i} className="skeleton-card" style={{ flexDirection: "column" }}>
@@ -101,7 +86,10 @@ export default function RootLoading() {
                     <div className="skeleton-shimmer" style={{ height: "0.7rem", width: "40%" }} />
                   </div>
                 </div>
-                <div className="skeleton-shimmer" style={{ height: "0.7rem", width: "85%", marginTop: "0.5rem" }} />
+                <div
+                  className="skeleton-shimmer"
+                  style={{ height: "0.7rem", width: "85%", marginTop: "0.5rem" }}
+                />
               </div>
             ))}
           </div>

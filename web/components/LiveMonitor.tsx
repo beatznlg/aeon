@@ -95,11 +95,12 @@ export function LiveMonitorBar({ appId }: { appId: string }) {
   return (
     <div className="live-bar">
       {/* Live indicator */}
-      <div className="live-bar-indicator" title={error ? "Error" : data ? "Streaming live" : "Connecting..."}>
+      <div
+        className="live-bar-indicator"
+        title={error ? "Error" : data ? "Streaming live" : "Connecting..."}
+      >
         <span className={`live-dot ${error ? "danger" : data ? "ok" : "pending"}`} />
-        <span className="live-label">
-          {error ? "OFFLINE" : data ? "LIVE" : "CONNECTING"}
-        </span>
+        <span className="live-label">{error ? "OFFLINE" : data ? "LIVE" : "CONNECTING"}</span>
       </div>
 
       {sys && (
@@ -117,24 +118,39 @@ export function LiveMonitorBar({ appId }: { appId: string }) {
             <span className="live-metric-value">{Math.round(sys.avg_response_ms)}ms</span>
           </div>
           <div className="live-metric">
-            <span className="live-metric-label" style={{ color: sys.memory_mb > 600 ? "var(--danger)" : undefined }}>
+            <span
+              className="live-metric-label"
+              style={{ color: sys.memory_mb > 600 ? "var(--danger)" : undefined }}
+            >
               Memory
             </span>
-            <span className="live-metric-value" style={{ color: sys.memory_mb > 600 ? "var(--danger)" : undefined }}>
+            <span
+              className="live-metric-value"
+              style={{ color: sys.memory_mb > 600 ? "var(--danger)" : undefined }}
+            >
               {fmt(sys.memory_mb)} MB
             </span>
           </div>
           <div className="live-metric">
-            <span className="live-metric-label" style={{ color: sys.cpu_pct > 80 ? "var(--danger)" : undefined }}>
+            <span
+              className="live-metric-label"
+              style={{ color: sys.cpu_pct > 80 ? "var(--danger)" : undefined }}
+            >
               CPU
             </span>
-            <span className="live-metric-value" style={{ color: sys.cpu_pct > 80 ? "var(--danger)" : undefined }}>
+            <span
+              className="live-metric-value"
+              style={{ color: sys.cpu_pct > 80 ? "var(--danger)" : undefined }}
+            >
               {Math.round(sys.cpu_pct)}%
             </span>
           </div>
           <div className="live-metric">
             <span className="live-metric-label">Success Rate</span>
-            <span className="live-metric-value" style={{ color: sys.tool_success_rate < 0.85 ? "var(--warning)" : "var(--success)" }}>
+            <span
+              className="live-metric-value"
+              style={{ color: sys.tool_success_rate < 0.85 ? "var(--warning)" : "var(--success)" }}
+            >
               {(sys.tool_success_rate * 100).toFixed(0)}%
             </span>
           </div>
@@ -144,16 +160,12 @@ export function LiveMonitorBar({ appId }: { appId: string }) {
           </div>
           <div className="live-metric">
             <span className="live-metric-label">Status</span>
-            <span className={`live-status-badge ${isHealthy ? "ok" : "warn"}`}>
-              {sys.status}
-            </span>
+            <span className={`live-status-badge ${isHealthy ? "ok" : "warn"}`}>{sys.status}</span>
           </div>
         </>
       )}
 
-      <div className="live-bar-timer">
-        {new Date(data?.ts ?? Date.now()).toLocaleTimeString()}
-      </div>
+      <div className="live-bar-timer">{new Date(data?.ts ?? Date.now()).toLocaleTimeString()}</div>
     </div>
   );
 }
@@ -202,16 +214,10 @@ export function LiveMonitorWidget({
                   {m.unit === "%" ? `${Math.round(m.value)}%` : fmt(m.value)}
                 </div>
                 <div className="live-metric-card-diff">
-                  <span
-                    className={`live-diff ${isUp ? "up" : isDown ? "down" : ""}`}
-                  >
-                    {isUp ? "↑" : isDown ? "↓" : "—"}{" "}
-                    {Math.abs(Math.round(diff))}
+                  <span className={`live-diff ${isUp ? "up" : isDown ? "down" : ""}`}>
+                    {isUp ? "↑" : isDown ? "↓" : "—"} {Math.abs(Math.round(diff))}
                   </span>
-                  <span
-                    className={`live-status-indicator ${m.status}`}
-                    title={m.status}
-                  />
+                  <span className={`live-status-indicator ${m.status}`} title={m.status} />
                 </div>
               </div>
             );
@@ -359,28 +365,20 @@ export function AlertPanel() {
     <div className="alert-panel">
       <div className="alert-panel-header">
         <div className="alert-panel-title-row">
-          <h3>
-            {totalActive > 0 ? "🔔 Active Alerts" : "✅ All Clear"}
-          </h3>
+          <h3>{totalActive > 0 ? "🔔 Active Alerts" : "✅ All Clear"}</h3>
           {(activeCritical.length > 0 || activeWarning.length > 0) && (
             <div className="alert-panel-counts">
               {activeCritical.length > 0 && (
-                <span className="alert-count-badge critical">
-                  {activeCritical.length} Critical
-                </span>
+                <span className="alert-count-badge critical">{activeCritical.length} Critical</span>
               )}
               {activeWarning.length > 0 && (
-                <span className="alert-count-badge warning">
-                  {activeWarning.length} Warning
-                </span>
+                <span className="alert-count-badge warning">{activeWarning.length} Warning</span>
               )}
             </div>
           )}
         </div>
         <div className="alert-panel-actions">
-          <span className="alert-refresh-note">
-            Auto-refreshes every 8s
-          </span>
+          <span className="alert-refresh-note">Auto-refreshes every 8s</span>
           {totalActive > 0 && (
             <button className="btn btn-sm" onClick={dismissAll}>
               Dismiss All
@@ -389,11 +387,7 @@ export function AlertPanel() {
         </div>
       </div>
 
-      {error && (
-        <div className="alert-empty">
-          Unable to fetch alerts: {error}
-        </div>
-      )}
+      {error && <div className="alert-empty">Unable to fetch alerts: {error}</div>}
 
       {!error && activeAlerts.length === 0 && (
         <div className="alert-empty">
@@ -464,9 +458,17 @@ function formatTimeAgo(ts: number): string {
 export function SystemHealthPanel() {
   // Poll all active module health endpoints
   const moduleIds = [
-    "cybersecurity", "health", "finance", "retail", "transport",
-    "manufacturing", "tourism", "cultural_heritage", "professional",
-    "utilities", "sme",
+    "cybersecurity",
+    "health",
+    "finance",
+    "retail",
+    "transport",
+    "manufacturing",
+    "tourism",
+    "cultural_heritage",
+    "professional",
+    "utilities",
+    "sme",
   ];
 
   const [moduleHealth, setModuleHealth] = useState<
@@ -499,15 +501,9 @@ export function SystemHealthPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const healthyCount = Object.values(moduleHealth).filter(
-    (m) => m.status === "healthy",
-  ).length;
-  const warnCount = Object.values(moduleHealth).filter(
-    (m) => m.status === "warning",
-  ).length;
-  const criticalCount = Object.values(moduleHealth).filter(
-    (m) => m.status === "critical",
-  ).length;
+  const healthyCount = Object.values(moduleHealth).filter((m) => m.status === "healthy").length;
+  const warnCount = Object.values(moduleHealth).filter((m) => m.status === "warning").length;
+  const criticalCount = Object.values(moduleHealth).filter((m) => m.status === "critical").length;
 
   return (
     <div className="live-system-panel">
@@ -518,9 +514,7 @@ export function SystemHealthPanel() {
         </div>
         <div className="system-panel-stats">
           <span className="system-stat ok">{healthyCount} healthy</span>
-          {warnCount > 0 && (
-            <span className="system-stat warn">{warnCount} warning</span>
-          )}
+          {warnCount > 0 && <span className="system-stat warn">{warnCount} warning</span>}
           {criticalCount > 0 && (
             <span className="system-stat danger">{criticalCount} critical</span>
           )}
@@ -538,11 +532,7 @@ export function SystemHealthPanel() {
                 className={`live-dot ${!h ? "pending" : h.status === "healthy" ? "ok" : h.status === "warning" ? "warn" : "danger"}`}
               />
               <span className="sm-name">{id.replace(/_/g, " ")}</span>
-              {h && (
-                <span className="sm-meta">
-                  CPU {Math.round(h.cpu)}%
-                </span>
-              )}
+              {h && <span className="sm-meta">CPU {Math.round(h.cpu)}%</span>}
             </div>
           );
         })}

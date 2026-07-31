@@ -7,14 +7,7 @@ export const dynamic = "force-dynamic";
 
 export interface SearchResult {
   id: string;
-  type:
-    | "nav"
-    | "workspace"
-    | "user"
-    | "audit_log"
-    | "connector"
-    | "knowledge"
-    | "notification";
+  type: "nav" | "workspace" | "user" | "audit_log" | "connector" | "knowledge" | "notification";
   title: string;
   subtitle?: string;
   href?: string;

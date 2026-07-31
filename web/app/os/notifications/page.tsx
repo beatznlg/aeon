@@ -110,9 +110,7 @@ export default function NotificationsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id }),
       });
-      setNotifications((prev) =>
-        prev.map((n) => (n.id === id ? { ...n, read: true } : n))
-      );
+      setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
       setUnreadCount((c) => Math.max(0, c - 1));
     } catch {}
   };
@@ -162,7 +160,9 @@ export default function NotificationsPage() {
     <div className="os-page">
       <header className="os-header">
         <div>
-          <Link href="/os" className="os-back">← OS Launcher</Link>
+          <Link href="/os" className="os-back">
+            ← OS Launcher
+          </Link>
           <h1>🔔 Notifications</h1>
           <p className="dashboard-subtitle">
             {unreadCount > 0
@@ -183,13 +183,19 @@ export default function NotificationsPage() {
         <div className="notif-filters">
           <button
             className={`notif-filter-btn ${filter === "all" ? "active" : ""}`}
-            onClick={() => { setFilter("all"); setOffset(0); }}
+            onClick={() => {
+              setFilter("all");
+              setOffset(0);
+            }}
           >
             All ({totalCount})
           </button>
           <button
             className={`notif-filter-btn ${filter === "unread" ? "active" : ""}`}
-            onClick={() => { setFilter("unread"); setOffset(0); }}
+            onClick={() => {
+              setFilter("unread");
+              setOffset(0);
+            }}
           >
             Unread ({unreadCount})
           </button>
@@ -229,9 +235,7 @@ export default function NotificationsPage() {
               className={`notif-item ${notif.read ? "read" : "unread"}`}
               onClick={() => !notif.read && markRead(notif.id)}
             >
-              <div className="notif-item-icon">
-                {notif.icon || NOTIF_ICONS[notif.type] || "🔔"}
-              </div>
+              <div className="notif-item-icon">{notif.icon || NOTIF_ICONS[notif.type] || "🔔"}</div>
               <div className="notif-item-body">
                 <div className="notif-item-header">
                   <strong className="notif-item-title">{notif.title}</strong>
@@ -241,13 +245,15 @@ export default function NotificationsPage() {
                 <div className="notif-item-meta">
                   <span className="notif-item-time">{timeAgo(notif.created_at)}</span>
                   {notif.link && (
-                    <Link href={notif.link} className="notif-item-link" onClick={(e) => e.stopPropagation()}>
+                    <Link
+                      href={notif.link}
+                      className="notif-item-link"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       View →
                     </Link>
                   )}
-                  {unreadCount > 0 && !notif.read && (
-                    <span className="notif-item-dot">●</span>
-                  )}
+                  {unreadCount > 0 && !notif.read && <span className="notif-item-dot">●</span>}
                 </div>
               </div>
             </div>

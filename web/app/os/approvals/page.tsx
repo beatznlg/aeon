@@ -87,7 +87,12 @@ export default function ApprovalsPage() {
     <div className="os-page" style={{ padding: 24 }}>
       <header
         className="os-header"
-        style={{ marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "center" }}
+        style={{
+          marginBottom: 20,
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+        }}
       >
         <div>
           <h1
@@ -145,7 +150,9 @@ export default function ApprovalsPage() {
           <div style={{ padding: 60, textAlign: "center", color: "var(--fg-mute)" }}>
             <div style={{ fontSize: "2rem", marginBottom: 12, opacity: 0.5 }}>✋</div>
             <p>No approval requests found.</p>
-            <p style={{ fontSize: "0.78rem" }}>Pending automations requiring human approval will appear here.</p>
+            <p style={{ fontSize: "0.78rem" }}>
+              Pending automations requiring human approval will appear here.
+            </p>
           </div>
         ) : (
           <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
@@ -157,7 +164,13 @@ export default function ApprovalsPage() {
                   borderBottom: "1px solid var(--border)",
                 }}
               >
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "flex-start",
+                  }}
+                >
                   <div>
                     <div style={{ fontWeight: 600, display: "flex", alignItems: "center", gap: 8 }}>
                       {approval.event_type}
@@ -175,18 +188,25 @@ export default function ApprovalsPage() {
                       </span>
                     </div>
                     <div style={{ fontSize: "0.78rem", color: "var(--fg-mute)", marginTop: 4 }}>
-                      Action: {approval.action_type} · Created {new Date(approval.created_at).toLocaleString()}
+                      Action: {approval.action_type} · Created{" "}
+                      {new Date(approval.created_at).toLocaleString()}
                     </div>
                     <details style={{ marginTop: 8, fontSize: "0.78rem", color: "var(--fg-mute)" }}>
                       <summary style={{ cursor: "pointer" }}>Payload</summary>
-                      <pre style={{ marginTop: 8, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                      <pre
+                        style={{ marginTop: 8, whiteSpace: "pre-wrap", wordBreak: "break-word" }}
+                      >
                         {JSON.stringify(approval.event_payload, null, 2)}
                       </pre>
                     </details>
                     {approval.status !== "pending" && approval.result && (
-                      <details style={{ marginTop: 8, fontSize: "0.78rem", color: "var(--fg-mute)" }}>
+                      <details
+                        style={{ marginTop: 8, fontSize: "0.78rem", color: "var(--fg-mute)" }}
+                      >
                         <summary style={{ cursor: "pointer" }}>Result</summary>
-                        <pre style={{ marginTop: 8, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                        <pre
+                          style={{ marginTop: 8, whiteSpace: "pre-wrap", wordBreak: "break-word" }}
+                        >
                           {JSON.stringify(approval.result, null, 2)}
                         </pre>
                       </details>

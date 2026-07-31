@@ -84,9 +84,13 @@ export default function RAGChatPage() {
     <div className="os-page">
       <header className="os-header">
         <div>
-          <Link href="/os" className="os-back">← OS Launcher</Link>
+          <Link href="/os" className="os-back">
+            ← OS Launcher
+          </Link>
           <h1>🧠 RAG Chat</h1>
-          <p className="dashboard-subtitle">Chat with your knowledge bases using retrieval-augmented generation</p>
+          <p className="dashboard-subtitle">
+            Chat with your knowledge bases using retrieval-augmented generation
+          </p>
         </div>
       </header>
 
@@ -95,23 +99,39 @@ export default function RAGChatPage() {
         <div className="rag-chat-select-row">
           <div className="rag-chat-select-group">
             <label className="rag-chat-label">Knowledge Base</label>
-            <select className="os-input" value={selectedKb} onChange={(e) => setSelectedKb(e.target.value)}>
+            <select
+              className="os-input"
+              value={selectedKb}
+              onChange={(e) => setSelectedKb(e.target.value)}
+            >
               <option value="">Select KB…</option>
               {kbs.map((k) => (
-                <option key={k.id} value={k.id}>{k.name} ({k.document_count} docs)</option>
+                <option key={k.id} value={k.id}>
+                  {k.name} ({k.document_count} docs)
+                </option>
               ))}
             </select>
           </div>
           <div className="rag-chat-select-group">
             <label className="rag-chat-label">Prompt Template</label>
-            <select className="os-input" value={selectedPrompt} onChange={(e) => setSelectedPrompt(e.target.value)}>
+            <select
+              className="os-input"
+              value={selectedPrompt}
+              onChange={(e) => setSelectedPrompt(e.target.value)}
+            >
               <option value="">Default (context + query)</option>
               {prompts.map((p) => (
-                <option key={p.id} value={p.id}>{p.name} v{p.version}</option>
+                <option key={p.id} value={p.id}>
+                  {p.name} v{p.version}
+                </option>
               ))}
             </select>
           </div>
-          <button className="btn btn-sm" onClick={() => setMessages([])} disabled={messages.length === 0}>
+          <button
+            className="btn btn-sm"
+            onClick={() => setMessages([])}
+            disabled={messages.length === 0}
+          >
             Clear Chat
           </button>
         </div>
@@ -123,7 +143,10 @@ export default function RAGChatPage() {
           <div className="rag-chat-empty">
             <div className="rag-chat-empty-icon">🧠</div>
             <h3>Ask your knowledge base anything</h3>
-            <p>Select a Knowledge Base above, type your question, and get AI-powered answers with context from your documents.</p>
+            <p>
+              Select a Knowledge Base above, type your question, and get AI-powered answers with
+              context from your documents.
+            </p>
           </div>
         )}
 
@@ -133,7 +156,12 @@ export default function RAGChatPage() {
             <div className="rag-chat-msg-content">{msg.content}</div>
             {msg.role === "assistant" && msg.context_chunks && msg.context_chunks.length > 0 && (
               <details className="rag-chat-context" open={showContext}>
-                <summary onClick={(e) => { e.preventDefault(); setShowContext(!showContext); }}>
+                <summary
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setShowContext(!showContext);
+                  }}
+                >
                   {showContext ? "Hide" : "Show"} context ({msg.context_chunks.length} chunks)
                 </summary>
                 <div className="rag-chat-context-list">
@@ -158,7 +186,9 @@ export default function RAGChatPage() {
           <div className="rag-chat-msg assistant">
             <div className="rag-chat-msg-role">AEON RAG</div>
             <div className="rag-chat-typing">
-              <span></span><span></span><span></span>
+              <span></span>
+              <span></span>
+              <span></span>
             </div>
           </div>
         )}
@@ -175,7 +205,11 @@ export default function RAGChatPage() {
           disabled={!selectedKb || loading}
           autoFocus
         />
-        <button className="btn btn-primary" type="submit" disabled={!selectedKb || !query.trim() || loading}>
+        <button
+          className="btn btn-primary"
+          type="submit"
+          disabled={!selectedKb || !query.trim() || loading}
+        >
           {loading ? "Thinking..." : "Send"}
         </button>
       </form>

@@ -11,7 +11,14 @@ interface ModalProps {
   className?: string;
 }
 
-export default function Modal({ open, onClose, title, children, footer, className = "" }: ModalProps) {
+export default function Modal({
+  open,
+  onClose,
+  title,
+  children,
+  footer,
+  className = "",
+}: ModalProps) {
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -25,10 +32,7 @@ export default function Modal({ open, onClose, title, children, footer, classNam
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-        onClick={onClose}
-      />
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
       <div
         className={`relative z-10 w-full max-w-lg overflow-hidden rounded-aeon border border-aeon-border bg-aeon-bg-1 shadow-aeon-lg ${className}`}
       >
@@ -45,7 +49,11 @@ export default function Modal({ open, onClose, title, children, footer, classNam
           </div>
         )}
         <div className="p-5">{children}</div>
-        {footer && <div className="flex justify-end gap-2 border-t border-aeon-border px-5 py-4">{footer}</div>}
+        {footer && (
+          <div className="flex justify-end gap-2 border-t border-aeon-border px-5 py-4">
+            {footer}
+          </div>
+        )}
       </div>
     </div>
   );

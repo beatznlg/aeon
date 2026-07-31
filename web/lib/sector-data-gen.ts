@@ -18,7 +18,7 @@ function pseudoRandom(seed: string, offset = 0): number {
   const s = seed + offset;
   for (let i = 0; i < s.length; i++) {
     const char = s.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
+    hash = (hash << 5) - hash + char;
     hash = hash & hash; // Convert to 32-bit int
   }
   return Math.abs(hash % 10000) / 10000;
@@ -26,7 +26,7 @@ function pseudoRandom(seed: string, offset = 0): number {
 
 /** Time-based variation that oscillates smoothly */
 function timeWave(periodMs = 30000): number {
-  return Math.sin((Date.now() % periodMs) / periodMs * Math.PI * 2);
+  return Math.sin(((Date.now() % periodMs) / periodMs) * Math.PI * 2);
 }
 
 /** Generate a value that oscillates around a base with some drift */
@@ -57,10 +57,18 @@ function shortId(seed: string, i: number): string {
 // ════════════════════════════════════════════════════════════════
 
 function genThreats(seed: string) {
-  const types = ["malware", "phishing", "ddos", "ransomware", "insider_threat", "botnet", "social_engineering"];
+  const types = [
+    "malware",
+    "phishing",
+    "ddos",
+    "ransomware",
+    "insider_threat",
+    "botnet",
+    "social_engineering",
+  ];
   const severities = ["low", "medium", "high", "critical"];
   const statuses = ["detected", "analyzing", "blocked", "quarantined", "resolved"];
-  const count = 3 + Math.floor(pseudoRandom(seed, Date.now() % 60000 / 10000) * 5);
+  const count = 3 + Math.floor(pseudoRandom(seed, (Date.now() % 60000) / 10000) * 5);
   return Array.from({ length: count }, (_, i) => ({
     id: shortId("threat", i),
     indicator: `${pickRandom(["evilcorp", "darknet", "phishlab", "maldomain", "badhost"], seed, i)}.${pickRandom(["com", "net", "org", "xyz"], seed, i + 7)}`,
@@ -72,9 +80,20 @@ function genThreats(seed: string) {
 }
 
 function genVulnerabilities(seed: string) {
-  const products = ["Apache HTTPD", "nginx", "OpenSSL", "Kubernetes", "Docker", "PostgreSQL", "Linux Kernel", "Node.js", "Python", "Redis"];
+  const products = [
+    "Apache HTTPD",
+    "nginx",
+    "OpenSSL",
+    "Kubernetes",
+    "Docker",
+    "PostgreSQL",
+    "Linux Kernel",
+    "Node.js",
+    "Python",
+    "Redis",
+  ];
   const severities = ["Low", "Medium", "High", "Critical"];
-  const count = 4 + Math.floor(pseudoRandom(seed, Date.now() % 45000 / 10000) * 6);
+  const count = 4 + Math.floor(pseudoRandom(seed, (Date.now() % 45000) / 10000) * 6);
   return Array.from({ length: count }, (_, i) => ({
     cve: `CVE-2025-${1000 + Math.floor(pseudoRandom(seed, i) * 8000)}`,
     severity: pickRandom(severities, seed, i + 4),
@@ -92,9 +111,14 @@ function genCompliance(seed: string) {
     framework: pickRandom(frameworks, seed, 99),
     score: Math.max(30, Math.min(100, Math.round(base))),
     maturity: maturityLevels[Math.floor(Math.max(0, Math.min(3, base / 25)))],
-    gaps: pseudoRandom(seed, 50) > 0.5
-      ? ["Missing encryption at rest", "Incomplete audit trails", "No incident response plan"].slice(0, Math.floor(pseudoRandom(seed, 55) * 3) + 1)
-      : [],
+    gaps:
+      pseudoRandom(seed, 50) > 0.5
+        ? [
+            "Missing encryption at rest",
+            "Incomplete audit trails",
+            "No incident response plan",
+          ].slice(0, Math.floor(pseudoRandom(seed, 55) * 3) + 1)
+        : [],
   };
 }
 
@@ -122,7 +146,7 @@ function genSecurityNews(seed: string) {
     "New vulnerability disclosure framework gains industry adoption",
     "Quantum-safe encryption standards proposed by security consortium",
   ];
-  const count = 2 + Math.floor(pseudoRandom(seed, Date.now() % 90000 / 15000) * 3);
+  const count = 2 + Math.floor(pseudoRandom(seed, (Date.now() % 90000) / 15000) * 3);
   return Array.from({ length: count }, (_, i) => ({
     title: headlines[Math.floor(pseudoRandom(seed, i + 50) * headlines.length)],
     url: "https://security.example.com/news/" + shortId("news", i),
@@ -134,22 +158,56 @@ function genSecurityNews(seed: string) {
 // ════════════════════════════════════════════════════════════════
 
 function genDiagnostics(seed: string) {
-  const symptoms = ["Chest pain, shortness of breath", "Persistent headache, vision changes", "Abdominal pain, nausea", "Fever, cough, fatigue", "Joint pain, stiffness", "Dizziness, loss of balance", "Skin rash, itching", "Sore throat, difficulty swallowing"];
+  const symptoms = [
+    "Chest pain, shortness of breath",
+    "Persistent headache, vision changes",
+    "Abdominal pain, nausea",
+    "Fever, cough, fatigue",
+    "Joint pain, stiffness",
+    "Dizziness, loss of balance",
+    "Skin rash, itching",
+    "Sore throat, difficulty swallowing",
+  ];
   const urgencies = ["low", "moderate", "high"];
-  const count = 3 + Math.floor(pseudoRandom(seed, Date.now() % 50000 / 10000) * 4);
+  const count = 3 + Math.floor(pseudoRandom(seed, (Date.now() % 50000) / 10000) * 4);
   return Array.from({ length: count }, (_, i) => ({
     analyzed_symptoms: pickRandom(symptoms, seed, i + 5),
     possible_conditions: [
-      { name: pickRandom(["Condition A", "Condition B", "Condition C"], seed, i), probability: parseFloat((0.3 + pseudoRandom(seed, i + 10) * 0.6).toFixed(2)), severity: pickRandom(["mild", "moderate", "severe"], seed, i + 15), action: pickRandom(["Monitor", "Prescribe medication", "Refer to specialist"], seed, i + 20) },
+      {
+        name: pickRandom(["Condition A", "Condition B", "Condition C"], seed, i),
+        probability: parseFloat((0.3 + pseudoRandom(seed, i + 10) * 0.6).toFixed(2)),
+        severity: pickRandom(["mild", "moderate", "severe"], seed, i + 15),
+        action: pickRandom(
+          ["Monitor", "Prescribe medication", "Refer to specialist"],
+          seed,
+          i + 20
+        ),
+      },
     ],
     urgency: pickRandom(urgencies, seed, i + 3),
-    recommendation: pickRandom(["Rest and hydrate", "Schedule follow-up in 48h", "Immediate referral to specialist", "Over-the-counter medication"], seed, i + 8),
+    recommendation: pickRandom(
+      [
+        "Rest and hydrate",
+        "Schedule follow-up in 48h",
+        "Immediate referral to specialist",
+        "Over-the-counter medication",
+      ],
+      seed,
+      i + 8
+    ),
   }));
 }
 
 function genVitals(seed: string) {
-  const metrics = ["Heart Rate", "Blood Pressure", "Temperature", "O2 Sat", "Respiratory Rate", "Blood Glucose"];
-  const count = 3 + Math.floor(pseudoRandom(seed, Date.now() % 40000 / 10000) * 3);
+  const metrics = [
+    "Heart Rate",
+    "Blood Pressure",
+    "Temperature",
+    "O2 Sat",
+    "Respiratory Rate",
+    "Blood Glucose",
+  ];
+  const count = 3 + Math.floor(pseudoRandom(seed, (Date.now() % 40000) / 10000) * 3);
   return Array.from({ length: count }, (_, i) => {
     const base = 50 + pseudoRandom(seed, i + 100) * 200;
     const current = oscillate(base, base * 0.1, seed, "vital" + i);
@@ -173,26 +231,58 @@ function genDrugInteractions(seed: string) {
     ["Fluoxetine", "MAOI"],
     ["Digoxin", "Amiodarone"],
   ];
-  const count = 1 + Math.floor(pseudoRandom(seed, Date.now() % 70000 / 15000) * 2);
+  const count = 1 + Math.floor(pseudoRandom(seed, (Date.now() % 70000) / 15000) * 2);
   return Array.from({ length: count }, (_, i) => ({
     medications: pickRandom(meds, seed, i + 5),
     interactions_found: Math.floor(pseudoRandom(seed, i + 10) * 3),
-    interactions: Array.from({ length: Math.floor(pseudoRandom(seed, i + 15) * 2) + 1 }, (_, j) => ({
-      drugs: ["Drug A", "Drug B"],
-      severity: pickRandom(["mild", "moderate", "severe"], seed, i + j + 20),
-      warning: pickRandom(["Increased bleeding risk", "Serum potassium elevation", "Hypoglycemia risk", "Muscle pain risk"], seed, i + j + 25),
-    })),
+    interactions: Array.from(
+      { length: Math.floor(pseudoRandom(seed, i + 15) * 2) + 1 },
+      (_, j) => ({
+        drugs: ["Drug A", "Drug B"],
+        severity: pickRandom(["mild", "moderate", "severe"], seed, i + j + 20),
+        warning: pickRandom(
+          [
+            "Increased bleeding risk",
+            "Serum potassium elevation",
+            "Hypoglycemia risk",
+            "Muscle pain risk",
+          ],
+          seed,
+          i + j + 25
+        ),
+      })
+    ),
   }));
 }
 
 function genTelehealth(seed: string) {
   const urgencies = ["routine", "urgent", "emergent"];
-  const count = 2 + Math.floor(pseudoRandom(seed, Date.now() % 60000 / 15000) * 4);
+  const count = 2 + Math.floor(pseudoRandom(seed, (Date.now() % 60000) / 15000) * 4);
   return Array.from({ length: count }, (_, i) => ({
-    symptoms: pickRandom(["Cough and fever", "Skin rash", "Anxiety", "Back pain", "Allergic reaction", "Eye irritation"], seed, i + 8),
+    symptoms: pickRandom(
+      [
+        "Cough and fever",
+        "Skin rash",
+        "Anxiety",
+        "Back pain",
+        "Allergic reaction",
+        "Eye irritation",
+      ],
+      seed,
+      i + 8
+    ),
     age: 25 + Math.floor(pseudoRandom(seed, i + 3) * 55),
     urgency: pickRandom(urgencies, seed, i + 5),
-    recommendation: pickRandom(["Telehealth consult scheduled", "Visit urgent care", "Prescription sent to pharmacy", "Monitor symptoms for 24h"], seed, i + 10),
+    recommendation: pickRandom(
+      [
+        "Telehealth consult scheduled",
+        "Visit urgent care",
+        "Prescription sent to pharmacy",
+        "Monitor symptoms for 24h",
+      ],
+      seed,
+      i + 10
+    ),
   }));
 }
 
@@ -202,7 +292,11 @@ function genTelehealth(seed: string) {
 
 function genRisk(seed: string) {
   return {
-    asset: pickRandom(["Tech Growth Fund", "Global Equity ETF", "Corporate Bond Portfolio", "Real Estate Trust"], seed, 100),
+    asset: pickRandom(
+      ["Tech Growth Fund", "Global Equity ETF", "Corporate Bond Portfolio", "Real Estate Trust"],
+      seed,
+      100
+    ),
     portfolio_value: Math.round(oscillate(2500000, 500000, seed, "portfolio")),
     var_95_1d: Math.round(oscillate(45000, 15000, seed, "var")),
     var_95_pct: parseFloat(oscillate(1.8, 0.6, seed, "varpct").toFixed(2)),
@@ -210,7 +304,16 @@ function genRisk(seed: string) {
     beta: parseFloat(oscillate(1.1, 0.3, seed, "beta").toFixed(2)),
     risk_rating: pickRandom(["low", "medium", "high"], seed, 55),
     diversification_score: Math.round(oscillate(6.5, 2.5, seed, "diverse")),
-    recommendation: pickRandom(["Maintain current allocation", "Increase bond exposure", "Consider hedging strategies", "Rebalance quarterly"], seed, 77),
+    recommendation: pickRandom(
+      [
+        "Maintain current allocation",
+        "Increase bond exposure",
+        "Consider hedging strategies",
+        "Rebalance quarterly",
+      ],
+      seed,
+      77
+    ),
   };
 }
 
@@ -225,7 +328,7 @@ function genMarket(seed: string) {
 }
 
 function genFraud(seed: string) {
-  const count = 2 + Math.floor(pseudoRandom(seed, Date.now() % 55000 / 10000) * 4);
+  const count = 2 + Math.floor(pseudoRandom(seed, (Date.now() % 55000) / 10000) * 4);
   return Array.from({ length: count }, (_, i) => ({
     transaction_id: "TXN-" + shortId("fraud", i),
     amount: Math.round(oscillate(2500, 2000, seed, "amt" + i) + pseudoRandom(seed, i + 10) * 3000),
@@ -236,7 +339,7 @@ function genFraud(seed: string) {
 }
 
 function genCredit(seed: string) {
-  const count = 2 + Math.floor(pseudoRandom(seed, Date.now() % 65000 / 15000) * 3);
+  const count = 2 + Math.floor(pseudoRandom(seed, (Date.now() % 65000) / 15000) * 3);
   return Array.from({ length: count }, (_, i) => ({
     applicant_id: "APP-" + shortId("credit", i),
     credit_score: Math.round(oscillate(680, 100, seed, "cs" + i)),
@@ -246,7 +349,7 @@ function genCredit(seed: string) {
 }
 
 function genPayments(seed: string) {
-  const count = 2 + Math.floor(pseudoRandom(seed, Date.now() % 50000 / 15000) * 2);
+  const count = 2 + Math.floor(pseudoRandom(seed, (Date.now() % 50000) / 15000) * 2);
   return Array.from({ length: count }, (_, i) => ({
     account_id: "ACC-" + shortId("pay", i),
     total_transactions: Math.floor(oscillate(150, 80, seed, "txn" + i)),
@@ -261,7 +364,7 @@ function genPayments(seed: string) {
 // ════════════════════════════════════════════════════════════════
 
 function genForecast(seed: string) {
-  const count = 3 + Math.floor(pseudoRandom(seed, Date.now() % 70000 / 15000) * 4);
+  const count = 3 + Math.floor(pseudoRandom(seed, (Date.now() % 70000) / 15000) * 4);
   return Array.from({ length: count }, (_, i) => {
     const stock = oscillate(450, 200, seed, "stock" + i);
     const demand = oscillate(500, 250, seed, "demand" + i);
@@ -269,7 +372,10 @@ function genForecast(seed: string) {
       sku: "SKU-" + shortId("sku", i),
       current_stock: Math.max(0, Math.round(stock)),
       projected_demand: Math.max(0, Math.round(demand)),
-      recommended_order_qty: Math.max(0, Math.round(demand - stock + oscillate(50, 30, seed, "buffer" + i))),
+      recommended_order_qty: Math.max(
+        0,
+        Math.round(demand - stock + oscillate(50, 30, seed, "buffer" + i))
+      ),
       confidence: parseFloat(oscillate(0.82, 0.12, seed, "conf" + i).toFixed(2)),
     };
   });
@@ -280,17 +386,28 @@ function genInventory(seed: string) {
   const stockoutRisks = Math.floor(oscillate(45, 25, seed, "stockrisk"));
   const overstocks = Math.floor(oscillate(85, 35, seed, "overstock"));
   return {
-    summary: { total_skus: Math.max(1, totalSkus), stockout_risks: Math.max(0, stockoutRisks), overstocks: Math.max(0, overstocks) },
+    summary: {
+      total_skus: Math.max(1, totalSkus),
+      stockout_risks: Math.max(0, stockoutRisks),
+      overstocks: Math.max(0, overstocks),
+    },
     alerts: Array.from({ length: Math.min(3, stockoutRisks) }, (_, i) => ({
       sku: "SKU-" + shortId("alert", i),
       status: pickRandom(["critical", "warning"], seed, i + 10),
       days_remaining: Math.floor(pseudoRandom(seed, i + 20) * 14),
     })),
-    reorder_recommendations: Array.from({ length: 2 + Math.floor(pseudoRandom(seed, 99) * 2) }, (_, i) => ({
-      sku: "SKU-" + shortId("reorder", i),
-      qty: Math.floor(pseudoRandom(seed, i + 30) * 500 + 50),
-      supplier: pickRandom(["GlobalSupply Co", "PrimeLogistics Inc", "FastShip Corp"], seed, i + 5),
-    })),
+    reorder_recommendations: Array.from(
+      { length: 2 + Math.floor(pseudoRandom(seed, 99) * 2) },
+      (_, i) => ({
+        sku: "SKU-" + shortId("reorder", i),
+        qty: Math.floor(pseudoRandom(seed, i + 30) * 500 + 50),
+        supplier: pickRandom(
+          ["GlobalSupply Co", "PrimeLogistics Inc", "FastShip Corp"],
+          seed,
+          i + 5
+        ),
+      })
+    ),
     healthy: Array.from({ length: Math.floor(pseudoRandom(seed, 88) * 8) }, (_, i) => ({
       sku: "SKU-" + shortId("healthy", i),
       status: "healthy",
@@ -300,9 +417,19 @@ function genInventory(seed: string) {
 }
 
 function genSuppliers(seed: string) {
-  const count = 2 + Math.floor(pseudoRandom(seed, Date.now() % 60000 / 20000) * 3);
+  const count = 2 + Math.floor(pseudoRandom(seed, (Date.now() % 60000) / 20000) * 3);
   return Array.from({ length: count }, (_, i) => ({
-    supplier: pickRandom(["GlobalSupply Co", "PrimeLogistics Inc", "FastShip Corp", "QualityParts Ltd", "ReliableSource GmbH"], seed, i + 3),
+    supplier: pickRandom(
+      [
+        "GlobalSupply Co",
+        "PrimeLogistics Inc",
+        "FastShip Corp",
+        "QualityParts Ltd",
+        "ReliableSource GmbH",
+      ],
+      seed,
+      i + 3
+    ),
     risk_score: Math.round(oscillate(45, 25, seed, "supp" + i)),
     classification: pickRandom(["preferred", "standard", "at_risk"], seed, i + 8),
     on_time_delivery_pct: Math.round(oscillate(88, 12, seed, "otd" + i)),
@@ -323,30 +450,54 @@ function genElasticity(seed: string) {
 // ════════════════════════════════════════════════════════════════
 
 function genTraffic(seed: string) {
-  const zones = ["Downtown Core", "East Corridor", "West Side Highway", "North Bridge", "South Expressway", "Airport Access", "Harbor Tunnel"];
-  const count = 3 + Math.floor(pseudoRandom(seed, Date.now() % 40000 / 10000) * 3);
+  const zones = [
+    "Downtown Core",
+    "East Corridor",
+    "West Side Highway",
+    "North Bridge",
+    "South Expressway",
+    "Airport Access",
+    "Harbor Tunnel",
+  ];
+  const count = 3 + Math.floor(pseudoRandom(seed, (Date.now() % 40000) / 10000) * 3);
   return Array.from({ length: count }, (_, i) => ({
     zone: pickRandom(zones, seed, i + 2),
     current_congestion: Math.round(oscillate(4.5, 3, seed, "cong" + i)),
-    predicted_improvement: pickRandom(["+15% in 30min", "+8% in 1h", "stable", "-10% expected"], seed, i + 8),
+    predicted_improvement: pickRandom(
+      ["+15% in 30min", "+8% in 1h", "stable", "-10% expected"],
+      seed,
+      i + 8
+    ),
     incident_nearby: pseudoRandom(seed, i + 15) > 0.7,
   }));
 }
 
 function genFleet(seed: string) {
-  const count = 2 + Math.floor(pseudoRandom(seed, Date.now() % 50000 / 20000) * 2);
+  const count = 2 + Math.floor(pseudoRandom(seed, (Date.now() % 50000) / 20000) * 2);
   return Array.from({ length: count }, (_, i) => ({
     vehicles_available: Math.floor(oscillate(45, 15, seed, "veh" + i)),
     shifts: Math.floor(oscillate(30, 10, seed, "shift" + i)),
     utilization_pct: Math.round(oscillate(72, 18, seed, "util" + i)),
-    recommendation: pickRandom(["Maintain current fleet", "Add 3 vehicles to meet demand", "Optimize shift schedules", "Consider route consolidation"], seed, i + 12),
+    recommendation: pickRandom(
+      [
+        "Maintain current fleet",
+        "Add 3 vehicles to meet demand",
+        "Optimize shift schedules",
+        "Consider route consolidation",
+      ],
+      seed,
+      i + 12
+    ),
   }));
 }
 
 function genRoutes(seed: string) {
-  const count = 2 + Math.floor(pseudoRandom(seed, Date.now() % 60000 / 20000) * 3);
+  const count = 2 + Math.floor(pseudoRandom(seed, (Date.now() % 60000) / 20000) * 3);
   return Array.from({ length: count }, (_, i) => ({
-    stops: [pickRandom(["Warehouse A", "Distribution Center", "Hub B"], seed, i), pickRandom(["Delivery Point 1", "Retail Store", "Customer Site"], seed, i + 5)],
+    stops: [
+      pickRandom(["Warehouse A", "Distribution Center", "Hub B"], seed, i),
+      pickRandom(["Delivery Point 1", "Retail Store", "Customer Site"], seed, i + 5),
+    ],
     estimated_distance_km: Math.round(oscillate(320, 150, seed, "dist" + i)),
     estimated_time_min: Math.round(oscillate(240, 90, seed, "time" + i)),
     fuel_cost_est: Math.round(oscillate(180, 80, seed, "fuel" + i)),
@@ -358,7 +509,7 @@ function genRoutes(seed: string) {
 // ════════════════════════════════════════════════════════════════
 
 function genMaintenance(seed: string) {
-  const count = 3 + Math.floor(pseudoRandom(seed, Date.now() % 45000 / 10000) * 3);
+  const count = 3 + Math.floor(pseudoRandom(seed, (Date.now() % 45000) / 10000) * 3);
   return Array.from({ length: count }, (_, i) => ({
     machine_id: "MCH-" + shortId("mch", i),
     status: pickRandom(["healthy", "warning", "critical"], seed, i + 5),
@@ -370,7 +521,7 @@ function genMaintenance(seed: string) {
 }
 
 function genQC(seed: string) {
-  const count = 2 + Math.floor(pseudoRandom(seed, Date.now() % 50000 / 15000) * 3);
+  const count = 2 + Math.floor(pseudoRandom(seed, (Date.now() % 50000) / 15000) * 3);
   return Array.from({ length: count }, (_, i) => ({
     batch_id: "BATCH-" + shortId("batch", i),
     items_scanned: Math.floor(oscillate(500, 200, seed, "scan" + i)),
@@ -381,7 +532,7 @@ function genQC(seed: string) {
 }
 
 function genLogistics(seed: string) {
-  const count = 2 + Math.floor(pseudoRandom(seed, Date.now() % 55000 / 18000) * 2);
+  const count = 2 + Math.floor(pseudoRandom(seed, (Date.now() % 55000) / 18000) * 2);
   return Array.from({ length: count }, (_, i) => ({
     route_id: "RTE-" + shortId("rte", i),
     status: pickRandom(["on_time", "on_time", "delayed"], seed, i + 5),
@@ -395,9 +546,13 @@ function genLogistics(seed: string) {
 // ════════════════════════════════════════════════════════════════
 
 function genBookings(seed: string) {
-  const count = 3 + Math.floor(pseudoRandom(seed, Date.now() % 60000 / 15000) * 3);
+  const count = 3 + Math.floor(pseudoRandom(seed, (Date.now() % 60000) / 15000) * 3);
   return Array.from({ length: count }, (_, i) => ({
-    property: pickRandom(["Grand Hotel", "Seaside Resort", "Mountain Lodge", "City Boutique", "Lake House"], seed, i + 3),
+    property: pickRandom(
+      ["Grand Hotel", "Seaside Resort", "Mountain Lodge", "City Boutique", "Lake House"],
+      seed,
+      i + 3
+    ),
     occupancy_pct: Math.round(oscillate(72, 20, seed, "occ" + i)),
     predictive_no_shows: Math.floor(pseudoRandom(seed, i + 15) * 8),
     net_expected_occupancy: Math.round(oscillate(68, 22, seed, "netocc" + i)),
@@ -406,35 +561,78 @@ function genBookings(seed: string) {
 
 function genPricingTourism(seed: string) {
   const rooms = ["Standard", "Deluxe", "Suite", "Penthouse", "Family Room", "Corner Suite"];
-  const count = 3 + Math.floor(pseudoRandom(seed, Date.now() % 50000 / 15000) * 2);
+  const count = 3 + Math.floor(pseudoRandom(seed, (Date.now() % 50000) / 15000) * 2);
   return Array.from({ length: count }, (_, i) => ({
     room: pickRandom(rooms, seed, i + 2),
     base_price: Math.round(oscillate(180, 80, seed, "bpr" + i)),
     recommended_price: Math.round(oscillate(210, 100, seed, "rpr" + i)),
-    reason: pickRandom(["Demand surge", "Competitor pricing", "Seasonal adjustment", "Event premium", "Weekend rate"], seed, i + 8),
+    reason: pickRandom(
+      [
+        "Demand surge",
+        "Competitor pricing",
+        "Seasonal adjustment",
+        "Event premium",
+        "Weekend rate",
+      ],
+      seed,
+      i + 8
+    ),
   }));
 }
 
 function genConcierge(seed: string) {
-  const count = 2 + Math.floor(pseudoRandom(seed, Date.now() % 40000 / 10000) * 3);
+  const count = 2 + Math.floor(pseudoRandom(seed, (Date.now() % 40000) / 10000) * 3);
   return Array.from({ length: count }, (_, i) => ({
     guest_id: "GST-" + shortId("gst", i),
     sentiment: pickRandom(["positive", "neutral", "negative"], seed, i + 4),
-    intent: pickRandom(["room service", "late checkout", "housekeeping", "dining reservation", "transportation", "events"], seed, i + 7),
-    automated_response: pickRandom(["Confirmed", "Scheduled", "Forwarded to front desk", "Processed"], seed, i + 12),
-    upsell: pseudoRandom(seed, i + 20) > 0.6 ? pickRandom(["Spa package", "Breakfast upgrade", "Airport transfer"], seed, i + 25) : null,
+    intent: pickRandom(
+      [
+        "room service",
+        "late checkout",
+        "housekeeping",
+        "dining reservation",
+        "transportation",
+        "events",
+      ],
+      seed,
+      i + 7
+    ),
+    automated_response: pickRandom(
+      ["Confirmed", "Scheduled", "Forwarded to front desk", "Processed"],
+      seed,
+      i + 12
+    ),
+    upsell:
+      pseudoRandom(seed, i + 20) > 0.6
+        ? pickRandom(["Spa package", "Breakfast upgrade", "Airport transfer"], seed, i + 25)
+        : null,
   }));
 }
 
 function genVisitorDataTourism(seed: string) {
-  const venues = ["Art Museum", "Historical Museum", "Science Center", "Botanical Garden", "Aquarium"];
-  const count = 2 + Math.floor(pseudoRandom(seed, Date.now() % 50000 / 15000) * 2);
+  const venues = [
+    "Art Museum",
+    "Historical Museum",
+    "Science Center",
+    "Botanical Garden",
+    "Aquarium",
+  ];
+  const count = 2 + Math.floor(pseudoRandom(seed, (Date.now() % 50000) / 15000) * 2);
   return Array.from({ length: count }, (_, i) => ({
     venue: pickRandom(venues, seed, i + 3),
     daily_visitors: Math.round(oscillate(1200, 500, seed, "vis" + i)),
     engagement_score: Math.round(oscillate(68, 18, seed, "eng" + i)),
     recommended_strategies: [
-      pickRandom(["Social media campaign", "Student discount program", "Evening hours extension", "Group tour packages"], seed, i + 10),
+      pickRandom(
+        [
+          "Social media campaign",
+          "Student discount program",
+          "Evening hours extension",
+          "Group tour packages",
+        ],
+        seed,
+        i + 10
+      ),
     ],
   }));
 }
@@ -444,22 +642,45 @@ function genVisitorDataTourism(seed: string) {
 // ════════════════════════════════════════════════════════════════
 
 function genSites(seed: string) {
-  const siteNames = ["Colosseum", "Machu Picchu", "Great Wall", "Taj Mahal", "Petra", "Chichen Itza", "Angkor Wat"];
+  const siteNames = [
+    "Colosseum",
+    "Machu Picchu",
+    "Great Wall",
+    "Taj Mahal",
+    "Petra",
+    "Chichen Itza",
+    "Angkor Wat",
+  ];
   const eras = ["Ancient Roman", "Incan", "Ming Dynasty", "Mughal", "Nabatean", "Maya", "Khmer"];
-  const count = 2 + Math.floor(pseudoRandom(seed, Date.now() % 70000 / 20000) * 3);
+  const count = 2 + Math.floor(pseudoRandom(seed, (Date.now() % 70000) / 20000) * 3);
   return Array.from({ length: count }, (_, i) => ({
     site: pickRandom(siteNames, seed, i + 2),
     era: pickRandom(eras, seed, i + 8),
-    significance: pickRandom(["UNESCO World Heritage", "National Monument", "Cultural Icon"], seed, i + 15),
+    significance: pickRandom(
+      ["UNESCO World Heritage", "National Monument", "Cultural Icon"],
+      seed,
+      i + 15
+    ),
     annual_visitors: Math.round(oscillate(800000, 400000, seed, "ann" + i)),
     conservation_status: pickRandom(["good", "requires attention", "critical"], seed, i + 20),
   }));
 }
 
 function genExhibitions(seed: string) {
-  const count = 2 + Math.floor(pseudoRandom(seed, Date.now() % 60000 / 20000) * 2);
+  const count = 2 + Math.floor(pseudoRandom(seed, (Date.now() % 60000) / 20000) * 2);
   return Array.from({ length: count }, (_, i) => ({
-    theme: pickRandom(["Renaissance Masters", "Modern Art Movement", "Ancient Egypt", "Space Exploration", "Indigenous Cultures", "Photography Through Time"], seed, i + 3),
+    theme: pickRandom(
+      [
+        "Renaissance Masters",
+        "Modern Art Movement",
+        "Ancient Egypt",
+        "Space Exploration",
+        "Indigenous Cultures",
+        "Photography Through Time",
+      ],
+      seed,
+      i + 3
+    ),
     recommended_duration_days: 30 + Math.floor(pseudoRandom(seed, i + 10) * 90),
     estimated_visitors: Math.round(oscillate(45000, 20000, seed, "estv" + i)),
     ticket_price: Math.round(oscillate(18, 10, seed, "tkt" + i)),
@@ -468,11 +689,19 @@ function genExhibitions(seed: string) {
 }
 
 function genTours(seed: string) {
-  const count = 2 + Math.floor(pseudoRandom(seed, Date.now() % 50000 / 15000) * 2);
+  const count = 2 + Math.floor(pseudoRandom(seed, (Date.now() % 50000) / 15000) * 2);
   return Array.from({ length: count }, (_, i) => ({
-    site: pickRandom(["Colosseum VR", "Louvre 360", "British Museum Tour", "Luxor Temple Walk"], seed, i + 2),
+    site: pickRandom(
+      ["Colosseum VR", "Louvre 360", "British Museum Tour", "Luxor Temple Walk"],
+      seed,
+      i + 2
+    ),
     interest: pickRandom(["high", "medium", "growing"], seed, i + 8),
-    narration: pickRandom(["Expert guided", "Self-paced audio", "Interactive storytelling"], seed, i + 12),
+    narration: pickRandom(
+      ["Expert guided", "Self-paced audio", "Interactive storytelling"],
+      seed,
+      i + 12
+    ),
     audio_duration_seconds: 180 + Math.floor(pseudoRandom(seed, i + 18) * 600),
   }));
 }
@@ -483,7 +712,7 @@ function genTours(seed: string) {
 
 function genResources(seed: string) {
   const resources = ["Water", "Electricity", "Natural Gas", "Petroleum", "Coal", "Solar Capacity"];
-  const count = 3 + Math.floor(pseudoRandom(seed, Date.now() % 50000 / 12000) * 3);
+  const count = 3 + Math.floor(pseudoRandom(seed, (Date.now() % 50000) / 12000) * 3);
   return Array.from({ length: count }, (_, i) => ({
     resource: pickRandom(resources, seed, i + 2),
     demand: Math.round(oscillate(850, 300, seed, "dem" + i)),
@@ -494,8 +723,15 @@ function genResources(seed: string) {
 }
 
 function genServices(seed: string) {
-  const services = ["Waste Collection", "Public Transport", "Water Supply", "Parks & Rec", "Street Lighting", "Emergency Services"];
-  const count = 2 + Math.floor(pseudoRandom(seed, Date.now() % 60000 / 15000) * 3);
+  const services = [
+    "Waste Collection",
+    "Public Transport",
+    "Water Supply",
+    "Parks & Rec",
+    "Street Lighting",
+    "Emergency Services",
+  ];
+  const count = 2 + Math.floor(pseudoRandom(seed, (Date.now() % 60000) / 15000) * 3);
   return Array.from({ length: count }, (_, i) => ({
     service: pickRandom(services, seed, i + 2),
     kpi_score: Math.round(oscillate(75, 18, seed, "kpi" + i)),
@@ -506,8 +742,15 @@ function genServices(seed: string) {
 }
 
 function genWaste(seed: string) {
-  const districts = ["North District", "South District", "East Ward", "West End", "Central Hub", "Suburban Zone"];
-  const count = 2 + Math.floor(pseudoRandom(seed, Date.now() % 55000 / 15000) * 3);
+  const districts = [
+    "North District",
+    "South District",
+    "East Ward",
+    "West End",
+    "Central Hub",
+    "Suburban Zone",
+  ];
+  const count = 2 + Math.floor(pseudoRandom(seed, (Date.now() % 55000) / 15000) * 3);
   return Array.from({ length: count }, (_, i) => ({
     district: pickRandom(districts, seed, i + 2),
     total_waste_tons: Math.round(oscillate(450, 200, seed, "waste" + i)),
@@ -518,8 +761,15 @@ function genWaste(seed: string) {
 }
 
 function genGrid(seed: string) {
-  const regions = ["North Grid", "South Grid", "East Region", "West Zone", "Central Network", "Island Grid"];
-  const count = 2 + Math.floor(pseudoRandom(seed, Date.now() % 45000 / 12000) * 3);
+  const regions = [
+    "North Grid",
+    "South Grid",
+    "East Region",
+    "West Zone",
+    "Central Network",
+    "Island Grid",
+  ];
+  const count = 2 + Math.floor(pseudoRandom(seed, (Date.now() % 45000) / 12000) * 3);
   return Array.from({ length: count }, (_, i) => ({
     region: pickRandom(regions, seed, i + 2),
     current_load_mw: Math.round(oscillate(850, 300, seed, "load" + i)),
@@ -535,8 +785,15 @@ function genGrid(seed: string) {
 // ════════════════════════════════════════════════════════════════
 
 function genWorkflows(seed: string) {
-  const processes = ["Invoice Processing", "Employee Onboarding", "Expense Reporting", "Contract Approval", "Customer Onboarding", "Order Fulfillment"];
-  const count = 2 + Math.floor(pseudoRandom(seed, Date.now() % 60000 / 15000) * 3);
+  const processes = [
+    "Invoice Processing",
+    "Employee Onboarding",
+    "Expense Reporting",
+    "Contract Approval",
+    "Customer Onboarding",
+    "Order Fulfillment",
+  ];
+  const count = 2 + Math.floor(pseudoRandom(seed, (Date.now() % 60000) / 15000) * 3);
   return Array.from({ length: count }, (_, i) => ({
     process: pickRandom(processes, seed, i + 3),
     employees_involved: Math.floor(oscillate(25, 15, seed, "emp" + i)),
@@ -547,38 +804,72 @@ function genWorkflows(seed: string) {
 
 function genDocuments(seed: string) {
   const types = ["Invoice", "Contract", "Report", "Form", "Letter", "Proposal"];
-  const count = 2 + Math.floor(pseudoRandom(seed, Date.now() % 50000 / 12000) * 3);
+  const count = 2 + Math.floor(pseudoRandom(seed, (Date.now() % 50000) / 12000) * 3);
   return Array.from({ length: count }, (_, i) => ({
     document_type: pickRandom(types, seed, i + 2),
     confidence: parseFloat(oscillate(0.88, 0.1, seed, "docconf" + i).toFixed(2)),
     pages_processed: Math.floor(pseudoRandom(seed, i + 10) * 25 + 1),
-    fields_extracted: [pickRandom(["amount", "date", "name", "address", "tax_id"], seed, i + 15), pickRandom(["total", "vendor", "invoice_no", "description"], seed, i + 20)],
+    fields_extracted: [
+      pickRandom(["amount", "date", "name", "address", "tax_id"], seed, i + 15),
+      pickRandom(["total", "vendor", "invoice_no", "description"], seed, i + 20),
+    ],
   }));
 }
 
 function genSupport(seed: string) {
-  const queries = ["How do I reset my password?", "Can I upgrade my plan?", "Where is my order?", "Report a bug in the dashboard", "Request a feature", "Billing question"];
-  const count = 2 + Math.floor(pseudoRandom(seed, Date.now() % 45000 / 10000) * 3);
+  const queries = [
+    "How do I reset my password?",
+    "Can I upgrade my plan?",
+    "Where is my order?",
+    "Report a bug in the dashboard",
+    "Request a feature",
+    "Billing question",
+  ];
+  const count = 2 + Math.floor(pseudoRandom(seed, (Date.now() % 45000) / 10000) * 3);
   return Array.from({ length: count }, (_, i) => ({
     query: pickRandom(queries, seed, i + 3),
     detected_intent: pickRandom(["account", "billing", "support", "feature_request"], seed, i + 8),
     sentiment: pickRandom(["positive", "neutral", "negative"], seed, i + 12),
-    response: pickRandom(["Password reset link sent", "Plan upgrade options provided", "Order status updated", "Bug report submitted", "Feature request logged", "Billing explanation sent"], seed, i + 16),
+    response: pickRandom(
+      [
+        "Password reset link sent",
+        "Plan upgrade options provided",
+        "Order status updated",
+        "Bug report submitted",
+        "Feature request logged",
+        "Billing explanation sent",
+      ],
+      seed,
+      i + 16
+    ),
     escalated: pseudoRandom(seed, i + 20) > 0.7,
   }));
 }
 
 function genSupplyChain(seed: string) {
-  const chains = ["SC-Production", "SC-Distribution", "SC-Raw Materials", "SC-Finished Goods", "SC-Parts Supply"];
-  const count = 2 + Math.floor(pseudoRandom(seed, Date.now() % 55000 / 15000) * 2);
+  const chains = [
+    "SC-Production",
+    "SC-Distribution",
+    "SC-Raw Materials",
+    "SC-Finished Goods",
+    "SC-Parts Supply",
+  ];
+  const count = 2 + Math.floor(pseudoRandom(seed, (Date.now() % 55000) / 15000) * 2);
   return Array.from({ length: count }, (_, i) => ({
     chain_id: pickRandom(chains, seed, i + 2) + "-" + shortId("sc", i),
     health_score: Math.round(oscillate(72, 20, seed, "healthsc" + i)),
     lead_time_days: Math.round(oscillate(14, 8, seed, "lead" + i)),
     risk_level: pickRandom(["low", "medium", "high"], seed, i + 10),
-    bottlenecks: pseudoRandom(seed, i + 15) > 0.5
-      ? [pickRandom(["Supplier delay", "Customs hold", "Transport shortage", "Quality check"], seed, i + 20)]
-      : [],
+    bottlenecks:
+      pseudoRandom(seed, i + 15) > 0.5
+        ? [
+            pickRandom(
+              ["Supplier delay", "Customs hold", "Transport shortage", "Quality check"],
+              seed,
+              i + 20
+            ),
+          ]
+        : [],
   }));
 }
 
@@ -587,22 +878,45 @@ function genSupplyChain(seed: string) {
 // ════════════════════════════════════════════════════════════════
 
 function genLegal(seed: string) {
-  const docs = ["Service Agreement", "NDA", "Employment Contract", "Lease Agreement", "Partnership Agreement", "License Agreement"];
+  const docs = [
+    "Service Agreement",
+    "NDA",
+    "Employment Contract",
+    "Lease Agreement",
+    "Partnership Agreement",
+    "License Agreement",
+  ];
   const types = ["contract", "non-disclosure", "employment", "lease", "partnership"];
-  const count = 2 + Math.floor(pseudoRandom(seed, Date.now() % 60000 / 20000) * 3);
+  const count = 2 + Math.floor(pseudoRandom(seed, (Date.now() % 60000) / 20000) * 3);
   return Array.from({ length: count }, (_, i) => ({
     doc: pickRandom(docs, seed, i + 2),
     type: pickRandom(types, seed, i + 8),
     risk_score: pickRandom(["low", "medium", "high"], seed, i + 12),
     obligations: Array.from({ length: 1 + Math.floor(pseudoRandom(seed, i + 18) * 2) }, (_, j) =>
-      pickRandom(["Confidentiality", "Non-compete", "IP Assignment", "Indemnification", "Termination Notice"], seed, i + j + 20)
+      pickRandom(
+        [
+          "Confidentiality",
+          "Non-compete",
+          "IP Assignment",
+          "Indemnification",
+          "Termination Notice",
+        ],
+        seed,
+        i + j + 20
+      )
     ),
   }));
 }
 
 function genAccounting(seed: string) {
-  const vendors = ["Acme Corp", "TechSupply Inc", "DataServices LLC", "CloudHost Ltd", "ConsultPro Group"];
-  const count = 2 + Math.floor(pseudoRandom(seed, Date.now() % 50000 / 15000) * 3);
+  const vendors = [
+    "Acme Corp",
+    "TechSupply Inc",
+    "DataServices LLC",
+    "CloudHost Ltd",
+    "ConsultPro Group",
+  ];
+  const count = 2 + Math.floor(pseudoRandom(seed, (Date.now() % 50000) / 15000) * 3);
   return Array.from({ length: count }, (_, i) => ({
     invoice_id: "INV-" + shortId("inv", i),
     vendor: pickRandom(vendors, seed, i + 3),
@@ -613,12 +927,23 @@ function genAccounting(seed: string) {
 }
 
 function genDataMgmt(seed: string) {
-  const datasets = ["Customer DB", "Employee Records", "Transaction Logs", "Marketing Data", "Analytics Cache", "Support Tickets"];
-  const count = 2 + Math.floor(pseudoRandom(seed, Date.now() % 55000 / 18000) * 2);
+  const datasets = [
+    "Customer DB",
+    "Employee Records",
+    "Transaction Logs",
+    "Marketing Data",
+    "Analytics Cache",
+    "Support Tickets",
+  ];
+  const count = 2 + Math.floor(pseudoRandom(seed, (Date.now() % 55000) / 18000) * 2);
   return Array.from({ length: count }, (_, i) => ({
     dataset: pickRandom(datasets, seed, i + 2),
     pii_records_found: Math.floor(oscillate(1500, 1000, seed, "pii" + i)),
-    compliance: pickRandom(["GDPR-ready", "HIPAA-compliant", "PCI-DSS-ready", "needs_review", "compliant"], seed, i + 8),
+    compliance: pickRandom(
+      ["GDPR-ready", "HIPAA-compliant", "PCI-DSS-ready", "needs_review", "compliant"],
+      seed,
+      i + 8
+    ),
   }));
 }
 

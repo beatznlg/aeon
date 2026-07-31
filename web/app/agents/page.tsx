@@ -43,14 +43,9 @@ export default function AgentsPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {agents.map((agent, i) => (
-            <div
-              key={i}
-              className="border border-gray-200 p-5 rounded-xl shadow-sm bg-white"
-            >
+            <div key={i} className="border border-gray-200 p-5 rounded-xl shadow-sm bg-white">
               <h3 className="font-bold text-lg">{agent.app_id}</h3>
-              <p className="text-gray-500 text-sm mt-1">
-                Ticks: {agent.ticks}
-              </p>
+              <p className="text-gray-500 text-sm mt-1">Ticks: {agent.ticks}</p>
               <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
                 <div className="bg-gray-50 p-2 rounded">
                   <span className="block text-gray-500">Success Rate</span>
@@ -67,9 +62,7 @@ export default function AgentsPage() {
               </div>
               {agent.open_goals.length > 0 && (
                 <div className="mt-4">
-                  <span className="text-xs font-semibold text-gray-500 uppercase">
-                    Open Goals
-                  </span>
+                  <span className="text-xs font-semibold text-gray-500 uppercase">Open Goals</span>
                   <ul className="mt-1 list-disc list-inside text-sm text-gray-700">
                     {agent.open_goals.map((goal, idx) => (
                       <li key={idx}>{goal}</li>
