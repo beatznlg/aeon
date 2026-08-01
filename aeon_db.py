@@ -38,6 +38,13 @@ def _now():
     return datetime.now(timezone.utc)
 
 
+# Fixed IDs used by the bootstrap rows (default tenant + default workspace).
+# Creating the default tenant during init_db() lets a fresh Postgres/SQLite
+# database boot out of the box without foreign-key violations.
+DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000000"
+DEFAULT_WORKSPACE_ID = "00000000-0000-0000-0000-000000000000"
+
+
 class UUIDMixin:
     """Mixin that uses a UUID primary key compatible with Postgres and SQLite."""
 
@@ -483,15 +490,40 @@ class Database:
         with self.session() as s:
             return s.query(Membership).filter_by(user_id=str(user_id)).all()
 
+    def ensure_default_tenant(self) -> Tenant:
+        """Create the default tenant row if none exists (idempotent).
+
+        ``init_db()`` calls this so a fresh database is ready for the default
+        workspace and the fallback admin on first boot.
+        """
+        with self.session() as s:
+            tenant = s.query(Tenant).filter_by(slug="default").first()
+            if tenant:
+                return tenant
+            tenant = Tenant(
+                id=DEFAULT_TENANT_ID,
+                slug="default",
+                name="Default Tenant",
+                plan="enterprise",
+            )
+            s.add(tenant)
+            s.commit()
+            return tenant
+
     def ensure_default_workspace(self, tenant_id: str | None = None) -> Workspace:
-        """Create a default workspace if none exists (idempotent)."""
+        """Create a default workspace if none exists (idempotent).
+
+        The default tenant row is created first so fresh databases boot
+        without violating the ``workspaces.tenant_id`` foreign key.
+        """
+        self.ensure_default_tenant()
         with self.session() as s:
             ws = s.query(Workspace).filter_by(slug="default").first()
             if ws:
                 return ws
             ws = Workspace(
-                id="00000000-0000-0000-0000-000000000000",
-                tenant_id=tenant_id or "00000000-0000-0000-0000-000000000000",
+                id=DEFAULT_WORKSPACE_ID,
+                tenant_id=tenant_id or DEFAULT_TENANT_ID,
                 slug="default",
                 name="Default Workspace",
                 plan="enterprise",
@@ -513,8 +545,10 @@ def get_db() -> Database:
 
 
 def init_db():
-    """Create tables. Safe to call repeatedly."""
-    get_db().create_all()
+    """Create tables and ensure bootstrap rows. Safe to call repeatedly."""
+    db = get_db()
+    db.create_all()
+    db.ensure_default_tenant()
 
 
 def add_automation_execution(
