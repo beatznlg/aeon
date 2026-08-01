@@ -22,6 +22,12 @@ from flask import Blueprint, jsonify, request
 
 from aeon_auth import require_auth, require_workspace_role
 
+try:
+    from aeon_sector_data_gen import generate_sector_tool_data, refresh_all
+except Exception as _gen_import_exc:  # pragma: no cover
+    generate_sector_tool_data = None  # type: ignore
+    refresh_all = None  # type: ignore
+
 logger = logging.getLogger("aeon_sectors")
 
 sectors_bp = Blueprint("sectors", __name__)
@@ -49,16 +55,27 @@ def _get_workspace_id() -> str | None:
 def _get_sector_tool_data(sector: str, tool: str) -> tuple[dict | list | None, bool]:
     """Try to read sector tool data from the DB. Returns (data, from_db).
 
-    If no DB record exists, returns (None, False) so the caller can fall back
-    to its hardcoded mock response.
+    If no DB record exists, generate live data, persist it, and return it.
+    This keeps the dashboards showing real, time-varying data instead of
+    static mocks.
     """
     ws_id = _get_workspace_id()
     if not ws_id:
         return None, False
+
     try:
-        from aeon_db import get_sector_data
+        from aeon_db import get_sector_data, upsert_sector_data
         data = get_sector_data(str(ws_id), sector, tool)
-        return data, data is not None
+        if data is not None:
+            return data, True
+
+        # No persisted data yet — generate live data and store it.
+        if generate_sector_tool_data is None:
+            return None, False
+
+        live_data = generate_sector_tool_data(sector, tool)
+        upsert_sector_data(str(ws_id), sector, tool, live_data)
+        return live_data, True
     except Exception as exc:
         logger.debug("DB lookup failed for %s/%s: %s", sector, tool, exc)
         return None, False
@@ -780,14 +797,28 @@ for (sector, tool), meta in TOOL_META.items():
 @require_auth
 @require_workspace_role("VIEWER")
 def sector_data_get(sector: str, tool: str):
-    """Return sector tool data from the database (if seeded) or mock."""
+    """Return sector tool data from the database (if seeded) or mock.
+
+    The response uses the tool's ``data_key`` as the top-level key so the
+    frontend can consume it directly (e.g. ``{ok: true, threats: [...]}``).
+    """
     data, from_db = _get_sector_tool_data(sector, tool)
-    if from_db:
-        return jsonify({"ok": True, "data": data, "source": "db"})
-    # Fall back to mock data from TOOL_META
     meta = TOOL_META.get((sector, tool))
+    data_key = meta["data_key"] if meta else tool
+    source = "db" if from_db else "mock"
+
+    if from_db:
+        return jsonify({"ok": True, data_key: data, "source": source, "data_key": data_key})
+
+    # Fall back to mock data from TOOL_META
     if meta:
-        return jsonify({"ok": True, "data": meta["mock"], "source": "mock"})
+        return jsonify({
+            "ok": True,
+            data_key: meta["mock"],
+            "source": source,
+            "data_key": data_key,
+        })
+
     return jsonify({"ok": False, "error": f"No data found for {sector}/{tool}"}), 404
 
 
@@ -832,6 +863,50 @@ def sector_data_delete(sector: str, tool: str):
         return jsonify({"ok": False, "error": str(exc)}), 500
 
 
+# ── Unified sector dashboard ─────────────────────────────────────────────────
+@sectors_bp.route("/data/<sector>/dashboard", methods=["GET"])
+@require_auth
+@require_workspace_role("VIEWER")
+def sector_dashboard_get(sector: str):
+    """Aggregate every tool for a sector into a single dashboard payload.
+
+    Returns a dictionary keyed by each tool's ``data_key``.  This lets the
+    Next.js unified dashboard endpoint render the initial dashboard state
+    without making N individual tool requests.
+    """
+    from flask import request as _request
+
+    tools = [key for key in TOOL_META if key[0] == sector]
+    result: dict[str, Any] = {"ok": True, "source": "db"}
+    all_sources: set[str] = set()
+
+    for tool_key in tools:
+        tool = tool_key[1]
+        meta = TOOL_META[tool_key]
+        data_key = meta["data_key"]
+        data, from_db = _get_sector_tool_data(sector, tool)
+        if from_db:
+            all_sources.add("db")
+        else:
+            data = meta["mock"]
+            all_sources.add("mock")
+        result[data_key] = data
+
+    # If no tools exist for this sector, return a 404.
+    if not tools:
+        return jsonify({"ok": False, "error": f"Unknown sector: {sector}"}), 404
+
+    # Determine overall source label.
+    if all_sources == {"db"}:
+        result["source"] = "db"
+    elif all_sources == {"mock"}:
+        result["source"] = "mock"
+    else:
+        result["source"] = "mixed"
+
+    return jsonify(result)
+
+
 # ── Seed all sectors ─────────────────────────────────────────────────────────
 @sectors_bp.route("/seed", methods=["POST"])
 @require_auth
@@ -855,4 +930,72 @@ def sector_seed_all():
         })
     except Exception as exc:
         logger.exception("Sector seed failed")
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+
+# ── Refresh a single tool ────────────────────────────────────────────────────
+@sectors_bp.route("/data/<sector>/<tool>/refresh", methods=["POST"])
+@require_auth
+@require_workspace_role("ADMIN")
+def sector_tool_refresh(sector: str, tool: str):
+    """Regenerate live data for a single sector/tool and persist it."""
+    ws_id = _get_workspace_id()
+    if not ws_id:
+        return jsonify(_WORKSPACE_CTX_ERR), 400
+
+    if generate_sector_tool_data is None:
+        return jsonify({"ok": False, "error": "live generator unavailable"}), 503
+
+    try:
+        from aeon_db import upsert_sector_data
+        live_data = generate_sector_tool_data(sector, tool)
+        upsert_sector_data(str(ws_id), sector, tool, live_data)
+        return jsonify({"ok": True, "sector": sector, "tool": tool, "source": "db"})
+    except Exception as exc:
+        logger.exception("Failed to refresh %s/%s", sector, tool)
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+
+# ── Refresh all tools / a single sector ──────────────────────────────────────
+@sectors_bp.route("/refresh", methods=["POST"])
+@require_auth
+@require_workspace_role("ADMIN")
+def sector_refresh_all():
+    """Regenerate live data for the whole workspace.
+
+    Accepts an optional JSON body ``{"sector": "..."}`` to limit refresh to
+    one sector. Persists every generated dataset to Postgres.
+    """
+    ws_id = _get_workspace_id()
+    if not ws_id:
+        return jsonify(_WORKSPACE_CTX_ERR), 400
+
+    if generate_sector_tool_data is None or refresh_all is None:
+        return jsonify({"ok": False, "error": "live generator unavailable"}), 503
+
+    body = request.get_json(silent=True) or {}
+    target_sector = body.get("sector")
+
+    try:
+        from aeon_db import upsert_sector_data
+
+        if target_sector:
+            sectors_to_refresh = [target_sector]
+        else:
+            # Refresh every sector represented in TOOL_META.
+            sectors_to_refresh = sorted({key[0] for key in TOOL_META.keys()})
+
+        refreshed: dict[str, int] = {}
+        for sector in sectors_to_refresh:
+            tools = [tool for sec, tool in TOOL_META.keys() if sec == sector]
+            count = 0
+            for tool in tools:
+                live_data = generate_sector_tool_data(sector, tool)
+                upsert_sector_data(str(ws_id), sector, tool, live_data)
+                count += 1
+            refreshed[sector] = count
+
+        return jsonify({"ok": True, "workspace_id": ws_id, "refreshed": refreshed})
+    except Exception as exc:
+        logger.exception("Failed to refresh sectors")
         return jsonify({"ok": False, "error": str(exc)}), 500

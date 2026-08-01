@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
  * Sector API Router
  * =================
  * Handles /api/sector/:sector/:tool requests.
- * 1. Tries to proxy to the Python backend first
+ * 1. Tries to proxy to the Python backend first (/sectors/data/<sector>/<tool>)
  * 2. Falls back to generating time-varying local mock data (for live-updating charts)
  */
 export async function GET(request: NextRequest, { params }: { params: { path?: string[] } }) {
@@ -18,10 +18,9 @@ export async function GET(request: NextRequest, { params }: { params: { path?: s
 
   // If we have a sector + tool, try Python backend first, then fallback to local generator
   if (sector && tool) {
-    // Try to proxy to Python backend
+    // Try to proxy to Python backend (/sectors/data/<sector>/<tool>)
     try {
-      const backendPath = `/sectors/${path.join("/")}`;
-      // request is cloned before passing to avoid consuming the original stream
+      const backendPath = `/sectors/data/${path.join("/")}`;
       const proxyRes = await proxyApiRequest(request, { backendPath });
       if (proxyRes.ok) {
         return proxyRes;
@@ -45,21 +44,21 @@ export async function GET(request: NextRequest, { params }: { params: { path?: s
   }
 
   // If no specific sector/tool, proxy to Python backend
-  const backendPath = `/sectors/${path.join("/")}`;
+  const backendPath = `/sectors/data/${path.join("/")}`;
   return proxyApiRequest(request, { backendPath });
 }
 
 export async function POST(request: NextRequest, { params }: { params: { path?: string[] } }) {
-  const backendPath = `/sectors/${(params.path || []).join("/")}`;
+  const backendPath = `/sectors/data/${(params.path || []).join("/")}`;
   return proxyApiRequest(request, { backendPath });
 }
 
 export async function PATCH(request: NextRequest, { params }: { params: { path?: string[] } }) {
-  const backendPath = `/sectors/${(params.path || []).join("/")}`;
+  const backendPath = `/sectors/data/${(params.path || []).join("/")}`;
   return proxyApiRequest(request, { backendPath });
 }
 
 export async function DELETE(request: NextRequest, { params }: { params: { path?: string[] } }) {
-  const backendPath = `/sectors/${(params.path || []).join("/")}`;
+  const backendPath = `/sectors/data/${(params.path || []).join("/")}`;
   return proxyApiRequest(request, { backendPath });
 }

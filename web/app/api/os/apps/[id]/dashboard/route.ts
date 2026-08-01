@@ -5,10 +5,76 @@ import { logUsage } from "@/lib/usage";
 
 export const dynamic = "force-dynamic";
 
+const AEON_PYTHON_URL = process.env.AEON_PYTHON_URL || "http://127.0.0.1:5000";
+
+/**
+ * Maps a frontend sector id to the Python backend sector name.
+ * Only needed when the names differ (e.g. cultural_heritage vs heritage).
+ */
+const SECTOR_ALIASES: Record<string, string> = {
+  cultural_heritage: "heritage",
+};
+
+/**
+ * Maps Python tool data_key values to the keys the existing dashboard
+ * components expect. This lets the Python backend stay the source of
+ * truth while the frontend keeps its current shape.
+ */
+const SECTOR_KEY_MAP: Record<string, Record<string, string>> = {
+  cybersecurity: { news: "security_news" },
+  health: {
+    vitals: "patient_vitals",
+    interactions: "drug_interactions",
+    triage: "telehealth",
+  },
+  finance: {
+    risk: "risk_data",
+    market: "market_data",
+    applications: "credit_applications",
+    accounts: "payment_analysis",
+  },
+  retail: {
+    suppliers: "supplier_risks",
+    elasticity: "price_elasticity",
+  },
+  transport: {
+    zones: "traffic",
+    routes: "route_plan",
+  },
+  manufacturing: {
+    machines: "maintenance",
+    batches: "qc",
+    shipments: "logistics",
+  },
+  tourism: {
+    requests: "concierge",
+    venues: "visitors",
+  },
+  utilities: {
+    resources: "resource_data",
+    services: "public_services",
+    districts: "waste_data",
+    regions: "energy_grid",
+  },
+  cultural_heritage: {
+    venues: "visitor_data",
+    sites: "heritage_sites",
+    exhibitions: "exhibitions",
+    tours: "virtual_tours",
+  },
+  sme: {
+    workflows: "workflow_data",
+    documents: "document_queue",
+    tickets: "support_tickets",
+    chains: "supply_chain",
+  },
+};
+
 /**
  * Deterministic mock dashboard data for each AEON OS vertical.
- * Returns rich, realistic data so the frontend dashboards render
- * without needing Python subprocesses (works on Vercel).
+ * Used as a fallback when the Python backend is unavailable and to
+ * provide static-only sections (e.g. personalizer) that the backend
+ * does not yet expose.
  */
 const dashboards: Record<string, object> = {
   // ── Cybersecurity ───────────────────────────────────────────────────
@@ -861,15 +927,62 @@ const dashboards: Record<string, object> = {
   },
 };
 
+async function fetchLiveDashboard(
+  id: string,
+  req: Request,
+): Promise<Record<string, unknown> | null> {
+  try {
+    const pythonSector = SECTOR_ALIASES[id] ?? id;
+    const url = `${AEON_PYTHON_URL}/sectors/data/${encodeURIComponent(pythonSector)}/dashboard`;
+
+    const headers: Record<string, string> = {};
+    const authHeader = req.headers.get("authorization");
+    const cookie = req.headers.get("cookie");
+    if (authHeader) headers.Authorization = authHeader;
+    if (cookie) headers.Cookie = cookie;
+
+    const res = await fetch(url, { headers, cache: "no-store" });
+    if (!res.ok) return null;
+    const json = (await res.json()) as Record<string, unknown>;
+    return json.ok === true ? json : null;
+  } catch {
+    return null;
+  }
+}
+
+function transformLiveData(
+  id: string,
+  live: Record<string, unknown>,
+): Record<string, unknown> {
+  const keyMap = SECTOR_KEY_MAP[id] ?? {};
+  const transformed: Record<string, unknown> = {};
+  for (const [pythonKey, value] of Object.entries(live)) {
+    if (pythonKey === "ok" || pythonKey === "source") continue;
+    const frontendKey = keyMap[pythonKey] ?? pythonKey;
+    transformed[frontendKey] = value;
+  }
+  return transformed;
+}
+
 export async function GET(req: Request, { params }: { params: { id: string } }) {
   const id = params.id;
   const session = await auth();
   const userId = (session?.user as any)?.id;
   const workspaceId = (session?.user as any)?.workspaceId;
 
-  const data = dashboards[id];
-  if (!data) {
+  const staticData = dashboards[id];
+  if (!staticData) {
     return NextResponse.json({ ok: false, error: "no dashboard for this app" }, { status: 404 });
+  }
+
+  let responseData: Record<string, unknown> = { ...staticData };
+  let source = "static";
+
+  const live = await fetchLiveDashboard(id, req);
+  if (live) {
+    const transformed = transformLiveData(id, live);
+    responseData = { ...staticData, ...transformed, ok: true };
+    source = (live.source as string) ?? "live";
   }
 
   logAudit({
@@ -877,7 +990,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     email: session?.user?.email ?? undefined,
     action: "DASHBOARD",
     module: id,
-    metadata: { endpoint: req.url },
+    metadata: { endpoint: req.url, source },
   });
 
   logUsage({
@@ -888,5 +1001,5 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     quantity: 1,
   });
 
-  return NextResponse.json(data);
+  return NextResponse.json({ ...responseData, _source: source });
 }

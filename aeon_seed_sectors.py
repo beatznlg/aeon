@@ -276,48 +276,71 @@ def _sector_data() -> dict[str, dict[str, Any]]:
     }
 
 
-def seed_all_sectors(workspace_id: str) -> dict[str, int]:
-    """Seed all 10 sectors with demo data for a workspace.
+def seed_all_sectors(workspace_id: str, *, live: bool = True) -> dict[str, int]:
+    """Seed all 10 sectors with data for a workspace.
+
+    By default, ``live=True`` generates time-varying data and persists it to
+    Postgres. Pass ``live=False`` to fall back to the original static demo data.
 
     Returns a dict mapping sector_id -> number of tools seeded.
     Is idempotent — calling it again replaces existing data.
     """
-    from aeon_db import get_db, upsert_sector_data
+    from aeon_db import upsert_sector_data
 
-    data = _sector_data()
     result: dict[str, int] = {}
 
-    for sector_id, tools in data.items():
-        seeded = 0
-        for tool_name, tool_data in tools.items():
+    if live:
+        from aeon_sector_data_gen import generate_sector_tool_data, list_supported_tools
+        for sector_id, tool_name in list_supported_tools():
+            tool_data = generate_sector_tool_data(sector_id, tool_name)
             upsert_sector_data(workspace_id, sector_id, tool_name, tool_data)
-            seeded += 1
-        result[sector_id] = seeded
-        logger.info("Seeded %s: %d tools", sector_id, seeded)
+            result[sector_id] = result.get(sector_id, 0) + 1
+    else:
+        data = _sector_data()
+        for sector_id, tools in data.items():
+            for tool_name, tool_data in tools.items():
+                upsert_sector_data(workspace_id, sector_id, tool_name, tool_data)
+            result[sector_id] = len(tools)
+
+    for sector_id, count in result.items():
+        logger.info("Seeded %s: %d tools (live=%s)", sector_id, count, live)
 
     total = sum(result.values())
     logger.info("Total: %d tools seeded across %d sectors", total, len(result))
     return result
 
 
-def seed_sector(workspace_id: str, sector_id: str) -> int:
-    """Seed a single sector with demo data.
+def seed_sector(workspace_id: str, sector_id: str, *, live: bool = True) -> int:
+    """Seed a single sector with data.
+
+    By default, ``live=True`` generates time-varying data. Pass ``live=False``
+    to use the original static demo data.
 
     Returns the number of tools seeded (0 if sector unknown).
     """
-    from aeon_db import get_db, upsert_sector_data
+    from aeon_db import upsert_sector_data
 
-    data = _sector_data()
-    tools = data.get(sector_id)
-    if not tools:
-        logger.warning("Unknown sector: %s", sector_id)
-        return 0
+    if live:
+        from aeon_sector_data_gen import generate_sector_tool_data
+        from aeon_sector_data_gen import list_supported_tools
+        tools = [tool for sec, tool in list_supported_tools() if sec == sector_id]
+        if not tools:
+            logger.warning("Unknown sector: %s", sector_id)
+            return 0
+        for tool_name in tools:
+            upsert_sector_data(workspace_id, sector_id, tool_name, generate_sector_tool_data(sector_id, tool_name))
+    else:
+        from aeon_db import get_db
+        data = _sector_data()
+        tools = data.get(sector_id)
+        if not tools:
+            logger.warning("Unknown sector: %s", sector_id)
+            return 0
+        for tool_name, tool_data in tools.items():
+            upsert_sector_data(workspace_id, sector_id, tool_name, tool_data)
 
-    seeded = 0
-    for tool_name, tool_data in tools.items():
-        upsert_sector_data(workspace_id, sector_id, tool_name, tool_data)
-        seeded += 1
-    logger.info("Seeded %s: %d tools", sector_id, seeded)
+    seeded = len(tools)
+    logger.info("Seeded %s: %d tools (live=%s)", sector_id, seeded, live)
     return seeded
 
 
