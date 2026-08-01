@@ -321,8 +321,7 @@ def seed_sector(workspace_id: str, sector_id: str, *, live: bool = True) -> int:
     from aeon_db import upsert_sector_data
 
     if live:
-        from aeon_sector_data_gen import generate_sector_tool_data
-        from aeon_sector_data_gen import list_supported_tools
+        from aeon_sector_data_gen import generate_sector_tool_data, list_supported_tools
         tools = [tool for sec, tool in list_supported_tools() if sec == sector_id]
         if not tools:
             logger.warning("Unknown sector: %s", sector_id)
@@ -330,7 +329,6 @@ def seed_sector(workspace_id: str, sector_id: str, *, live: bool = True) -> int:
         for tool_name in tools:
             upsert_sector_data(workspace_id, sector_id, tool_name, generate_sector_tool_data(sector_id, tool_name))
     else:
-        from aeon_db import get_db
         data = _sector_data()
         tools = data.get(sector_id)
         if not tools:

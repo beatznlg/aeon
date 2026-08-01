@@ -874,8 +874,6 @@ def sector_dashboard_get(sector: str):
     Next.js unified dashboard endpoint render the initial dashboard state
     without making N individual tool requests.
     """
-    from flask import request as _request
-
     tools = [key for key in TOOL_META if key[0] == sector]
     result: dict[str, Any] = {"ok": True, "source": "db"}
     all_sources: set[str] = set()
@@ -979,15 +977,12 @@ def sector_refresh_all():
     try:
         from aeon_db import upsert_sector_data
 
-        if target_sector:
-            sectors_to_refresh = [target_sector]
-        else:
-            # Refresh every sector represented in TOOL_META.
-            sectors_to_refresh = sorted({key[0] for key in TOOL_META.keys()})
+        # Refresh a single sector, or every sector represented in TOOL_META.
+        sectors_to_refresh = [target_sector] if target_sector else sorted({key[0] for key in TOOL_META})
 
         refreshed: dict[str, int] = {}
         for sector in sectors_to_refresh:
-            tools = [tool for sec, tool in TOOL_META.keys() if sec == sector]
+            tools = [tool for sec, tool in TOOL_META if sec == sector]
             count = 0
             for tool in tools:
                 live_data = generate_sector_tool_data(sector, tool)

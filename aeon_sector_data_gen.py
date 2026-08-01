@@ -30,7 +30,7 @@ def _seed_rng(seed: int | None = None) -> random.Random:
         # across rapid refreshes within the same minute.
         now = _now()
         seed = now.year * 100000000 + now.month * 1000000 + now.day * 10000 + now.hour * 100 + now.minute
-    return random.Random(seed)
+    return random.Random(seed)  # nosec B311 - deterministic demo-data seed, not security-sensitive
 
 
 def _iso_now(offset_days: int = 0) -> str:
@@ -458,7 +458,7 @@ def _gen_tourism_pricing(rng: random.Random) -> list[dict[str, Any]]:
             "reason": rng.choice(["High demand", "Medium demand", "Low demand, hold", "Premium event weekend"]),
             "demand_level": rng.choice(["low", "medium", "high"]),
         }
-        for room, base in zip(rooms, [299, 259, 169, 599])
+        for room, base in zip(rooms, [299, 259, 169, 599], strict=False)
     ]
 
 
@@ -583,7 +583,7 @@ def _gen_heritage_exhibitions(rng: random.Random) -> list[dict[str, Any]]:
             "ticket_price": price,
             "projected_revenue": price * rng.randint(30000, 100000),
         }
-        for t, price in zip(themes, [25, 22, 28])
+        for t, price in zip(themes, [25, 22, 28], strict=False)
     ]
 
 
@@ -752,7 +752,7 @@ def refresh_sector(sector: str, seed: int | None = None) -> dict[str, dict | lis
     """Generate fresh live data for every tool in a sector."""
     return {
         tool: generate_sector_tool_data(sector, tool, seed=seed)
-        for sec, tool in _GENERATORS.keys()
+        for sec, tool in _GENERATORS
         if sec == sector
     }
 
@@ -760,6 +760,6 @@ def refresh_sector(sector: str, seed: int | None = None) -> dict[str, dict | lis
 def refresh_all(seed: int | None = None) -> dict[str, dict[str, dict | list]]:
     """Generate fresh live data for every sector/tool pair."""
     result: dict[str, dict[str, dict | list]] = {}
-    for sector, tool in _GENERATORS.keys():
+    for sector, tool in _GENERATORS:
         result.setdefault(sector, {})[tool] = generate_sector_tool_data(sector, tool, seed=seed)
     return result
