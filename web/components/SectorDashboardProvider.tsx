@@ -2,6 +2,16 @@
 
 import { useEffect, useState, createContext, useContext, useRef, type ReactNode } from "react";
 import type { DashboardData } from "./AeonOSDashboard";
+import {
+  getSectorTools,
+  listRegisteredSectors,
+  type SectorToolDefinition,
+} from "@/lib/sector-registry";
+export type { SectorToolDefinition as SectorTool } from "@/lib/sector-registry";
+
+const SECTOR_TOOLS: Record<string, SectorToolDefinition[]> = Object.fromEntries(
+  listRegisteredSectors().map((sector) => [sector.id, getSectorTools(sector.id)])
+);
 
 const REFRESH_INTERVAL_MS = 30_000;
 
@@ -18,83 +28,6 @@ const REFRESH_INTERVAL_MS = 30_000;
 
 // ─── Tool endpoint descriptor ────────────────────────────────────────────────
 
-export interface SectorTool {
-  /** Path segment for the tool, e.g. "threats" for /api/sector/cybersecurity/threats */
-  path: string;
-  /** Key in the response JSON where the data array/object lives, e.g. "threats" */
-  responseKey: string;
-  /** Target DashboardData property to map into, e.g. "threats" */
-  targetKey: string;
-  /** If true, the targetKey receives the entire response object (not just responseKey) */
-  entireResponse?: boolean;
-}
-
-// ─── Sector tool registrations ───────────────────────────────────────────────
-
-type SectorMap = Record<string, SectorTool[]>;
-
-const SECTOR_TOOLS: SectorMap = {
-  cybersecurity: [
-    { path: "threats", responseKey: "threats", targetKey: "threats" },
-    { path: "vulnerabilities", responseKey: "vulnerabilities", targetKey: "vulnerabilities" },
-    { path: "compliance", responseKey: "compliance", targetKey: "compliance" },
-    { path: "ip-reputation", responseKey: "ip_reputation", targetKey: "ip_reputation" },
-    { path: "news", responseKey: "news", targetKey: "security_news" },
-  ],
-  health: [
-    { path: "diagnostics", responseKey: "diagnostics", targetKey: "diagnostics" },
-    { path: "vitals", responseKey: "vitals", targetKey: "patient_vitals" },
-    { path: "drug-interactions", responseKey: "interactions", targetKey: "drug_interactions" },
-    { path: "telehealth", responseKey: "triage", targetKey: "telehealth" },
-  ],
-  finance: [
-    { path: "risk", responseKey: "risk", targetKey: "risk_data" },
-    { path: "market", responseKey: "market", targetKey: "market_data" },
-    { path: "fraud", responseKey: "fraud_cases", targetKey: "fraud_cases" },
-    { path: "credit", responseKey: "applications", targetKey: "credit_applications" },
-    { path: "payments", responseKey: "accounts", targetKey: "payment_analysis" },
-  ],
-  retail: [
-    { path: "forecast", responseKey: "forecast", targetKey: "forecast" },
-    { path: "inventory", responseKey: "inventory", targetKey: "inventory" },
-    { path: "suppliers", responseKey: "suppliers", targetKey: "supplier_risks" },
-    { path: "pricing", responseKey: "elasticity", targetKey: "price_elasticity" },
-  ],
-  transport: [
-    { path: "traffic", responseKey: "zones", targetKey: "traffic" },
-    { path: "fleet", responseKey: "fleet", targetKey: "fleet" },
-    { path: "routes", responseKey: "routes", targetKey: "route_plan" },
-  ],
-  manufacturing: [
-    { path: "maintenance", responseKey: "machines", targetKey: "maintenance" },
-    { path: "quality", responseKey: "batches", targetKey: "qc" },
-    { path: "logistics", responseKey: "shipments", targetKey: "logistics" },
-  ],
-  tourism: [
-    { path: "bookings", responseKey: "bookings", targetKey: "bookings" },
-    { path: "pricing", responseKey: "pricing", targetKey: "pricing" },
-    { path: "concierge", responseKey: "requests", targetKey: "concierge" },
-    { path: "visitors", responseKey: "venues", targetKey: "visitor_data" },
-  ],
-  utilities: [
-    { path: "resources", responseKey: "resources", targetKey: "resource_data" },
-    { path: "services", responseKey: "services", targetKey: "public_services" },
-    { path: "waste", responseKey: "districts", targetKey: "waste_data" },
-    { path: "grid", responseKey: "regions", targetKey: "energy_grid" },
-  ],
-  cultural_heritage: [
-    { path: "visitors", responseKey: "venues", targetKey: "visitor_data" },
-    { path: "sites", responseKey: "sites", targetKey: "heritage_sites" },
-    { path: "exhibitions", responseKey: "exhibitions", targetKey: "exhibitions" },
-    { path: "tours", responseKey: "tours", targetKey: "virtual_tours" },
-  ],
-  sme: [
-    { path: "workflows", responseKey: "workflows", targetKey: "workflow_data" },
-    { path: "documents", responseKey: "documents", targetKey: "document_queue" },
-    { path: "support", responseKey: "tickets", targetKey: "support_tickets" },
-    { path: "supply-chain", responseKey: "chains", targetKey: "supply_chain" },
-  ],
-};
 
 // ─── Context ─────────────────────────────────────────────────────────────────
 

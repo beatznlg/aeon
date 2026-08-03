@@ -7,5 +7,7 @@ if [ -f ".env.local" ]; then
   cp .env.local web/.env.local
 fi
 
-# Start the Next.js dev server bound to all interfaces on port 3000.
-cd web && npm run dev -- -H 0.0.0.0 -p 3000
+# Start the Next.js dev server bound to all interfaces.
+# Uses the platform-injected PORT when set (Freebuff isolated workspaces),
+# otherwise falls back to the standard 3000.
+cd web && npm run dev -- -H 0.0.0.0 -p ${PORT:-3000}

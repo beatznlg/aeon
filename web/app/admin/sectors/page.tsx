@@ -13,19 +13,12 @@ import {
   ScaleOnHover,
   motion,
 } from "@/components/animations";
+import { SECTOR_DEFINITIONS } from "@/lib/sector-registry";
 
 // ─── Sector definitions ──────────────────────────────────────────────────────
 
-interface SectorDef {
-  id: string;
-  name: string;
-  icon: string;
-  color: string;
-  description: string;
-  tools: { path: string; label: string; icon: string }[];
-}
-
-const SECTORS: SectorDef[] = [
+const SECTORS = SECTOR_DEFINITIONS;
+/* Legacy inline registry retained in history for reference only.
   {
     id: "cybersecurity",
     name: "Cybersecurity",
@@ -156,7 +149,7 @@ const SECTORS: SectorDef[] = [
       { path: "supply-chain", label: "Supply Chain", icon: "🔗" },
     ],
   },
-];
+];*/
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 

@@ -8,6 +8,7 @@ import {
   isWorkspaceAdmin,
   isModuleEnabled,
 } from "@/lib/theme-config";
+import { listRegisteredSectors } from "@/lib/sector-registry";
 
 interface Health {
   ok: boolean;
@@ -46,19 +47,12 @@ const CORE_LINKS: SidebarLinkDef[] = [
   { href: "/admin/sectors", label: "Sector Admin", icon: "🏢", moduleId: "sectorAdmin" },
 ];
 
-const MODULE_LINKS: SidebarLinkDef[] = [
-  { href: "/os/cybersecurity", label: "Security", icon: "🛡️", moduleId: "cybersecurity" },
-  { href: "/os/health", label: "Health", icon: "🏥", moduleId: "health" },
-  { href: "/os/finance", label: "Finance", icon: "💰", moduleId: "finance" },
-  { href: "/os/retail", label: "Commerce", icon: "📦", moduleId: "retail" },
-  { href: "/os/transport", label: "Transport", icon: "🚚", moduleId: "transport" },
-  { href: "/os/manufacturing", label: "Manufacturing", icon: "🏭", moduleId: "manufacturing" },
-  { href: "/os/tourism", label: "Tourism", icon: "🏨", moduleId: "tourism" },
-  { href: "/os/cultural_heritage", label: "Cultural", icon: "🏛️", moduleId: "cultural_heritage" },
-  { href: "/os/professional", label: "Professional", icon: "📋", moduleId: "professional" },
-  { href: "/os/utilities", label: "Utilities", icon: "⚡", moduleId: "utilities" },
-  { href: "/os/sme", label: "SME Suite", icon: "🏢", moduleId: "sme" },
-];
+const MODULE_LINKS: SidebarLinkDef[] = listRegisteredSectors().map((sector) => ({
+  href: `/os/${sector.id}`,
+  label: sector.name,
+  icon: sector.icon,
+  moduleId: sector.id,
+}));
 
 const SECURITY_LINKS: SidebarLinkDef[] = [
   { href: "/anomalies", label: "Anomalies", icon: "⚠️", moduleId: "security" },

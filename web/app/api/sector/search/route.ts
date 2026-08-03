@@ -1,68 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { listSectorTools, generateSectorData } from "@/lib/sector-data-gen";
+import { getSectorDefinition } from "@/lib/sector-registry";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60; // Can take time to search all 40+ tools
-
-// ─── Sector display metadata ──────────────────────────────────────────────────
-
-const SECTOR_INFO: Record<string, { name: string; icon: string }> = {
-  cybersecurity: { name: "Cybersecurity", icon: "🛡️" },
-  health: { name: "Healthcare", icon: "🏥" },
-  finance: { name: "Finance", icon: "💰" },
-  retail: { name: "Retail & E-commerce", icon: "📦" },
-  transport: { name: "Transport & Logistics", icon: "🚚" },
-  manufacturing: { name: "Manufacturing", icon: "🏭" },
-  tourism: { name: "Tourism & Hospitality", icon: "🏨" },
-  utilities: { name: "Utilities & Energy", icon: "⚡" },
-  cultural_heritage: { name: "Cultural Heritage", icon: "🎭" },
-  sme: { name: "SME Business Suite", icon: "🏢" },
-  professional: { name: "Professional Services", icon: "📋" },
-};
-
-const TOOL_LABELS: Record<string, string> = {
-  threats: "Threat Intelligence",
-  vulnerabilities: "Vulnerability Scan",
-  compliance: "Compliance Posture",
-  "ip-reputation": "IP Reputation",
-  news: "Security News",
-  diagnostics: "Diagnostic Analysis",
-  vitals: "Patient Vitals",
-  "drug-interactions": "Drug Interactions",
-  telehealth: "Telehealth Triage",
-  risk: "Risk Assessment",
-  market: "Market Forecast",
-  fraud: "Fraud Detection",
-  credit: "Credit Scoring",
-  payments: "Payment Analysis",
-  forecast: "Demand Forecast",
-  inventory: "Inventory Status",
-  suppliers: "Supplier Risk",
-  pricing: "Price Elasticity",
-  traffic: "Traffic Zones",
-  fleet: "Fleet Scheduling",
-  routes: "Route Planning",
-  maintenance: "Machine Health",
-  quality: "Quality Control",
-  logistics: "Smart Logistics",
-  bookings: "Booking Optimization",
-  concierge: "Concierge Triage",
-  visitors: "Visitor Analytics",
-  sites: "Heritage Sites",
-  exhibitions: "Exhibition Planning",
-  tours: "Virtual Tours",
-  resources: "Resource Optimization",
-  services: "Public Services KPIs",
-  waste: "Waste Management",
-  grid: "Energy Grid",
-  workflows: "Workflow Automation",
-  documents: "Document Processing",
-  support: "Customer Support",
-  "supply-chain": "Supply Chain",
-  legal: "Legal Document Review",
-  accounting: "Accounting Audit",
-  "data-management": "Data Compliance",
-};
 
 // ─── Search logic ────────────────────────────────────────────────────────────
 
@@ -148,8 +89,8 @@ export async function GET(req: NextRequest) {
 
       const matches = searchObject(data, q, 3);
       if (matches.length > 0) {
-        const info = SECTOR_INFO[s];
-        const label = TOOL_LABELS[t] || t;
+        const info = getSectorDefinition(s);
+        const toolDefinition = info?.tools.find((tool) => tool.path === t);
         for (const match of matches) {
           if (results.length >= limit) break;
           results.push({
@@ -157,7 +98,7 @@ export async function GET(req: NextRequest) {
             sectorName: info?.name || s,
             sectorIcon: info?.icon || "📊",
             toolPath: t,
-            toolLabel: label,
+            toolLabel: toolDefinition?.label || t,
             matchField: match.field,
             matchValue: match.value,
             record: {},
