@@ -18,7 +18,7 @@ interface AeonUser {
  */
 function getFallbackAdmin(): AeonUser | null {
   const email = process.env.ADMIN_EMAIL;
-  const password = process.env.ADMIN_PASSWORD;
+  const password = process.env.ADMIN_PASSWORD || process.env.ADMIN_PASSWORD_HASH;
   if (!email || !password) return null;
   return {
     id: "admin-fallback",
@@ -26,6 +26,18 @@ function getFallbackAdmin(): AeonUser | null {
     name: "Administrator",
     role: "ADMIN" as AeonRole,
   };
+}
+
+async function verifyFallbackPassword(password: string): Promise<boolean> {
+  const passwordHash = process.env.ADMIN_PASSWORD_HASH;
+  if (passwordHash) return bcrypt.compare(password, passwordHash);
+
+  const configuredPassword = process.env.ADMIN_PASSWORD;
+  if (!configuredPassword) return false;
+
+  // API Keys commonly stores ADMIN_PASSWORD as a plain value. Keep this
+  // fallback Edge-runtime compatible; hashed values should use the hash key.
+  return password === configuredPassword;
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
@@ -49,8 +61,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // ── Fallback admin (no Supabase required) ─────────────────────
         const fallback = getFallbackAdmin();
         if (fallback?.email === email) {
-          const fallbackPassword = process.env.ADMIN_PASSWORD || "";
-          const ok = await bcrypt.compare(password, fallbackPassword);
+          const ok = await verifyFallbackPassword(password);
           if (!ok) return null;
           return fallback;
         }

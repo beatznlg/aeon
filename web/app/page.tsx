@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, type CSSProperties } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { SystemHealthPanel, AlertBanner, AlertPanel } from "../components/LiveMonitor";
@@ -280,70 +280,65 @@ function StatusBarSection({
   activeModules: CommandModule[];
   totalTools: number;
 }) {
+  const cards = [
+    {
+      icon: "⟁",
+      label: "System Status",
+      value: health === null ? "..." : health.ok ? "Online" : "Connecting",
+      sub: health?.backend || "AEON stub",
+      background: "rgba(99,102,241,0.12)",
+      color: "var(--aeon-primary)",
+      valueColor: "var(--aeon-success)",
+    },
+    {
+      icon: "⊞",
+      label: "Active Modules",
+      value: String(activeModules.length),
+      sub: "Operational",
+      background: "rgba(16,185,129,0.12)",
+      color: "var(--aeon-success)",
+    },
+    {
+      icon: "⚡",
+      label: "Smart Tools",
+      value: String(totalTools),
+      sub: "AI-powered capabilities",
+      background: "rgba(245,158,11,0.12)",
+      color: "var(--aeon-warning)",
+    },
+    {
+      icon: "◈",
+      label: "LLM Backend",
+      value:
+        health?.backend === "aeon-kernel"
+          ? "AEON Kernel"
+          : health?.backend === "hf-inference"
+            ? "HF Inference"
+            : "Stub",
+      sub: "Pluggable · Hot-swappable",
+      background: "rgba(6,182,212,0.12)",
+      color: "#06b6d4",
+    },
+  ];
+
   return (
     <StaggerContainer className="status-bar">
-      <StaggerItem>
-        <div className="status-bar-card">
-          <div
-            className="status-bar-icon"
-            style={{ background: "rgba(99,102,241,0.12)", color: "var(--aeon-primary)" }}
-          >
-            ⟁
+      {cards.map((card) => (
+        <StaggerItem key={card.label}>
+          <div className="status-bar-card">
+            <div className="status-bar-icon" style={{ background: card.background, color: card.color }}>
+              {card.icon}
+            </div>
+            <div className="status-bar-info">
+              <span className="status-bar-label">{card.label}</span>
+              <span className="status-bar-value" style={card.valueColor ? { color: card.valueColor } : undefined}>
+                {card.value}
+              </span>
+              <span className="status-bar-sub">{card.sub}</span>
+            </div>
           </div>
-          <div className="status-bar-info">
-            <span className="status-bar-label">System Status</span>
-            <span className="status-bar-value" style={{ color: "var(--aeon-success)" }}>
-              {health === null ? "..." : health.ok ? "Online" : "Connecting"}
-            </span>
-            <span className="status-bar-sub">{health?.backend || "AEON stub"}</span>
-          </div>
-        </div>
-        <div className="status-bar-card">
-          <div
-            className="status-bar-icon"
-            style={{ background: "rgba(16,185,129,0.12)", color: "var(--aeon-success)" }}
-          >
-            ⊞
-          </div>
-          <div className="status-bar-info">
-            <span className="status-bar-label">Active Modules</span>
-            <span className="status-bar-value">{activeModules.length}</span>
-            <span className="status-bar-sub">Operational</span>
-          </div>
-        </div>
-        <div className="status-bar-card">
-          <div
-            className="status-bar-icon"
-            style={{ background: "rgba(245,158,11,0.12)", color: "var(--aeon-warning)" }}
-          >
-            ⚡
-          </div>
-          <div className="status-bar-info">
-            <span className="status-bar-label">Smart Tools</span>
-            <span className="status-bar-value">{totalTools}</span>
-            <span className="status-bar-sub">AI-powered capabilities</span>
-          </div>
-        </div>
-        <div className="status-bar-card">
-          <div
-            className="status-bar-icon"
-            style={{ background: "rgba(6,182,212,0.12)", color: "#06b6d4" }}
-          >
-            ◈
-          </div>
-          <div className="status-bar-info">
-            <span className="status-bar-label">LLM Backend</span>
-            <span className="status-bar-value text-sm">
-              {health?.backend === "aeon-kernel"
-                ? "AEON Kernel"
-                : health?.backend === "hf-inference"
-                  ? "HF Inference"
-                  : "Stub"}
-            </span>
-            <span className="status-bar-sub">Pluggable · Hot-swappable</span>
-          </div>
-        </div>
-      </StaggerItem>
+        </StaggerItem>
+      ))}
     </StaggerContainer>
   );
 }
@@ -401,15 +396,17 @@ function LiveMetricsSection({
 function ModuleGridSection({ modules, admin }: { modules: CommandModule[]; admin: boolean }) {
   return (
     <FadeIn delay={0.2}>
-      <h2 className="dashboard-section-title mt-8">Command Centers</h2>
+      <div className="dashboard-section-heading mt-8">
+        <div>
+          <h2 className="dashboard-section-title">Command Centers</h2>
+          <p className="dashboard-section-caption">Launch a specialized workspace or review what is currently paused.</p>
+        </div>
+        <span className="dashboard-section-count">{modules.length} surfaces</span>
+      </div>
       <StaggerContainer className="module-grid">
-        {modules.map((mod) => (
-          <StaggerItem key={mod.id}>
-            <Link
-              href={`/os/${mod.moduleId}`}
-              className={`module-card ${mod.status === "inactive" ? "opacity-50" : ""}`}
-              style={{ textDecoration: "none" }}
-            >
+        {modules.map((mod) => {
+          const cardContent = (
+            <>
               <div className="flex items-center gap-3">
                 <div
                   className="module-card-icon"
@@ -417,17 +414,19 @@ function ModuleGridSection({ modules, admin }: { modules: CommandModule[]; admin
                 >
                   {mod.icon || "⊞"}
                 </div>
-                <div>
+                <div className="min-w-0">
                   <div className="module-card-title">{mod.name}</div>
                   <div className="module-card-meta" style={{ borderTop: "none", paddingTop: 0 }}>
                     <span
                       className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wider ${mod.status === "active" ? "text-green-400 bg-green-400/10" : "text-slate-500 bg-slate-500/10"}`}
                     >
+                      <span className={`h-1.5 w-1.5 rounded-full ${mod.status === "active" ? "bg-green-400" : "bg-slate-500"}`} />
                       {mod.status}
                     </span>
                     <span className="text-[0.65rem] text-slate-500">{mod.tools} tools</span>
                   </div>
                 </div>
+                {mod.status === "active" && <span className="module-card-arrow" aria-hidden="true">↗</span>}
               </div>
               <div className="module-card-desc">{mod.desc}</div>
               {mod.status === "inactive" && admin && (
@@ -435,9 +434,25 @@ function ModuleGridSection({ modules, admin }: { modules: CommandModule[]; admin
                   Disabled in workspace settings
                 </div>
               )}
-            </Link>
-          </StaggerItem>
-        ))}
+            </>
+          );
+          const className = `module-card ${mod.status === "inactive" ? "module-card-inactive" : "module-card-active"}`;
+          const style = { "--module-color": mod.color } as CSSProperties;
+
+          return (
+            <StaggerItem key={mod.id}>
+              {mod.status === "active" ? (
+                <Link href={`/os/${mod.moduleId}`} className={className} style={style}>
+                  {cardContent}
+                </Link>
+              ) : (
+                <div className={className} style={style} aria-disabled="true" title="This command center is disabled for this workspace">
+                  {cardContent}
+                </div>
+              )}
+            </StaggerItem>
+          );
+        })}
       </StaggerContainer>
     </FadeIn>
   );

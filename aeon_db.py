@@ -538,9 +538,20 @@ _db: Database | None = None
 
 
 def get_db() -> Database:
+    """Return the process database, refreshing it when configuration changes.
+
+    The application normally keeps one database for its lifetime, but test
+    suites and worker processes can switch ``AEON_DATABASE_URL`` between
+    isolated contexts. Reusing the old engine in that case would leak rows
+    across workspaces/databases and make the runtime talk to the wrong store.
+    """
     global _db
-    if _db is None:
-        _db = Database()
+    configured_url = get_database_url()
+    if _db is None or _db.url != configured_url:
+        previous = _db
+        _db = Database(configured_url)
+        if previous is not None:
+            previous.engine.dispose()
     return _db
 
 
