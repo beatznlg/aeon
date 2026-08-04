@@ -85,6 +85,24 @@
         }
       }
     },
+    "/operations/snapshot": {
+      "get": {
+        "tags": ["Health"],
+        "summary": "Get a workspace-scoped operations snapshot",
+        "description": "Returns readiness, agent vitals, memory and goal counts, worker capacity, and automation status counts. Prompts, event contents, credentials, and job results are not returned.",
+        "operationId": "getOperationsSnapshot",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "app_id", "in": "query", "required": false, "description": "Optional workspace agent key. Defaults to ws-{workspace_id}.", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Workspace operations snapshot" },
+          "400": { "description": "Workspace is not selected" },
+          "401": { "description": "Authentication required" },
+          "403": { "description": "Agent key is outside the current workspace" }
+        }
+      }
+    },
     "/auth/login": {
       "post": {
         "tags": ["Auth"],

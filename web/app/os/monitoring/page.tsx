@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
+import { getAuthHeaders } from "@/lib/flask-auth";
 
 type MetricPoint = { label: string; value: number; color?: string };
 
@@ -41,10 +42,11 @@ type Incident = {
   id: string;
   title: string;
   severity: "critical" | "warning" | "info";
-  status: "firing" | "resolved" | "acknowledged";
-  timestamp: number;
-  duration: string;
-  source: string;
+  status: "open" | "acknowledged" | "resolved" | "closed";
+  created_at: string | null;
+  updated_at: string | null;
+  resolved_at: string | null;
+  metadata?: Record<string, unknown>;
 };
 
 const ALERT_RULES: AlertRule[] = [
@@ -205,21 +207,34 @@ export default function MonitoringPage() {
   const [activeTab, setActiveTab] = useState<"overview" | "alerts" | "incidents">("overview");
   const [metrics, setMetrics] = useState<MetricsSummary | null>(null);
   const [health, setHealth] = useState<HealthSnapshot | null>(null);
+  const [incidents, setIncidents] = useState<Incident[]>([]);
+  const [incidentError, setIncidentError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [healthRes, metricsRes] = await Promise.all([
+      const [healthRes, metricsRes, incidentsRes] = await Promise.all([
         fetch("/api/os/observability/health", { cache: "no-store" }),
         fetch("/api/os/observability/metrics", { cache: "no-store" }),
+        fetch("/api/os/observability/incidents", {
+          cache: "no-store",
+          headers: getAuthHeaders(),
+        }),
       ]);
       const h = await healthRes.json();
       const m = await metricsRes.json();
+      const i = await incidentsRes.json();
       if (h.ok) setHealth(h);
       if (m.ok) setMetrics(m);
-    } catch {
-      // silent
+      if (i.ok) {
+        setIncidents(Array.isArray(i.incidents) ? i.incidents : []);
+        setIncidentError(null);
+      } else {
+        setIncidentError(i.error || `Incident request failed (${incidentsRes.status})`);
+      }
+    } catch (error) {
+      setIncidentError(error instanceof Error ? error.message : "Monitoring request failed");
     } finally {
       setLoading(false);
     }
@@ -243,46 +258,6 @@ export default function MonitoringPage() {
       .slice(-14)
       .map(([k, v]) => ({ label: k.slice(5), value: v.count }));
   }, [metrics]);
-
-  // Simulated incidents for demonstration
-  const [incidents] = useState<Incident[]>([
-    {
-      id: "INC-001",
-      title: "High error rate on /chat endpoint",
-      severity: "warning",
-      status: "resolved",
-      timestamp: Date.now() - 3600000 * 3,
-      duration: "12m",
-      source: "Prometheus",
-    },
-    {
-      id: "INC-002",
-      title: "Job queue spike > 50 pending items",
-      severity: "info",
-      status: "resolved",
-      timestamp: Date.now() - 3600000 * 24,
-      duration: "5m",
-      source: "Prometheus",
-    },
-    {
-      id: "INC-003",
-      title: "Stripe webhook signature verification failures",
-      severity: "critical",
-      status: "acknowledged",
-      timestamp: Date.now() - 3600000 * 48,
-      duration: "30m",
-      source: "Alertmanager",
-    },
-    {
-      id: "INC-004",
-      title: "Integration run errors on GitHub connector",
-      severity: "warning",
-      status: "firing",
-      timestamp: Date.now() - 600000,
-      duration: "10m",
-      source: "Alertmanager",
-    },
-  ]);
 
   const kernelStatus = health?.kernel?.status || "unknown";
   const queueSize = health?.queue?.size ?? 0;
@@ -558,40 +533,52 @@ export default function MonitoringPage() {
           <p style={{ color: "var(--fg-soft)", fontSize: "0.85rem", marginBottom: 16 }}>
             Recent incidents detected by the monitoring stack. Firing incidents require attention.
           </p>
+          {incidentError && (
+            <div style={{ color: "var(--fg-mute)", padding: "10px 0 16px" }} role="status">
+              Live incidents are unavailable. Check the backend connection and try again.
+            </div>
+          )}
           <div className="mon-incident-list">
-            {incidents.map((inc) => (
-              <div key={inc.id} className="mon-incident-item">
-                <div className="mon-incident-left">
-                  <StatusDot
-                    status={
-                      inc.status === "firing"
-                        ? "firing"
-                        : inc.status === "resolved"
-                          ? "ok"
-                          : "warning"
-                    }
-                  />
-                  <div className="mon-incident-info">
-                    <div className="mon-incident-header">
-                      <strong className="mon-incident-title">{inc.title}</strong>
-                      <span className={`mon-incident-severity ${inc.severity}`}>
-                        {inc.severity}
-                      </span>
-                    </div>
-                    <div className="mon-incident-meta">
-                      <span>{inc.id}</span>
-                      <span className="mon-incident-dot">·</span>
-                      <span>{new Date(inc.timestamp).toLocaleString()}</span>
-                      <span className="mon-incident-dot">·</span>
-                      <span>Duration: {inc.duration}</span>
-                      <span className="mon-incident-dot">·</span>
-                      <span>Source: {inc.source}</span>
+            {incidents.length === 0 && !incidentError ? (
+              <div className="mon-empty">No incidents recorded for this workspace</div>
+            ) : (
+              incidents.map((inc) => (
+                <div key={inc.id} className="mon-incident-item">
+                  <div className="mon-incident-left">
+                    <StatusDot
+                      status={
+                        inc.status === "resolved" || inc.status === "closed" ? "ok" : "warning"
+                      }
+                    />
+                    <div className="mon-incident-info">
+                      <div className="mon-incident-header">
+                        <strong className="mon-incident-title">{inc.title}</strong>
+                        <span className={`mon-incident-severity ${inc.severity}`}>
+                          {inc.severity}
+                        </span>
+                      </div>
+                      <div className="mon-incident-meta">
+                        <span>{inc.id}</span>
+                        <span className="mon-incident-dot">·</span>
+                        <span>
+                          {inc.created_at
+                            ? new Date(inc.created_at).toLocaleString()
+                            : "Unknown time"}
+                        </span>
+                        <span className="mon-incident-dot">·</span>
+                        <span>{inc.resolved_at ? "Resolved" : "Ongoing"}</span>
+                        <span className="mon-incident-dot">·</span>
+                        <span>
+                          Source:{" "}
+                          {typeof inc.metadata?.source === "string" ? inc.metadata.source : "AEON"}
+                        </span>
+                      </div>
                     </div>
                   </div>
+                  <div className={`mon-incident-status ${inc.status}`}>{inc.status}</div>
                 </div>
-                <div className={`mon-incident-status ${inc.status}`}>{inc.status}</div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </section>
       )}

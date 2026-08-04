@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
+import { getAuthHeaders } from "@/lib/flask-auth";
 
 type UsageSummary = {
   period_days: number;
@@ -36,15 +37,98 @@ type HealthStatus = {
   storage: { usage_events_bytes?: number; usage_events_mb?: number; error?: string };
 };
 
-function useFetch<T>(url: string) {
+type OperationsSnapshot = {
+  ok: boolean;
+  error?: string;
+  workspace_id?: string;
+  generated_at?: string;
+  runtime?: {
+    backend: string;
+    ready: boolean;
+    environment?: { ok?: boolean; missing?: string[]; warnings?: string[] };
+  };
+  agent?: { app_id: string; ticks: number; vitals: Record<string, any> };
+  memory?: {
+    episodic_events: number;
+    semantic_nodes: number;
+    semantic_edges: number;
+    procedural_skills: number;
+  };
+  goals?: { open: number; total: number };
+  worker?: {
+    pending: number;
+    workers: number;
+    tracked_jobs: number;
+    status_counts: Record<string, number>;
+  };
+  automations?: {
+    policies: { total: number; enabled: number };
+    budgets: { total: number; enabled: number };
+    executions_last_24h: number;
+    execution_statuses: Record<string, number>;
+  };
+};
+
+function statusColor(status: string | undefined, healthy = "#22c55e") {
+  if (status === "ok" || status === "healthy") return healthy;
+  if (status === "warning" || status === "degraded") return "#f59e0b";
+  return "var(--fg-mute)";
+}
+
+function SnapshotStat({
+  label,
+  value,
+  detail,
+}: {
+  label: string;
+  value: string | number;
+  detail?: string;
+}) {
+  return (
+    <div
+      style={{
+        padding: "14px 16px",
+        background: "var(--bg-elevated)",
+        borderRadius: 10,
+        border: "1px solid var(--border)",
+      }}
+    >
+      <div
+        style={{
+          fontSize: "0.72rem",
+          color: "var(--fg-mute)",
+          textTransform: "uppercase",
+          letterSpacing: 0.8,
+        }}
+      >
+        {label}
+      </div>
+      <div style={{ fontSize: "1.55rem", fontWeight: 700, marginTop: 5 }}>{value}</div>
+      {detail && (
+        <div style={{ fontSize: "0.75rem", color: "var(--fg-mute)", marginTop: 3 }}>{detail}</div>
+      )}
+    </div>
+  );
+}
+
+function useFetch<T>(url: string, authenticated = false) {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
-    fetch(url, { cache: "no-store" })
-      .then((r) => r.json())
+    fetch(url, {
+      cache: "no-store",
+      headers: authenticated ? getAuthHeaders() : undefined,
+    })
+      .then(async (response) => {
+        const payload = await response.json();
+        if (!response.ok || payload?.ok === false) {
+          throw new Error(payload?.error || `Request failed (${response.status})`);
+        }
+        return payload;
+      })
       .then((d) => {
         if (!mounted) return;
         setData(d);
@@ -58,7 +142,7 @@ function useFetch<T>(url: string) {
     return () => {
       mounted = false;
     };
-  }, [url]);
+  }, [authenticated, url]);
 
   return { data, loading, error };
 }
@@ -175,6 +259,11 @@ export default function ObservabilityPage() {
   const { data: metrics } = useFetch<{ ok: boolean; metrics: UsageSummary }>(
     "/api/os/observability/metrics"
   );
+  const {
+    data: snapshot,
+    loading: snapshotLoading,
+    error: snapshotError,
+  } = useFetch<OperationsSnapshot>("/api/os/observability/snapshot", true);
 
   const actionBars = useMemo(() => {
     const byAction = usage?.summary?.by_action || {};
@@ -216,7 +305,7 @@ export default function ObservabilityPage() {
         </Link>
       </header>
 
-      {(usageLoading || billingLoading || healthLoading) && (
+      {(usageLoading || billingLoading || healthLoading || snapshotLoading) && (
         <div className="skeleton-page" role="status" aria-label="Loading observability">
           <span className="sr-only">Loading observability data…</span>
           <div
@@ -236,6 +325,21 @@ export default function ObservabilityPage() {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {snapshotError && (
+        <div
+          role="status"
+          style={{
+            marginTop: 16,
+            padding: "12px 16px",
+            border: "1px solid color-mix(in srgb, var(--accent) 35%, var(--border))",
+            borderRadius: 10,
+            color: "var(--fg-mute)",
+          }}
+        >
+          Live operations data is temporarily unavailable. Usage and billing data remain available.
         </div>
       )}
 
@@ -270,6 +374,85 @@ export default function ObservabilityPage() {
           <div style={{ fontSize: "2rem", fontWeight: 700 }}>{health?.queue?.size ?? 0}</div>
           <div style={{ fontSize: "0.85rem", color: "var(--fg-mute)" }}>
             {health?.queue?.status ?? "unknown"}
+          </div>
+        </Card>
+      </section>
+
+      {/* Live Operations Snapshot */}
+      <section style={{ marginTop: 24 }}>
+        <Card title="Live Operations Snapshot">
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 16,
+              marginBottom: 16,
+            }}
+          >
+            <div style={{ color: "var(--fg-mute)", fontSize: "0.85rem" }}>
+              Workspace-scoped runtime, memory, worker, and automation state.
+            </div>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 7,
+                whiteSpace: "nowrap",
+                fontSize: "0.82rem",
+              }}
+            >
+              <span
+                aria-hidden="true"
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: "50%",
+                  background: statusColor(snapshot?.runtime?.ready ? "ok" : "unknown"),
+                  display: "inline-block",
+                }}
+              />
+              {snapshot?.runtime?.ready
+                ? "Runtime ready"
+                : snapshot
+                  ? "Runtime needs attention"
+                  : "Waiting for runtime"}
+            </div>
+          </div>
+          <div
+            className="os-grid"
+            style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}
+          >
+            <SnapshotStat
+              label="Agent ticks"
+              value={snapshot?.agent?.ticks ?? 0}
+              detail={snapshot?.agent?.app_id ?? "No workspace agent"}
+            />
+            <SnapshotStat
+              label="Open goals"
+              value={snapshot?.goals?.open ?? 0}
+              detail={`${snapshot?.goals?.total ?? 0} total`}
+            />
+            <SnapshotStat
+              label="Memory events"
+              value={snapshot?.memory?.episodic_events ?? 0}
+              detail={`${snapshot?.memory?.semantic_nodes ?? 0} semantic nodes`}
+            />
+            <SnapshotStat
+              label="Pending work"
+              value={snapshot?.worker?.pending ?? 0}
+              detail={`${snapshot?.worker?.workers ?? 0} workers`}
+            />
+            <SnapshotStat
+              label="Policies"
+              value={snapshot?.automations?.policies?.enabled ?? 0}
+              detail={`${snapshot?.automations?.policies?.total ?? 0} total`}
+            />
+            <SnapshotStat
+              label="Executions · 24h"
+              value={snapshot?.automations?.executions_last_24h ?? 0}
+              detail={`${snapshot?.automations?.budgets?.enabled ?? 0} budgets enabled`}
+            />
           </div>
         </Card>
       </section>

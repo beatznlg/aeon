@@ -902,6 +902,120 @@ def dashboard_stats():
     })
 
 
+def _operations_agent_snapshot(agent: Any, app_id: str) -> dict[str, Any]:
+    """Return non-sensitive runtime counts for one agent instance."""
+    try:
+        vitals = agent.self_model.vitals()
+        if not isinstance(vitals, dict):
+            vitals = {}
+    except Exception:
+        vitals = {}
+
+    memory = getattr(agent, "memory", None)
+    episodic = getattr(memory, "episodic", None)
+    semantic = getattr(memory, "semantic", None)
+    procedural = getattr(memory, "procedural", None)
+    skill_meta = getattr(memory, "skill_meta", None)
+
+    try:
+        open_goals = agent.goals.open_goals()
+        if not isinstance(open_goals, list):
+            open_goals = list(open_goals or [])
+    except Exception:
+        open_goals = []
+    goals = getattr(agent, "goals", None)
+    all_goals = getattr(goals, "goals", None)
+
+    return {
+        "app_id": app_id,
+        "ticks": int(getattr(agent, "tick_count", 0) or 0),
+        "vitals": vitals,
+        "memory": {
+            "episodic_events": len(episodic) if episodic is not None else 0,
+            "semantic_nodes": len(getattr(semantic, "nodes", {}) or {}) if semantic else 0,
+            "semantic_edges": len(getattr(semantic, "edges", []) or []) if semantic else 0,
+            "procedural_skills": len(skill_meta or {}) if skill_meta is not None else len(getattr(procedural, "names", {}) or {}) if procedural else 0,
+        },
+        "goals": {
+            "open": len(open_goals),
+            "total": len(all_goals) if all_goals is not None else len(open_goals),
+        },
+    }
+
+
+def _operations_worker_snapshot() -> dict[str, Any]:
+    """Return queue capacity and status counts without exposing job payloads."""
+    with job_queue._lock:
+        statuses: dict[str, int] = {}
+        for result in job_queue._results.values():
+            status = result.get("status", "unknown") if isinstance(result, dict) else "unknown"
+            statuses[status] = statuses.get(status, 0) + 1
+        return {
+            "pending": int(job_queue._pending),
+            "workers": int(job_queue.workers),
+            "tracked_jobs": len(job_queue._results),
+            "status_counts": statuses,
+        }
+
+
+@app.route("/operations/snapshot", methods=["GET"])
+@require_auth
+@require_workspace_role("VIEWER")
+def operations_snapshot():
+    """Return a tenant-scoped, count-only operations snapshot for the dashboard."""
+    workspace_id = str(getattr(g, "workspace_id", None) or g.user.get("workspace_id") or "")
+    if not workspace_id:
+        return jsonify({"ok": False, "error": "workspace not selected"}), 400
+
+    app_id = request.args.get("app_id") or f"ws-{workspace_id}"
+    expected_app_id = f"ws-{workspace_id}"
+    if app_id != expected_app_id:
+        return jsonify({"ok": False, "error": "app_id must match the workspace agent"}), 403
+
+    agent = get_agent(app_id)
+    agent_snapshot = _operations_agent_snapshot(agent, app_id)
+    since = datetime.now(timezone.utc) - timedelta(hours=24)
+    policies = list_automation_policies(workspace_id, enabled_only=False)
+    budgets = list_automation_budgets(workspace_id, enabled_only=False)
+    executions = list_automation_executions(workspace_id, since=since)
+    execution_statuses: dict[str, int] = {}
+    for execution in executions:
+        status = execution.get("status") or "unknown"
+        execution_statuses[status] = execution_statuses.get(status, 0) + 1
+
+    readiness = validate_environment()
+    return jsonify({
+        "ok": True,
+        "workspace_id": workspace_id,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "runtime": {
+            "backend": "aeon_python_kernel",
+            "ready": bool(readiness.get("ok")),
+            "environment": readiness,
+        },
+        "agent": {
+            "app_id": agent_snapshot["app_id"],
+            "ticks": agent_snapshot["ticks"],
+            "vitals": agent_snapshot["vitals"],
+        },
+        "memory": agent_snapshot["memory"],
+        "goals": agent_snapshot["goals"],
+        "worker": _operations_worker_snapshot(),
+        "automations": {
+            "policies": {
+                "total": len(policies),
+                "enabled": sum(1 for policy in policies if bool(getattr(policy, "enabled", False))),
+            },
+            "budgets": {
+                "total": len(budgets),
+                "enabled": sum(1 for budget in budgets if bool(getattr(budget, "enabled", False))),
+            },
+            "executions_last_24h": len(executions),
+            "execution_statuses": execution_statuses,
+        },
+    })
+
+
 # Initialize Stripe at startup
 init_stripe(AEON_ROOT)
 
