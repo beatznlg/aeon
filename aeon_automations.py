@@ -1487,14 +1487,22 @@ def _notify_slack_approval(rule: dict[str, Any], approval_id: str, event: dict[s
                         "type": "button",
                         "text": {"type": "plain_text", "text": "Approve", "emoji": True},
                         "style": "primary",
-                        "value": json.dumps({"approval_id": approval_id, "decision": "approved"}),
+                        "value": json.dumps({
+                            "approval_id": approval_id,
+                            "decision": "approved",
+                            "workspace_id": workspace_id,
+                        }),
                         "action_id": "approve_request",
                     },
                     {
                         "type": "button",
                         "text": {"type": "plain_text", "text": "Reject", "emoji": True},
                         "style": "danger",
-                        "value": json.dumps({"approval_id": approval_id, "decision": "rejected"}),
+                        "value": json.dumps({
+                            "approval_id": approval_id,
+                            "decision": "rejected",
+                            "workspace_id": workspace_id,
+                        }),
                         "action_id": "reject_request",
                     },
                 ],
@@ -1533,6 +1541,7 @@ def resolve_approval(
     decision: str,
     resolver_user_id: str,
     reason: str | None = None,
+    workspace_id: str | None = None,
 ) -> dict[str, Any]:
     """Resolve a pending approval request.
 
@@ -1547,13 +1556,36 @@ def resolve_approval(
     if not db_url or not headers:
         return {"ok": False, "error": "Supabase not configured"}
 
+    # The authenticated HTTP route historically called this helper without an
+    # explicit workspace argument. Recover that trusted request context when
+    # available, but never permit a context-free lookup by ID: approval IDs are
+    # not tenant boundaries.
+    if not workspace_id:
+        try:
+            from flask import g, has_request_context
+            if has_request_context():
+                workspace_id = getattr(g, "workspace_id", None)
+                if not workspace_id:
+                    user_context = getattr(g, "user", {}) or {}
+                    workspace_id = user_context.get("workspace_id")
+        except (ImportError, RuntimeError):
+            workspace_id = None
+    if not workspace_id:
+        return {"ok": False, "error": "workspace_id is required to resolve an approval"}
+
     try:
         import requests
 
-        # Fetch the approval request
+        # Fetch the approval request constrained to the caller's workspace so an
+        # approval ID cannot cross tenants.
+        query = {
+            "id": f"eq.{approval_id}",
+            "workspace_id": f"eq.{workspace_id}",
+        }
         r = requests.get(
-            f"{db_url}/rest/v1/approval_requests?id=eq.{approval_id}",
+            f"{db_url}/rest/v1/approval_requests",
             headers=headers,
+            params=query,
             timeout=10,
         )
         r.raise_for_status()
@@ -1573,8 +1605,9 @@ def resolve_approval(
                 "resolved_at": "now",
             }
             requests.patch(
-                f"{db_url}/rest/v1/approval_requests?id=eq.{approval_id}",
+                f"{db_url}/rest/v1/approval_requests",
                 headers=headers,
+                params=query,
                 json=update,
                 timeout=10,
             ).raise_for_status()
@@ -1604,8 +1637,9 @@ def resolve_approval(
             "resolved_at": "now",
         }
         requests.patch(
-            f"{db_url}/rest/v1/approval_requests?id=eq.{approval_id}",
+            f"{db_url}/rest/v1/approval_requests",
             headers=headers,
+            params=query,
             json=update,
             timeout=10,
         ).raise_for_status()

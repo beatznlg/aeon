@@ -66,7 +66,9 @@ Or, if Railway supports config files, point the service to `railway.backend.json
    - Name: `AEON_DATABASE_URL`
    - Value: the copied Postgres URL
 
-Railway injects `PORT` automatically. The backend reads it via `AEON_PYTHON_PORT` and defaults to `5000`.
+Railway injects `PORT` automatically. The backend uses `AEON_PYTHON_PORT` when explicitly set, then the platform `PORT`, and defaults to `5000` for local Docker runs. The Docker healthcheck follows the same precedence.
+
+On container startup, the backend runs `alembic upgrade head` before seeding the optional admin user. Fresh databases receive the complete current schema. Legacy pre-Alembic databases are preserved, materialized from the ORM models, and stamped at the current migration head so future migrations remain ordered. Migration errors are fail-closed: the container exits instead of serving with a partial schema.
 
 ### 1.3 Required Backend Environment Variables
 
@@ -294,9 +296,12 @@ When deploying, verify the following security settings:
 
 - Set `AEON_CORS_ALLOWED_ORIGINS` to the production frontend domain (e.g. `https://app.aeon.ai`).
 - Enable HSTS by setting `AEON_HSTS=true` when running behind a TLS-terminating proxy.
+- Set `AEON_ENV=production`; production readiness fails without a strong `AEON_JWT_SECRET`/`NEXTAUTH_SECRET` and `AEON_MASTER_KMS_KEY`.
 - Keep `AEON_JWT_SECRET` and `NEXTAUTH_SECRET` strong and rotate them via `POST /auth/jwt/rotate`.
+- Never disable encryption or replace it with a base64/plaintext fallback; `cryptography` is a required dependency.
 - Rotate API keys regularly with `POST /api-keys/<id>/rotate`.
 - Review `Bandit` and `pip-audit` reports in the `quality-gate.yml` CI output before merging.
+- Treat Python lint, frontend lint, and frontend typecheck failures as blocking CI failures.
 
 ---
 

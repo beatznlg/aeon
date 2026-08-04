@@ -435,6 +435,11 @@ class Database:
         }
 
     def create_all(self):
+        """Create the ORM schema for local development and test databases.
+
+        Production containers should use :func:`migrate_database` so schema
+        changes are ordered and migration failures stop startup.
+        """
         Base.metadata.create_all(self.engine)
         self._run_migrations()
 
@@ -555,8 +560,46 @@ def get_db() -> Database:
     return _db
 
 
+def migrate_database(db: Database | None = None) -> Database:
+    """Apply Alembic migrations for a production database.
+
+    Fresh databases run the complete migration chain. Databases created by
+    older AEON releases may have tables but no ``alembic_version`` row; those
+    databases are first brought to the current ORM shape and then stamped at
+    Alembic head so future migrations remain ordered. Migration errors are
+    deliberately propagated to the caller so a deployment cannot start with
+    an incomplete schema.
+    """
+    from pathlib import Path
+
+    from alembic import command
+    from alembic.config import Config
+    from sqlalchemy import inspect
+
+    database = db or get_db()
+    configured_tables = set(Base.metadata.tables)
+    existing_tables = set(inspect(database.engine).get_table_names())
+    alembic_version_exists = "alembic_version" in existing_tables
+    has_legacy_schema = bool(existing_tables.intersection(configured_tables))
+    config = Config(str(Path(__file__).with_name("alembic.ini")))
+    config.set_main_option("sqlalchemy.url", database.url)
+
+    if has_legacy_schema and not alembic_version_exists:
+        # Preserve existing customer data while materializing newly added ORM
+        # tables. This path is only for pre-Alembic installations.
+        Base.metadata.create_all(database.engine)
+        # Keep the legacy compatibility path aligned with the existing
+        # lightweight theme_config patch before recording the migration head.
+        database._run_migrations()
+        command.stamp(config, "head")
+    else:
+        command.upgrade(config, "head")
+
+    return database
+
+
 def init_db():
-    """Create tables and ensure bootstrap rows. Safe to call repeatedly."""
+    """Create tables and ensure bootstrap rows for local/test use."""
     db = get_db()
     db.create_all()
     db.ensure_default_tenant()

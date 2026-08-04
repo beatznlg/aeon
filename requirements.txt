@@ -35,6 +35,7 @@ web3
 supabase>=2.0
 
 # --- identity, multi-tenancy, persistence ---
+cryptography>=42.0
 sqlalchemy>=2.0
 psycopg2-binary>=2.9
 pyjwt>=2.8

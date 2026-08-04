@@ -7,7 +7,8 @@ frontend and the Supabase user schema.
 
 Env:
   AEON_JWT_SECRET        Secret used to sign/verify access tokens.
-                         Defaults to a dev-only secret (do not use in prod).
+                         A development-only fallback is available only when
+                         AEON_ENV is dev/development/local/test.
   NEXTAUTH_SECRET        Also accepted so the frontend and backend share a secret.
   ADMIN_EMAIL            Fallback admin email (development only).
   ADMIN_PASSWORD_HASH    Fallback admin password hash (development only).
@@ -27,12 +28,20 @@ from werkzeug.security import check_password_hash
 
 # === Configuration ============================================================
 
-def _resolve_jwt_secret() -> str:
-    return os.environ.get("AEON_JWT_SECRET") or os.environ.get("NEXTAUTH_SECRET") or "dev-only-change-me"
-
-
 def _dev_mode() -> bool:
-    return os.environ.get("AEON_ENV", "development").lower() in ("dev", "development", "local")
+    return os.environ.get("AEON_ENV", "development").lower() in ("dev", "development", "local", "test")
+
+
+def _resolve_jwt_secret() -> str:
+    """Resolve the signing key and fail closed in production-like environments."""
+    configured = os.environ.get("AEON_JWT_SECRET") or os.environ.get("NEXTAUTH_SECRET")
+    if configured:
+        if not _dev_mode() and len(configured) < 32:
+            raise RuntimeError("AEON_JWT_SECRET/NEXTAUTH_SECRET must be at least 32 characters")
+        return configured
+    if _dev_mode():
+        return "dev-only-change-me"
+    raise RuntimeError("AEON_JWT_SECRET or NEXTAUTH_SECRET must be configured")
 
 
 # === JWT secret rotation support =============================================
@@ -44,7 +53,7 @@ def _resolve_jwt_secrets() -> list[str]:
     for rotation windows so existing tokens remain valid until they expire.
     """
     secrets = []
-    primary = os.environ.get("AEON_JWT_SECRET") or os.environ.get("NEXTAUTH_SECRET") or "dev-only-change-me"
+    primary = _resolve_jwt_secret()
     if primary:
         secrets.append(primary)
     # Optional previous/rotated secrets for key rotation (comma-separated)
@@ -81,17 +90,21 @@ def has_role(user_role: str | None, required: str) -> bool:
 
 
 def can_access_workspace(user_id: str | None, workspace_id: str | None) -> bool:
-    """Check workspace membership using the DB if available; otherwise trust headers in dev."""
+    """Return whether a user is a member of a workspace.
+
+    Development may use header-only identities, but production-like requests
+    never gain access merely because the membership database is unavailable.
+    """
     if not user_id or not workspace_id:
         return False
     try:
         from aeon_db import get_db
         db = get_db()
-        m = db.get_membership(workspace_id, user_id)
-        if m:
+        membership = db.get_membership(workspace_id, user_id)
+        if membership:
             return True
     except Exception:  #nosec B110
-        pass
+        return _dev_mode()
     return _dev_mode()
 
 
@@ -107,6 +120,8 @@ class _FallbackAdmin:
 
     @classmethod
     def matches(cls, email: str, password: str) -> bool:
+        if not _dev_mode():
+            return False
         pw_hash = os.environ.get("ADMIN_PASSWORD_HASH")
         if not pw_hash or email != cls.email:
             return False

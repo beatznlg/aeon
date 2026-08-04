@@ -92,9 +92,8 @@ jobs:
           echo "   https://colab.research.google.com/github/beatznlg/aeon/blob/main/colab_runner.ipynb"
 
   web-build-check:
-    name: Web TS type-check (non-blocking)
+    name: Web TS type-check
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v7
 

@@ -20,7 +20,7 @@ from typing import Any
 
 try:
     from cryptography.fernet import Fernet
-except ImportError:  # pragma: no cover - optional dependency path
+except ImportError:  # pragma: no cover - import failure is covered by runtime tests
     Fernet = None  # type: ignore[misc,assignment]
 
 
@@ -66,12 +66,8 @@ class DataResidencyManager:
         """
         payload_bytes = json.dumps(data, ensure_ascii=False).encode("utf-8")
 
-        # Degradable fallback when cryptography is not installed.
         if Fernet is None:
-            return base64.b64encode(payload_bytes).decode("utf-8"), {
-                "cipher": "base64",
-                "kms_id": kms_key_id,
-            }
+            raise RuntimeError("cryptography is required for envelope encryption")
 
         dek = Fernet.generate_key()
         f_dek = Fernet(dek)
@@ -88,9 +84,10 @@ class DataResidencyManager:
 
     def decrypt_envelope(self, encrypted_data: str, envelope: dict[str, Any]) -> dict[str, Any]:
         """Decrypt data that was previously encrypted with encrypt_envelope."""
-        if envelope.get("cipher") == "base64" or Fernet is None:
-            decoded = base64.b64decode(encrypted_data)
-            return json.loads(decoded.decode("utf-8"))
+        if Fernet is None:
+            raise RuntimeError("cryptography is required for envelope decryption")
+        if envelope.get("cipher") != "fernet":
+            raise ValueError("Unsupported envelope cipher")
 
         kek = self._derive_kek()
         wrapped_dek = envelope.get("wrapped_dek")

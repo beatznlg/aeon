@@ -48,8 +48,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=builder /root/.local /root/.local
 ENV PATH=/root/.local/bin:$PATH
 
-# Copy application code
-COPY aeon*.py requirements.txt ./
+# Copy application code and ordered database migrations
+COPY aeon*.py requirements.txt alembic.ini ./
+COPY alembic ./alembic
 
 # Copy scripts
 COPY scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
@@ -58,9 +59,10 @@ RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 # Create state directory
 RUN mkdir -p /app/state
 
-# Healthcheck
+# Healthcheck follows the same port precedence as aeon_server.py:
+# AEON_PYTHON_PORT -> PORT -> 5000.
 HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
-    CMD curl -f http://localhost:5000/health || exit 1
+    CMD-SHELL curl -f "http://localhost:${AEON_PYTHON_PORT:-${PORT:-5000}}/health" || exit 1
 
 EXPOSE 5000
 

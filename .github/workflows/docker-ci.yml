@@ -75,7 +75,6 @@ jobs:
             aeon_rag.py aeon_db.py \
             --max-line-length=120 --extend-ignore=E203,W503 \
             --statistics --count
-        continue-on-error: true
 
       # ── Node / Next.js checks ──────────────────────────────────────────
       - name: Set up Node 20
@@ -92,7 +91,6 @@ jobs:
       - name: Next.js lint
         run: npm run lint
         working-directory: web
-        continue-on-error: true
 
       - name: TypeScript typecheck
         run: npx tsc --noEmit

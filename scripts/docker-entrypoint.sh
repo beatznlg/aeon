@@ -39,20 +39,15 @@ except: sys.exit(1)
         sleep 2
     done
 
-    # ── Run DB schema bootstrap ────────────────────────────────────────────
-    echo "Running database schema bootstrap..."
+    # ── Run ordered DB migrations ───────────────────────────────────────────
+    echo "Running database migrations..."
     python3 -c "
 import sys
 sys.path.insert(0, '/app')
-from aeon_db import get_db, Base
-try:
-    db = get_db()
-    # Create all tables
-    Base.metadata.create_all(bind=db.engine)
-    print('  ✓ Tables created/verified')
-except Exception as e:
-    print(f'  ⚠ DB schema error (may be retried): {e}')
-" || echo "  ⚠ Schema bootstrap skipped (may already exist)"
+from aeon_db import migrate_database
+migrate_database()
+print('  ✓ Database schema is at Alembic head')
+"
 
     # ── Seed default admin ──────────────────────────────────────────────────
     if [ -n "${AEON_ADMIN_EMAIL:-}" ] && [ -n "${AEON_ADMIN_PASSWORD:-}" ]; then
@@ -92,5 +87,7 @@ else
 fi
 
 # ── Start Flask Kernel ──────────────────────────────────────────────────────
-echo "Starting AEON kernel server on 0.0.0.0:5000 ..."
+APP_HOST="${AEON_PYTHON_HOST:-0.0.0.0}"
+APP_PORT="${AEON_PYTHON_PORT:-${PORT:-5000}}"
+echo "Starting AEON kernel server on ${APP_HOST}:${APP_PORT} ..."
 exec python3 /app/aeon_server.py

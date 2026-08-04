@@ -21,6 +21,7 @@ Next.js routes proxy when AEON_PYTHON_URL is set, e.g.:
 import json
 import logging
 import os
+import re
 import secrets
 import threading
 import time
@@ -28,7 +29,6 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 from pathlib import Path
-import re
 from typing import Any
 
 import requests
@@ -83,7 +83,6 @@ from aeon_db import (
     get_automation_budget,
     get_automation_policy,
     list_automation_budgets,
-    list_automation_policies,
     update_automation_budget,
     update_automation_policy,
 )
@@ -493,12 +492,29 @@ _DEFAULT_CSP = "; ".join([
 ])
 
 
+def _cors_credentials_enabled() -> bool:
+    """Return whether credentialed cross-origin requests are enabled."""
+    return os.environ.get("AEON_CORS_ALLOW_CREDENTIALS", "").lower() in ("1", "true", "yes")
+
+
 def _origin_allowed(origin: str) -> bool:
-    """Return True if the origin is allowed to make CORS requests."""
-    allowed = os.environ.get("AEON_CORS_ALLOWED_ORIGINS", "*")
+    """Return True if the origin is allowed to make CORS requests.
+
+    A wildcard is intentionally never reflected into a specific origin. When
+    credentialed CORS is enabled, callers must configure an explicit allowlist;
+    browsers reject wildcard origins with credentials and reflection would be
+    unsafe.
+    """
+    allowed = os.environ.get("AEON_CORS_ALLOWED_ORIGINS", "*").strip()
     if allowed == "*":
-        return True
-    return origin.lower() in {o.strip().lower() for o in allowed.split(",")}
+        return not _cors_credentials_enabled()
+    return origin.lower() in {o.strip().lower() for o in allowed.split(",") if o.strip()}
+
+
+def _cors_allow_origin(origin: str) -> str:
+    """Return the safe value for ``Access-Control-Allow-Origin``."""
+    allowed = os.environ.get("AEON_CORS_ALLOWED_ORIGINS", "*").strip()
+    return "*" if allowed == "*" else origin
 
 
 @app.after_request
@@ -523,12 +539,12 @@ def _cors_preflight():
         origin = request.headers.get("Origin", "*")
         if _origin_allowed(origin):
             headers = {
-                "Access-Control-Allow-Origin": origin,
+                "Access-Control-Allow-Origin": _cors_allow_origin(origin),
                 "Access-Control-Allow-Methods": "GET, POST, PATCH, PUT, DELETE, OPTIONS",
                 "Access-Control-Allow-Headers": "Authorization, Content-Type, X-User-Id, X-Workspace-Id, X-User-Email, X-API-Key, X-API-Token",
                 "Access-Control-Max-Age": "86400",
             }
-            if os.environ.get("AEON_CORS_ALLOW_CREDENTIALS", "").lower() in ("1", "true", "yes"):
+            if _cors_credentials_enabled() and os.environ.get("AEON_CORS_ALLOWED_ORIGINS", "*").strip() != "*":
                 headers["Access-Control-Allow-Credentials"] = "true"
             return ("", 204, headers)
         return ("", 403, {})
@@ -538,14 +554,14 @@ def _cors_preflight():
 def _cors_headers(response):
     origin = request.headers.get("Origin")
     if origin and _origin_allowed(origin):
-        response.headers["Access-Control-Allow-Origin"] = origin
-        if os.environ.get("AEON_CORS_ALLOW_CREDENTIALS", "").lower() in ("1", "true", "yes"):
+        response.headers["Access-Control-Allow-Origin"] = _cors_allow_origin(origin)
+        if _cors_credentials_enabled() and os.environ.get("AEON_CORS_ALLOWED_ORIGINS", "*").strip() != "*":
             response.headers["Access-Control-Allow-Credentials"] = "true"
     return response
 
 # ── Configuration ────────────────────────────────────────────────────────────
 HOST = os.environ.get("AEON_PYTHON_HOST", "0.0.0.0")  #nosec B104
-PORT = int(os.environ.get("AEON_PYTHON_PORT", "5000"))
+PORT = int(os.environ.get("AEON_PYTHON_PORT") or os.environ.get("PORT", "5000"))
 AEON_ROOT = Path(os.environ.get("AEON_ROOT", "./aeon_state/server"))
 AEON_ROOT.mkdir(parents=True, exist_ok=True)
 
@@ -562,8 +578,22 @@ get_cache()
 
 # ── Environment validation ───────────────────────────────────────────────────
 def validate_environment() -> dict[str, Any]:
-    """Check environment variables and return a readiness report."""
+    """Check environment variables and return a readiness report.
+
+    Provider credentials remain optional because AEON supports multiple LLM and
+    persistence modes. Authentication and encryption prerequisites are required
+    in production-like environments so readiness cannot report a usable service
+    with unsafe defaults.
+    """
+    production_like = os.environ.get("AEON_ENV", "development").lower() not in {
+        "dev",
+        "development",
+        "local",
+        "test",
+    }
     checks = {
+        "AEON_JWT_SECRET or NEXTAUTH_SECRET": "required" if production_like else "optional",
+        "AEON_MASTER_KMS_KEY": "required" if production_like else "optional",
         "SUPABASE_URL": "optional",
         "SUPABASE_ANON_KEY": "optional",
         "SUPABASE_SERVICE_ROLE_KEY": "optional",
@@ -571,14 +601,22 @@ def validate_environment() -> dict[str, Any]:
         "OPENAI_API_KEY": "optional",
         "ANTHROPIC_API_KEY": "optional",
     }
+    configured = {
+        "AEON_JWT_SECRET or NEXTAUTH_SECRET": os.environ.get("AEON_JWT_SECRET") or os.environ.get("NEXTAUTH_SECRET"),
+        "AEON_MASTER_KMS_KEY": os.environ.get("AEON_MASTER_KMS_KEY"),
+    }
     report: dict[str, Any] = {"ok": True, "missing": [], "warnings": []}
     for name, kind in checks.items():
-        if not os.environ.get(name):
+        value = configured.get(name) if name in configured else os.environ.get(name)
+        if not value:
             if kind == "required":
                 report["ok"] = False
                 report["missing"].append(name)
             else:
                 report["warnings"].append(f"{name} not set")
+        elif name == "AEON_JWT_SECRET or NEXTAUTH_SECRET" and production_like and len(value) < 32:
+            report["ok"] = False
+            report["missing"].append(f"{name} (must be at least 32 characters)")
     return report
 
 
@@ -1218,6 +1256,42 @@ def auth_jwt_rotate():
 
 
 # ── Enterprise SSO (Phase 44) ───────────────────────────────────────────────
+_SSO_SECRET_KEY_MARKERS = frozenset({
+    "api_key",
+    "apikey",
+    "access_token",
+    "client_secret",
+    "encryption_key",
+    "password",
+    "private_key",
+    "refresh_token",
+    "secret",
+    "signing_key",
+    "token",
+})
+
+
+def _redact_sso_config(value: Any, key: str | None = None) -> Any:
+    """Return an API-safe copy of SSO configuration without credentials.
+
+    Provider configuration is stored as JSON because the SAML and OIDC schemas
+    differ. Never serialize credential-like values from that JSON to an admin
+    client; the backend still retains the original values for login flows.
+    """
+    normalized_key = key.lower().replace("-", "_") if key else ""
+    if normalized_key in _SSO_SECRET_KEY_MARKERS or normalized_key.endswith("_secret") or normalized_key.endswith("_private_key"):
+        return None
+    if isinstance(value, dict):
+        return {
+            child_key: redacted
+            for child_key, child_value in value.items()
+            if (redacted := _redact_sso_config(child_value, str(child_key))) is not None
+        }
+    if isinstance(value, list):
+        return [_redact_sso_config(item) for item in value]
+    return value
+
+
 @app.route("/sso/providers", methods=["GET", "POST"])
 @require_auth
 @require_workspace_role("ADMIN")
@@ -1237,7 +1311,7 @@ def sso_providers_index():
                     "protocol": p.protocol,
                     "name": p.name,
                     "active": p.active,
-                    "config": p.config,
+                    "config": _redact_sso_config(p.config or {}),
                     "attribute_mapping": p.attribute_mapping,
                     "created_at": p.created_at.isoformat() if p.created_at else None,
                 }
@@ -1278,9 +1352,11 @@ def sso_providers_index():
 @require_auth
 @require_workspace_role("ADMIN")
 def sso_provider_detail(provider_id: str):
-    """Get, update, or delete an SSO provider."""
+    """Get, update, or delete an SSO provider in the current workspace."""
+    workspace_id = str(g.workspace_id)
     provider = _get_sso_provider(provider_id)
-    if not provider:
+    if not provider or str(provider.workspace_id) != workspace_id:
+        # Do not reveal whether a provider exists in another workspace.
         return jsonify({"ok": False, "error": "provider not found"}), 404
 
     if request.method == "GET":
@@ -1292,7 +1368,7 @@ def sso_provider_detail(provider_id: str):
                 "protocol": provider.protocol,
                 "name": provider.name,
                 "active": provider.active,
-                "config": provider.config,
+                "config": _redact_sso_config(provider.config or {}),
                 "attribute_mapping": provider.attribute_mapping,
             },
         })
@@ -1323,7 +1399,7 @@ def sso_provider_detail(provider_id: str):
 def sso_oidc_login(provider_id: str):
     """Initiate an OIDC login by redirecting to the identity provider."""
     provider = _get_sso_provider(provider_id)
-    if not provider or provider.protocol != "oidc":
+    if not provider or not provider.active or provider.protocol != "oidc":
         return jsonify({"ok": False, "error": "OIDC provider not found"}), 404
 
     state = secrets.token_urlsafe(32)
@@ -1349,7 +1425,7 @@ def sso_oidc_callback(provider_id: str):
     cache.delete(f"oidc:state:{state}")
 
     provider = _get_sso_provider(provider_id)
-    if not provider or provider.protocol != "oidc":
+    if not provider or not provider.active or provider.protocol != "oidc":
         return jsonify({"ok": False, "error": "OIDC provider not found"}), 404
 
     try:
@@ -1366,7 +1442,7 @@ def sso_saml_login(provider_id: str):
     if not saml_available():
         return jsonify({"ok": False, "error": "SAML support is not installed"}), 501
     provider = _get_sso_provider(provider_id)
-    if not provider or provider.protocol != "saml":
+    if not provider or not provider.active or provider.protocol != "saml":
         return jsonify({"ok": False, "error": "SAML provider not found"}), 404
     try:
         redirect_url = initiate_saml_login(provider)
@@ -1382,7 +1458,7 @@ def sso_saml_acs(provider_id: str):
     if not saml_available():
         return jsonify({"ok": False, "error": "SAML support is not installed"}), 501
     provider = _get_sso_provider(provider_id)
-    if not provider or provider.protocol != "saml":
+    if not provider or not provider.active or provider.protocol != "saml":
         return jsonify({"ok": False, "error": "SAML provider not found"}), 404
     try:
         result = complete_saml_login(provider, request.form.to_dict(flat=True))
@@ -5133,7 +5209,13 @@ def approval_resolve(approval_id: str):
     if not decision:
         return jsonify({"ok": False, "error": "decision is required"}), 400
 
-    result = resolve_approval(approval_id, decision, resolver_user_id, reason)
+    result = resolve_approval(
+        approval_id,
+        decision,
+        resolver_user_id,
+        reason,
+        workspace_id=ctx.get("workspace_id"),
+    )
     if not result.get("ok"):
         return jsonify(result), 400
     return jsonify(result)
@@ -5238,11 +5320,18 @@ def slack_interactions():
 
     approval_id = value.get("approval_id")
     decision = value.get("decision")
-    if not approval_id or not decision:
-        return jsonify({"ok": False, "error": "missing approval_id or decision"}), 400
+    workspace_id = value.get("workspace_id")
+    if not approval_id or not decision or not workspace_id:
+        return jsonify({"ok": False, "error": "missing approval_id, decision, or workspace_id"}), 400
 
     slack_user = (payload.get("user") or {}).get("id") or "slack"
-    result = resolve_approval(str(approval_id), str(decision), str(slack_user), "Resolved via Slack")
+    result = resolve_approval(
+        str(approval_id),
+        str(decision),
+        str(slack_user),
+        "Resolved via Slack",
+        workspace_id=str(workspace_id),
+    )
     if not result.get("ok"):
         return jsonify({"ok": False, "error": result.get("error", "unknown")}), 400
 

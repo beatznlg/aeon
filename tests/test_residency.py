@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 
 import pytest
 
@@ -57,17 +56,16 @@ def test_envelope_encryption_no_kms_key(monkeypatch: pytest.MonkeyPatch):
         mgr.encrypt_envelope({"secret": "data"})
 
 
-def test_base64_fallback_when_cryptography_missing(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setitem(os.environ, "AEON_MASTER_KMS_KEY", "test-master-key")
-    # Simulate cryptography not being available
+def test_encryption_fails_closed_when_cryptography_missing(monkeypatch: pytest.MonkeyPatch):
     import aeon_residency as residency
 
     monkeypatch.setattr(residency, "Fernet", None)
     mgr = DataResidencyManager()
 
-    payload = {"secret": "data"}
-    encrypted, envelope = mgr.encrypt_envelope(payload, kms_key_id="key-1")
-    assert envelope["cipher"] == "base64"
+    with pytest.raises(RuntimeError, match="cryptography is required"):
+        mgr.encrypt_envelope({"secret": "data"}, kms_key_id="key-1")
 
-    decrypted = mgr.decrypt_envelope(encrypted, envelope)
-    assert decrypted == payload
+
+def test_decryption_rejects_legacy_or_unencrypted_envelope(clean_region: DataResidencyManager):
+    with pytest.raises(ValueError, match="Unsupported envelope cipher"):
+        clean_region.decrypt_envelope("not-encrypted", {"cipher": "base64"})
