@@ -246,6 +246,129 @@ class SlackAdapter(BaseAdapter):
             return {"ok": False, "error": str(e), "url": url}
 
 
+class JiraAdapter(BaseAdapter):
+    """Atlassian Jira Cloud REST API (Basic auth with email + API token)."""
+
+    def run(self, endpoint: str = "", method: str = "GET", payload: dict[str, Any] | None = None) -> dict[str, Any]:
+        import base64
+
+        base = self.config.base_url or "https://your-domain.atlassian.net"
+        email = self.config.secrets.get("email")
+        token = self.config.secrets.get("token")
+        url = f"{base.rstrip('/')}/rest/api/3/{endpoint.lstrip('/')}" if endpoint else f"{base.rstrip('/')}/rest/api/3/myself"
+        headers = {"Accept": "application/json"}
+        if email and token:
+            encoded = base64.b64encode(f"{email}:{token}".encode()).decode()
+            headers["Authorization"] = f"Basic {encoded}"
+        else:
+            return {"ok": False, "error": "missing email/token for Jira", "url": url}
+        try:
+            resp = requests.request(method.upper(), url, headers=headers, json=payload, timeout=30)
+            return {"ok": resp.status_code < 400, "status": resp.status_code, "data": _safe_json(resp), "url": url}
+        except Exception as e:
+            return {"ok": False, "error": str(e), "url": url}
+
+
+class SalesforceAdapter(BaseAdapter):
+    """Salesforce REST API (instance URL + session token or PAT)."""
+
+    def run(self, endpoint: str = "", method: str = "GET", payload: dict[str, Any] | None = None) -> dict[str, Any]:
+        instance = self.config.secrets.get("instance_url") or self.config.base_url or ""
+        token = self.config.secrets.get("token")
+        api_version = self.config.options.get("api_version", "v62.0")
+        if not instance or not token:
+            return {"ok": False, "error": "missing instance_url/token for Salesforce"}
+        url = f"{instance.rstrip('/')}/services/data/{api_version}/{endpoint.lstrip('/')}"
+        headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+        try:
+            resp = requests.request(method.upper(), url, headers=headers, json=payload, timeout=30)
+            return {"ok": resp.status_code < 400, "status": resp.status_code, "data": _safe_json(resp), "url": url}
+        except Exception as e:
+            return {"ok": False, "error": str(e), "url": url}
+
+
+class ServiceNowAdapter(BaseAdapter):
+    """ServiceNow Table API (Basic auth with user + password)."""
+
+    def run(self, endpoint: str = "", method: str = "GET", payload: dict[str, Any] | None = None) -> dict[str, Any]:
+        import base64
+
+        base = self.config.base_url or ""
+        user = self.config.secrets.get("user")
+        password = self.config.secrets.get("password")
+        if not base or not user or not password:
+            return {"ok": False, "error": "missing base_url/user/password for ServiceNow"}
+        url = f"{base.rstrip('/')}/api/now/table/{endpoint.lstrip('/')}" if endpoint else f"{base.rstrip('/')}/api/now/table/incident"
+        headers = {"Accept": "application/json"}
+        encoded = base64.b64encode(f"{user}:{password}".encode()).decode()
+        headers["Authorization"] = f"Basic {encoded}"
+        try:
+            resp = requests.request(method.upper(), url, headers=headers, json=payload, timeout=30)
+            return {"ok": resp.status_code < 400, "status": resp.status_code, "data": _safe_json(resp), "url": url}
+        except Exception as e:
+            return {"ok": False, "error": str(e), "url": url}
+
+
+class SendGridAdapter(BaseAdapter):
+    """SendGrid v3 API — email sending and generic API access."""
+
+    def run(self, endpoint: str = "", method: str = "GET", payload: dict[str, Any] | None = None) -> dict[str, Any]:
+        token = self.config.secrets.get("token")
+        if not token:
+            return {"ok": False, "error": "missing SendGrid token"}
+        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+        if not endpoint:
+            url = "https://api.sendgrid.com/v3/mail/send"
+            body = {
+                "personalizations": [{"to": [{"email": (payload or {}).get("to", "")}]}],
+                "from": {"email": (payload or {}).get("from", self.config.options.get("from_email", ""))},
+                "subject": (payload or {}).get("subject", "AEON OS notification"),
+                "content": [{"type": "text/plain", "value": (payload or {}).get("text", "")}],
+            }
+            if not body["personalizations"][0]["to"][0]["email"] or not body["from"]["email"]:
+                return {"ok": False, "error": "to and from email are required"}
+        else:
+            url = f"https://api.sendgrid.com/v3/{endpoint.lstrip('/')}"
+            body = payload
+        try:
+            resp = requests.request(method.upper(), url, headers=headers, json=body, timeout=30)
+            return {"ok": resp.status_code < 400, "status": resp.status_code, "data": _safe_json(resp), "url": url}
+        except Exception as e:
+            return {"ok": False, "error": str(e), "url": url}
+
+
+class TwilioAdapter(BaseAdapter):
+    """Twilio SMS/Messaging API (Basic auth with account SID + auth token)."""
+
+    def run(self, endpoint: str = "", method: str = "GET", payload: dict[str, Any] | None = None) -> dict[str, Any]:
+        import base64
+
+        sid = self.config.secrets.get("account_sid")
+        token = self.config.secrets.get("auth_token")
+        if not sid or not token:
+            return {"ok": False, "error": "missing account_sid/auth_token for Twilio"}
+        if not endpoint:
+            url = f"https://api.twilio.com/2010-04-01/Accounts/{sid}/Messages.json"
+            body = {
+                "From": (payload or {}).get("from", self.config.options.get("from_number", "")),
+                "To": (payload or {}).get("to", ""),
+                "Body": (payload or {}).get("text", "AEON OS notification"),
+            }
+            if not body["From"] or not body["To"]:
+                return {"ok": False, "error": "from and to phone numbers are required"}
+        else:
+            url = f"https://api.twilio.com{endpoint if endpoint.startswith('/') else '/' + endpoint}"
+            body = payload
+        headers = {"Accept": "application/json"}
+        encoded = base64.b64encode(f"{sid}:{token}".encode()).decode()
+        headers["Authorization"] = f"Basic {encoded}"
+        try:
+            resp = requests.request(method.upper(), url, headers=headers, json=body, timeout=30)
+            return {"ok": resp.status_code < 400, "status": resp.status_code, "data": _safe_json(resp), "url": url}
+        except Exception as e:
+            return {"ok": False, "error": str(e), "url": url}
+
+
 def _safe_json(resp: requests.Response) -> Any:
     try:
         return resp.json()
@@ -301,6 +424,51 @@ INTEGRATION_CATALOG = [
         "optional_secrets": [],
         "adapter_type": "huggingface",
     },
+    {
+        "id": "jira",
+        "name": "Jira Cloud",
+        "icon": "🎯",
+        "description": "Create and query Jira Cloud issues, epics, and sprints via the REST API v3 with email + API token.",
+        "required_secrets": ["email", "token"],
+        "optional_secrets": [],
+        "adapter_type": "jira",
+    },
+    {
+        "id": "salesforce",
+        "name": "Salesforce",
+        "icon": "☁️",
+        "description": "Query Salesforce records and objects (accounts, leads, cases) via the REST API with instance URL + token.",
+        "required_secrets": ["instance_url", "token"],
+        "optional_secrets": [],
+        "adapter_type": "salesforce",
+    },
+    {
+        "id": "servicenow",
+        "name": "ServiceNow",
+        "icon": "🧾",
+        "description": "Read and update ServiceNow tables (incidents, change requests, CMDB) via the Table API with basic auth.",
+        "required_secrets": ["user", "password"],
+        "optional_secrets": [],
+        "adapter_type": "servicenow",
+    },
+    {
+        "id": "sendgrid",
+        "name": "SendGrid",
+        "icon": "✉️",
+        "description": "Send transactional email via SendGrid v3, or call any v3 API endpoint with a bearer token.",
+        "required_secrets": ["token"],
+        "optional_secrets": [],
+        "adapter_type": "sendgrid",
+    },
+    {
+        "id": "twilio",
+        "name": "Twilio SMS",
+        "icon": "📱",
+        "description": "Send SMS and MMS via the Twilio Messages API with account SID + auth token.",
+        "required_secrets": ["account_sid", "auth_token"],
+        "optional_secrets": [],
+        "adapter_type": "twilio",
+    },
 ]
 
 
@@ -318,6 +486,11 @@ ADAPTER_MAP = {
     "github": GitHubAdapter,
     "huggingface": HuggingFaceAdapter,
     "slack": SlackAdapter,
+    "jira": JiraAdapter,
+    "salesforce": SalesforceAdapter,
+    "servicenow": ServiceNowAdapter,
+    "sendgrid": SendGridAdapter,
+    "twilio": TwilioAdapter,
 }
 
 

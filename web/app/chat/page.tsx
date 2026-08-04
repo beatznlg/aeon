@@ -30,6 +30,16 @@ interface HistoryItem {
   content?: string;
 }
 
+interface PluginTool {
+  plugin_id: string;
+  name: string;
+  description: string;
+  icon: string;
+  category: string;
+  verified: boolean;
+  entry_points: Record<string, string>;
+}
+
 // ── Markdown formatting ───────────────────────────────────────────────────
 function formatMessage(text: string) {
   const parts = text.split(/(```[\s\S]*?```|\*\*[\s\S]*?\*\*)/g);
@@ -70,6 +80,10 @@ export default function ChatPage() {
   const [showProviderMenu, setShowProviderMenu] = useState(false);
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [wsReady, setWsReady] = useState(false);
+  const [plugins, setPlugins] = useState<PluginTool[]>([]);
+  const [pluginsOpen, setPluginsOpen] = useState(false);
+  const [pluginsLoading, setPluginsLoading] = useState(false);
+  const [pluginsError, setPluginsError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -157,13 +171,6 @@ export default function ChatPage() {
       .catch(() => setHistoryLoaded(true));
   }, [wsReady, historyLoaded, workspace?.id]);
 
-  // ── Auto-scroll ──
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [messages, loading]);
-
   // ── Get auth headers for API calls ──
   const getAuthHeaders = useCallback((): Record<string, string> => {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -173,6 +180,32 @@ export default function ChatPage() {
     }
     return headers;
   }, []);
+
+  // ── Load plugin tools the agent can call in this workspace ──
+  const loadPlugins = useCallback(async () => {
+    if (!workspace?.id) return;
+    setPluginsLoading(true);
+    setPluginsError(null);
+    try {
+      const res = await fetch("/api/os/agent-plugins", {
+        headers: getAuthHeaders(),
+        cache: "no-store",
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || "failed to load plugins");
+      setPlugins(data.plugins || []);
+    } catch (e: any) {
+      setPluginsError(e.message || "failed to load plugins");
+    } finally {
+      setPluginsLoading(false);
+    }
+  }, [workspace?.id, getAuthHeaders]);
+
+  useEffect(() => {
+    if (wsReady && workspace?.id) {
+      loadPlugins();
+    }
+  }, [wsReady, workspace?.id, loadPlugins]);
 
   // ── Send message ──
   const sendMessage = async () => {
@@ -246,6 +279,19 @@ export default function ChatPage() {
           )}
         </div>
         <div className="chat-header-right">
+          {/* Plugin tools toggle */}
+          <button
+            className={`chat-plugins-toggle ${pluginsOpen ? "active" : ""}`}
+            onClick={() => setPluginsOpen(!pluginsOpen)}
+            title="Plugin tools the agent can call in this workspace"
+          >
+            <span className="chat-plugins-toggle-icon">🔌</span>
+            <span>Plugins</span>
+            <span className={`chat-plugins-count ${plugins.length > 0 ? "has" : ""}`}>
+              {plugins.length}
+            </span>
+          </button>
+
           {/* Provider selector */}
           <div className="provider-selector">
             <button
@@ -300,6 +346,82 @@ export default function ChatPage() {
           </div>
         </div>
       </header>
+
+      {/* ── Plugin tools drawer ── */}
+      {pluginsOpen && (
+        <>
+          <div className="chat-plugins-overlay" onClick={() => setPluginsOpen(false)} />
+          <aside className="chat-plugins-drawer">
+            <div className="chat-plugins-header">
+              <div className="chat-plugins-title">
+                <span className="chat-plugins-title-icon">🔌</span>
+                <span>Plugin tools</span>
+              </div>
+              <button
+                className="chat-plugins-refresh"
+                onClick={loadPlugins}
+                title="Refresh plugins"
+                disabled={pluginsLoading}
+              >
+                {pluginsLoading ? "…" : "↻"}
+              </button>
+            </div>
+            <p className="chat-plugins-subtitle">
+              The agent can call these installed plugins in this workspace. Click an entry point to
+              compose a command.
+            </p>
+
+            {pluginsLoading && plugins.length === 0 && (
+              <div className="chat-plugins-status">Loading plugins…</div>
+            )}
+            {pluginsError && <div className="chat-plugins-status error">{pluginsError}</div>}
+            {!pluginsLoading && !pluginsError && plugins.length === 0 && (
+              <div className="chat-plugins-status">
+                No plugin tools installed in this workspace yet.{" "}
+                <a href="/os/marketplace">Browse the Marketplace →</a>
+              </div>
+            )}
+
+            <div className="chat-plugins-list">
+              {plugins.map((plugin) => (
+                <div key={plugin.plugin_id} className="chat-plugin-card">
+                  <div className="chat-plugin-head">
+                    <span className="chat-plugin-icon">{plugin.icon}</span>
+                    <span className="chat-plugin-name">
+                      {plugin.name}
+                      {plugin.verified && (
+                        <span className="chat-plugin-verified" title="Verified by AEON Labs">
+                          ✓
+                        </span>
+                      )}
+                    </span>
+                    <span className="chat-plugin-category">{plugin.category}</span>
+                  </div>
+                  <div className="chat-plugin-desc">{plugin.description}</div>
+                  <div className="chat-plugin-entries">
+                    {Object.entries(plugin.entry_points).map(([entry, description]) => (
+                      <button
+                        key={entry}
+                        className="chat-plugin-entry"
+                        title={description}
+                        onClick={() => {
+                          setInput(
+                            `Use the plugin_call tool to run plugin "${plugin.plugin_id}" entry "${entry}" with params {"input": "<your input>"}.`
+                          );
+                          setPluginsOpen(false);
+                          inputRef.current?.focus();
+                        }}
+                      >
+                        {entry}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </aside>
+        </>
+      )}
 
       {/* ── Messages ── */}
       <div ref={scrollRef} className="chat-messages-area">

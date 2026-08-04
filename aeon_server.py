@@ -34,7 +34,9 @@ from typing import Any
 import requests
 from flask import Flask, Response, g, jsonify, request
 
+from aeon_assurance import evaluate_evidence
 from aeon_cache import get_cache
+from aeon_compliance import evaluate_environment
 from aeon_db import (
     add_automation_execution,
     get_workspace_security_config,
@@ -49,6 +51,7 @@ from aeon_db import (
     list_siem_integrations,
     update_workspace_theme_config,
     upsert_workspace_security_config,
+    verify_audit_chain,
 )
 from aeon_db import (
     get_db as _get_local_db,
@@ -75,6 +78,7 @@ from aeon_automations import _compute_next_run, _execute_action, evaluate_condit
 from aeon_budgets import (
     check_automation_budget,
 )
+from aeon_compliance_routes import register_compliance_routes
 from aeon_db import (
     create_automation_budget,
     create_automation_policy,
@@ -90,6 +94,8 @@ from aeon_governance import GovernanceManager, get_governance
 from aeon_integrations import IntegrationManager, WebhookDelivery, get_integration_catalog
 from aeon_llm import get_llm_provider, list_providers, set_active_provider
 from aeon_llm import test_provider as _test_llm_provider
+from aeon_marketplace_routes import register_marketplace_routes
+from aeon_mcp_routes import register_mcp_routes
 from aeon_policies import (
     PolicyEffect,
     evaluate_automation_policy,
@@ -129,6 +135,7 @@ from aeon_sso import (
 from aeon_sso import (
     update_sso_provider as _update_sso_provider,
 )
+from aeon_traces_routes import register_trace_routes
 
 # Supported automation action types (kept in sync with aeon_automations.py)
 _AUTOMATION_ACTION_TYPES = frozenset({
@@ -222,6 +229,10 @@ from aeon_stripe import get_stripe_client, init_stripe
 from aeon_usage import BillingCalculator, HealthCollector, UsageMeter
 
 app = Flask(__name__)
+register_marketplace_routes(app)
+register_trace_routes(app)
+register_mcp_routes(app)
+register_compliance_routes(app)
 
 from aeon_anomalies_routes import anomalies_bp
 from aeon_dr_routes import dr_bp
@@ -617,6 +628,62 @@ def validate_environment() -> dict[str, Any]:
         elif name == "AEON_JWT_SECRET or NEXTAUTH_SECRET" and production_like and len(value) < 32:
             report["ok"] = False
             report["missing"].append(f"{name} (must be at least 32 characters)")
+
+    if production_like:
+        compliance = evaluate_environment()
+        report["compliance"] = compliance
+        if not compliance["ok"]:
+            report["ok"] = False
+            report["missing"].extend(compliance["missing"])
+            report["missing"].extend(compliance["invalid"])
+
+        # A technically configured environment is not release-ready until the
+        # required, non-sensitive assurance observations have been recorded and
+        # the tamper-evident ledger verifies. This remains evidence tracking,
+        # never a certification or authorization decision.
+        profile = os.environ.get("AEON_COMPLIANCE_PROFILE", "baseline")
+        assurance = evaluate_evidence(profile)
+        report["assurance_evidence"] = assurance
+        if not assurance["ok"]:
+            report["ok"] = False
+            report["missing"].extend(
+                f"assurance evidence: {control}" for control in assurance.get("missing", [])
+            )
+            report["missing"].extend(
+                f"assurance evidence failed: {control}" for control in assurance.get("failed", [])
+            )
+            report["missing"].extend(
+                f"assurance ledger: {error}" for error in assurance.get("ledger", {}).get("errors", [])
+            )
+            report["missing"].extend(
+                f"assurance profile: {error}" for error in assurance.get("invalid", [])
+            )
+
+        # When immutable audit is declared, verify the tamper-evident audit
+        # hash chain as a real technical control rather than a bare flag. A
+        # broken or legacy chain fails readiness closed.
+        if os.environ.get("AEON_AUDIT_IMMUTABLE", "").strip().lower() in ("1", "true", "yes"):
+            try:
+                audit_report = verify_audit_chain()
+                report["audit_integrity"] = audit_report
+                if not audit_report.get("ok"):
+                    report["ok"] = False
+                    report["missing"].extend(
+                        f"audit chain: {error}" for error in audit_report.get("errors", [])
+                    )
+            except Exception as exc:
+                report["ok"] = False
+                report["missing"].append(f"audit chain: verification unavailable ({exc})")
+    else:
+        report["compliance"] = {
+            "ok": True,
+            "profile": os.environ.get("AEON_COMPLIANCE_PROFILE", "baseline"),
+            "mode": "development-only; production profile not evaluated",
+        }
+        report["assurance_evidence"] = {
+            "ok": True,
+            "mode": "development-only; assurance ledger not evaluated",
+        }
     return report
 
 
@@ -817,7 +884,11 @@ def get_agent(app_id: str) -> ReflectiveAgent:
             (root / "substrates").mkdir(parents=True, exist_ok=True)
             (root / "skills").mkdir(parents=True, exist_ok=True)
             (root / "goals").mkdir(parents=True, exist_ok=True)
-            _agents[app_id] = ReflectiveAgent(root=root)
+            agent = ReflectiveAgent(root=root)
+            if app_id.startswith("ws-"):
+                # Workspace-scoped agents resolve plugin discovery to their workspace.
+                agent.workspace_id = app_id[len("ws-"):]
+            _agents[app_id] = agent
         return _agents[app_id]
 
 
@@ -1253,6 +1324,25 @@ def auth_jwt_rotate():
     new_secret = data.get("secret")
     result = rotate_jwt_secret(new_secret)
     return jsonify({"ok": True, "rotation": result})
+
+
+@app.route("/audit/integrity", methods=["GET"])
+@require_auth
+@require_role("ADMIN")
+def audit_integrity():
+    """Return a tamper-evidence report for the audit hash chain.
+
+    The report contains counts and error descriptions only; it never returns
+    audit row contents. A 503 means the chain does not verify (tampering,
+    broken links, or legacy rows without hashes).
+    """
+    try:
+        report = verify_audit_chain()
+    except Exception as exc:
+        logger.warning("Audit chain verification failed: %s", exc)
+        return jsonify({"ok": False, "error": "audit chain verification unavailable"}), 503
+    status = 200 if report.get("ok") else 503
+    return jsonify({"ok": bool(report.get("ok")), "audit_chain": report}), status
 
 
 # ── Enterprise SSO (Phase 44) ───────────────────────────────────────────────

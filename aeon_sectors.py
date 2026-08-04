@@ -103,6 +103,61 @@ ToolMeta = dict  # type alias for clarity: {"data_key": str, "id_field": str | N
 
 TOOL_META: dict[tuple[str, str], ToolMeta] = {}
 
+# Backend-compatible alias for the UI's explicit cultural_heritage identifier.
+SECTOR_ALIASES: dict[str, str] = {"cultural_heritage": "heritage"}
+
+
+def canonical_sector_id(sector: str) -> str:
+    """Normalize a public sector identifier to the backend registry key."""
+    normalized = str(sector or "").strip().lower()
+    return SECTOR_ALIASES.get(normalized, normalized)
+
+
+def get_sector_tool_meta(sector: str, tool: str) -> ToolMeta | None:
+    """Return metadata for a known sector/tool pair, including aliases."""
+    return TOOL_META.get((canonical_sector_id(sector), str(tool or "").strip().lower()))
+
+
+def list_sector_catalog() -> list[dict[str, Any]]:
+    """Return the non-sensitive sector/tool contract for clients and SDKs."""
+    catalog: dict[str, dict[str, Any]] = {}
+    for (sector, tool), meta in TOOL_META.items():
+        entry = catalog.setdefault(sector, {"id": sector, "aliases": [], "tools": []})
+        entry["tools"].append({
+            "id": tool,
+            "data_key": meta["data_key"],
+            "id_field": meta.get("id_field"),
+            "value_type": "array" if isinstance(meta.get("mock"), list) else "object",
+            "supports_item_crud": bool(meta.get("id_field")),
+            "data_source": "workspace database with generated seed fallback",
+        })
+    for alias, canonical in SECTOR_ALIASES.items():
+        if canonical in catalog:
+            catalog[canonical]["aliases"].append(alias)
+    return [catalog[key] for key in sorted(catalog)]
+
+
+def _unknown_sector_tool(sector: str, tool: str):
+    """Return a consistent 404 response for an unknown registry key."""
+    return jsonify({"ok": False, "error": "unknown sector tool", "sector": sector, "tool": tool}), 404
+
+
+def _validate_dataset_payload(meta: ToolMeta, payload: Any) -> str | None:
+    """Validate a complete dataset against its registered object/array shape."""
+    expected = list if isinstance(meta.get("mock"), list) else dict
+    if not isinstance(payload, expected):
+        label = "array" if expected is list else "object"
+        return f"payload for {meta['data_key']} must be a JSON {label}"
+    return None
+
+
+def _validate_item_payload(payload: Any) -> str | None:
+    """Validate an item-level CRUD body before persistence."""
+    if not isinstance(payload, dict):
+        return "item payload must be a JSON object"
+    return None
+
+
 # ── Cybersecurity ────────────────────────────────────────────────────────────
 
 TOOL_META[("cybersecurity", "threats")] = {
@@ -604,7 +659,6 @@ TOOL_META[("sme", "supply-chain")] = {
     ],
 }
 
-
 # ═══════════════════════════════════════════════════════════════════════════════
 #  CRUD operations — shared helpers called by the dynamically registered routes
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -629,6 +683,9 @@ def _do_create_tool_item(sector: str, tool: str, meta: ToolMeta):
     body = request.get_json(silent=True)
     if body is None:
         return jsonify({"ok": False, "error": "invalid JSON body"}), 400
+    payload_error = _validate_item_payload(body)
+    if payload_error:
+        return jsonify({"ok": False, "error": payload_error}), 400
 
     id_field = meta.get("id_field")
     data_key = meta["data_key"]
@@ -660,6 +717,9 @@ def _do_update_tool_item(sector: str, tool: str, meta: ToolMeta):
     body = request.get_json(silent=True)
     if body is None:
         return jsonify({"ok": False, "error": "invalid JSON body"}), 400
+    payload_error = _validate_item_payload(body)
+    if payload_error:
+        return jsonify({"ok": False, "error": payload_error}), 400
 
     id_field = meta.get("id_field")
     data_key = meta["data_key"]
@@ -792,6 +852,20 @@ for (sector, tool), meta in TOOL_META.items():
 #   item-level CRUD above.)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+# ── Sector contract discovery ────────────────────────────────────────────────
+@sectors_bp.route("/catalog", methods=["GET"])
+@require_auth
+@require_workspace_role("VIEWER")
+def sector_catalog_get():
+    """Return the complete sector/tool contract used by dashboards and SDKs."""
+    return jsonify({
+        "ok": True,
+        "sectors": list_sector_catalog(),
+        "aliases": SECTOR_ALIASES,
+        "tool_count": len(TOOL_META),
+    })
+
+
 # ── Generic data get ─────────────────────────────────────────────────────────
 @sectors_bp.route("/data/<sector>/<tool>", methods=["GET"])
 @require_auth
@@ -802,9 +876,13 @@ def sector_data_get(sector: str, tool: str):
     The response uses the tool's ``data_key`` as the top-level key so the
     frontend can consume it directly (e.g. ``{ok: true, threats: [...]}``).
     """
-    data, from_db = _get_sector_tool_data(sector, tool)
-    meta = TOOL_META.get((sector, tool))
-    data_key = meta["data_key"] if meta else tool
+    canonical_sector = canonical_sector_id(sector)
+    normalized_tool = str(tool or "").strip().lower()
+    meta = get_sector_tool_meta(canonical_sector, normalized_tool)
+    if meta is None:
+        return _unknown_sector_tool(sector, tool)
+    data, from_db = _get_sector_tool_data(canonical_sector, normalized_tool)
+    data_key = meta["data_key"]
     source = "db" if from_db else "mock"
 
     if from_db:
@@ -832,13 +910,23 @@ def sector_data_upsert(sector: str, tool: str):
     if not ws_id:
         return jsonify({"ok": False, "error": "no workspace context"}), 400
 
+    canonical_sector = canonical_sector_id(sector)
+    normalized_tool = str(tool or "").strip().lower()
+    meta = get_sector_tool_meta(canonical_sector, normalized_tool)
+    if meta is None:
+        return _unknown_sector_tool(sector, tool)
+
     body = request.get_json(silent=True)
     if body is None:
         return jsonify({"ok": False, "error": "invalid JSON body"}), 400
 
+    payload_error = _validate_dataset_payload(meta, body)
+    if payload_error:
+        return jsonify({"ok": False, "error": payload_error}), 400
+
     try:
         from aeon_db import upsert_sector_data
-        record = upsert_sector_data(str(ws_id), sector, tool, body)
+        record = upsert_sector_data(str(ws_id), canonical_sector, normalized_tool, body)
         return jsonify({"ok": True, "id": record.id, "version": record.version, "source": "db"}), 201
     except Exception as exc:
         logger.error("Failed to upsert sector data: %s", exc)
@@ -851,13 +939,18 @@ def sector_data_upsert(sector: str, tool: str):
 @require_workspace_role("ADMIN")
 def sector_data_delete(sector: str, tool: str):
     """Delete sector tool data from the database."""
+    canonical_sector = canonical_sector_id(sector)
+    normalized_tool = str(tool or "").strip().lower()
+    if get_sector_tool_meta(canonical_sector, normalized_tool) is None:
+        return _unknown_sector_tool(sector, tool)
+
     ws_id = _get_workspace_id()
     if not ws_id:
         return jsonify({"ok": False, "error": "no workspace context"}), 400
 
     try:
         from aeon_db import delete_sector_data
-        deleted = delete_sector_data(str(ws_id), sector, tool)
+        deleted = delete_sector_data(str(ws_id), canonical_sector, normalized_tool)
         return jsonify({"ok": True, "deleted": deleted})
     except Exception as exc:
         return jsonify({"ok": False, "error": str(exc)}), 500
@@ -874,6 +967,7 @@ def sector_dashboard_get(sector: str):
     Next.js unified dashboard endpoint render the initial dashboard state
     without making N individual tool requests.
     """
+    sector = canonical_sector_id(sector)
     tools = [key for key in TOOL_META if key[0] == sector]
     result: dict[str, Any] = {"ok": True, "source": "db"}
     all_sources: set[str] = set()
@@ -937,6 +1031,11 @@ def sector_seed_all():
 @require_workspace_role("ADMIN")
 def sector_tool_refresh(sector: str, tool: str):
     """Regenerate live data for a single sector/tool and persist it."""
+    sector = canonical_sector_id(sector)
+    tool = str(tool or "").strip().lower()
+    if get_sector_tool_meta(sector, tool) is None:
+        return _unknown_sector_tool(sector, tool)
+
     ws_id = _get_workspace_id()
     if not ws_id:
         return jsonify(_WORKSPACE_CTX_ERR), 400
@@ -973,6 +1072,10 @@ def sector_refresh_all():
 
     body = request.get_json(silent=True) or {}
     target_sector = body.get("sector")
+    if target_sector:
+        target_sector = canonical_sector_id(target_sector)
+        if target_sector not in {sector for sector, _tool in TOOL_META}:
+            return _unknown_sector_tool(target_sector, "*")
 
     try:
         from aeon_db import upsert_sector_data

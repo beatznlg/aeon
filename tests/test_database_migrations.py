@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, inspect, text
 
 from aeon_db import Base, migrate_database
+from alembic import command
 
 
 def _alembic_config(database_url: str) -> Config:

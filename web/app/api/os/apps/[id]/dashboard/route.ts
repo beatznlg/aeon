@@ -929,7 +929,7 @@ const dashboards: Record<string, object> = {
 
 async function fetchLiveDashboard(
   id: string,
-  req: Request,
+  req: Request
 ): Promise<Record<string, unknown> | null> {
   try {
     const pythonSector = SECTOR_ALIASES[id] ?? id;
@@ -950,10 +950,7 @@ async function fetchLiveDashboard(
   }
 }
 
-function transformLiveData(
-  id: string,
-  live: Record<string, unknown>,
-): Record<string, unknown> {
+function transformLiveData(id: string, live: Record<string, unknown>): Record<string, unknown> {
   const keyMap = SECTOR_KEY_MAP[id] ?? {};
   const transformed: Record<string, unknown> = {};
   for (const [pythonKey, value] of Object.entries(live)) {

@@ -1,7 +1,7 @@
 """
 AEON OS — Enterprise Single Sign-On (Phase 44)
 ==============================================
-Supports SAML 2.0 (optional python3-saml) and OpenID Connect (authlib).
+Supports SAML 2.0 (optional python3-saml) and OpenID Connect (joserfc).
 Providers are configured per workspace. Successful SSO callbacks perform
 just-in-time user provisioning and issue AEON JWT access tokens.
 
@@ -37,11 +37,13 @@ except Exception:  # noqa: BLE001
     SAML_AVAILABLE = False
 
 try:  # pragma: no cover
-    from authlib.jose import jwt as jose_jwt
+    from joserfc import jwt as jose_jwt
+    from joserfc.jwk import KeySet as JoseKeySet
+    from joserfc.jwt import JWTClaimsRegistry
 
-    AUTHLIB_JOSE_AVAILABLE = True
+    JOSERFC_AVAILABLE = True
 except Exception:  # noqa: BLE001
-    AUTHLIB_JOSE_AVAILABLE = False
+    JOSERFC_AVAILABLE = False
 
 
 def _base_url() -> str:
@@ -181,15 +183,19 @@ def _decode_oidc_id_token(provider: SsoProvider, id_token: str, nonce: str) -> d
         )
         return claims
 
-    if not AUTHLIB_JOSE_AVAILABLE:
-        raise RuntimeError("authlib is required for production OIDC token verification")
+    if not JOSERFC_AVAILABLE:
+        raise RuntimeError("joserfc is required for production OIDC token verification")
 
     key = None
     if jwks_uri:
         jwks = requests.get(jwks_uri, timeout=30).json()
-        key = jwks
-    claims = jose_jwt.decode(id_token, key)
-    claims.validate()
+        key = JoseKeySet.import_key_set(jwks)
+
+    token = jose_jwt.decode(id_token, key)
+    claims = dict(token.claims)
+    # Validate registered claims (exp, iat, nbf, sub, aud, iss) the way
+    # authlib's claims.validate() did, via joserfc's claims registry.
+    JWTClaimsRegistry().validate(claims)
     if claims.get("nonce") != nonce:
         raise ValueError("OIDC nonce mismatch")
     return claims

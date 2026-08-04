@@ -443,6 +443,99 @@ def _tool_api_fetch(args, root):
         return False, "api_fetch err " + type(e).__name__ + ": " + str(e)
 
 
+@_register("plugin_call")
+def _tool_plugin_call(args, root):
+    """Invoke a marketplace plugin entry point.
+
+    args: {plugin_id, entry, params?{...}, workspace_id?}
+    Fails closed when the plugin is not installed or not enabled in the
+    workspace. ``workspace_id`` defaults to the AEON_WORKSPACE_ID env var or
+    ``default``.
+    """
+    plugin_id = args.get("plugin_id") or args.get("plugin")
+    entry = args.get("entry") or args.get("entry_point")
+    if not plugin_id or not entry:
+        return False, "plugin_call requires plugin_id and entry"
+    params = args.get("params") or {}
+    if not isinstance(params, dict):
+        return False, "params must be an object"
+    workspace_id = args.get("workspace_id") or os.environ.get("AEON_WORKSPACE_ID") or "default"
+    try:
+        from aeon_marketplace import get_marketplace_manager
+
+        result = get_marketplace_manager().run_entry(str(workspace_id), str(plugin_id), str(entry), params)
+        if not result.get("ok"):
+            return False, result.get("error", "plugin_call failed")
+        return True, json.dumps(result, ensure_ascii=False)[:1024]
+    except Exception as e:
+        return False, "plugin_call err " + type(e).__name__ + ": " + str(e)
+
+
+@_register("list_plugins")
+def _tool_list_plugins(args, root):
+    """List marketplace plugins the agent may call in this workspace.
+
+    args: {workspace_id?}
+    Returns the installed, enabled plugin entry points so agents can discover
+    capabilities without hard-coding plugin ids. ``workspace_id`` defaults to
+    the AEON_WORKSPACE_ID env var or ``default``.
+    """
+    workspace_id = args.get("workspace_id") or os.environ.get("AEON_WORKSPACE_ID") or "default"
+    try:
+        from aeon_marketplace import get_marketplace_manager
+
+        tools = get_marketplace_manager().agent_tools(str(workspace_id))
+        return True, json.dumps({"workspace_id": workspace_id, "plugins": tools}, ensure_ascii=False)[:2048]
+    except Exception as e:
+        return False, "list_plugins err " + type(e).__name__ + ": " + str(e)
+
+
+@_register("mcp_call")
+def _tool_mcp_call(args, root):
+    """Call a tool on an MCP server registered in this workspace.
+
+    args: {server: id-or-name, tool: name, arguments: {...}, workspace_id?}
+    Resolves the server by id or name within the workspace and returns the
+    tool result text. ``workspace_id`` defaults to the AEON_WORKSPACE_ID env
+    var or ``default``.
+    """
+    workspace_id = args.get("workspace_id") or os.environ.get("AEON_WORKSPACE_ID") or "default"
+    server_ref = args.get("server") or args.get("server_id") or ""
+    tool = args.get("tool") or ""
+    arguments = args.get("arguments") or {}
+    if not server_ref or not tool:
+        return False, "mcp_call requires server and tool"
+    try:
+        from aeon_mcp import get_mcp_manager
+
+        result = get_mcp_manager().call_tool_by_ref(str(workspace_id), str(server_ref), str(tool), arguments)
+        if not result.get("ok"):
+            return False, "mcp_call err: " + str(result.get("error", "unknown"))
+        content = result.get("result", {}).get("content", [])
+        texts = [item.get("text", "") for item in content if isinstance(item, dict) and item.get("type") == "text"]
+        return True, ("\n".join(texts) if texts else json.dumps(result.get("result", {}), ensure_ascii=False))[:2048]
+    except Exception as e:
+        return False, "mcp_call err " + type(e).__name__ + ": " + str(e)
+
+
+@_register("list_mcp")
+def _tool_list_mcp(args, root):
+    """List MCP servers and their tools available in this workspace.
+
+    args: {workspace_id?}
+    Returns the discoverable MCP tools (enabled servers with synced tools) so
+    agents can enumerate external capabilities at runtime.
+    """
+    workspace_id = args.get("workspace_id") or os.environ.get("AEON_WORKSPACE_ID") or "default"
+    try:
+        from aeon_mcp import get_mcp_manager
+
+        tools = get_mcp_manager().agent_tools(str(workspace_id))
+        return True, json.dumps({"workspace_id": workspace_id, "mcp_tools": tools}, ensure_ascii=False)[:2048]
+    except Exception as e:
+        return False, "list_mcp err " + type(e).__name__ + ": " + str(e)
+
+
 def _with_timeout(sec):
     class Timeout(Exception): pass
     def handler(s, f): raise Timeout()
@@ -969,8 +1062,9 @@ class ReflectiveAgent:
     """
     Wraps the v2.1 AeonKernel with reflection, goals, and triad memory.
     """
-    def __init__(self, root=ROOT):
+    def __init__(self, root=ROOT, workspace_id=None):
         self.root = Path(root)
+        self.workspace_id = workspace_id or os.environ.get("AEON_WORKSPACE_ID") or "default"
         self.memory = MemoryBundle(root)
         self.goals = GoalState(root)
         self.self_model = SelfModel()
@@ -1029,6 +1123,32 @@ class ReflectiveAgent:
         # For Phase 1 we reuse the v2.1 tool loop inline.
         t0 = time.time()
         tool_count = 0
+        plugin_block = ""
+        try:
+            from aeon_marketplace import get_marketplace_manager
+
+            plugin_block = get_marketplace_manager().agent_prompt_block(str(self.workspace_id))
+        except Exception:
+            plugin_block = ""
+        mcp_block = ""
+        try:
+            from aeon_mcp import get_mcp_manager
+
+            mcp_block = get_mcp_manager().agent_prompt_block(str(self.workspace_id))
+        except Exception:
+            mcp_block = ""
+        trace_store = None
+        trace_id = None
+        try:
+            from aeon_traces import get_trace_store
+
+            trace_store = get_trace_store()
+            trace_id = trace_store.start_trace(
+                str(self.workspace_id), agent_id=getattr(self, "name", ""), query=query
+            ).trace_id
+        except Exception:
+            trace_store = None
+            trace_id = None
         sys_prompt = (
             "Format tool calls ONLY as JSON: "
             '{"tool":"math","args":{"expr":"integrate(x**2, x)"}} '
@@ -1036,9 +1156,12 @@ class ReflectiveAgent:
             '{"tool":"api_catalog_search","args":{"query":"weather","auth":"no"}} '
             '{"tool":"api_fetch","args":{"url":"https://api.example.com/data"}} '
             "Available tools: math, search, fetch, read_skill, write_skill, "
-            "github_search, api_catalog_search, api_fetch, "
-            "bounty_list, bounty_submit, service_quote. "
-            "Always answer the question; do not refuse.")
+            "github_search, api_catalog_search, api_fetch, plugin_call, list_plugins, "
+            "mcp_call, list_mcp, bounty_list, bounty_submit, service_quote. "
+            + (plugin_block + ". " if plugin_block else "")
+            + (mcp_block + ". " if mcp_block else "")
+            + "Always answer the question; do not refuse."
+        )
         out = QW.generate(query, system=sys_prompt)
         body = out["text"]
         tool_results = []
@@ -1052,6 +1175,15 @@ class ReflectiveAgent:
             res = _safe_run(name, args, str(self.root))
             tool_results.append(res)
             mark = "ok" if res.get("ok") else "fail"
+            if trace_store is not None and trace_id:
+                try:
+                    span = trace_store.add_span(
+                        trace_id, str(self.workspace_id), "tool", name, tool=name, input_summary=args
+                    )
+                    if span:
+                        trace_store.finish_span(span, status=mark, output_summary=res.get("output", ""))
+                except Exception:
+                    pass
             replacement = "[" + name + "=" + mark + ": " + (res.get("output","") or "")[:200] + "]"
             body = body[:m.start()] + replacement + body[m.end():]
 
@@ -1063,6 +1195,18 @@ class ReflectiveAgent:
             self.memory.link_fact("aeon", "called_tool", "tick_" + str(self.tick_count))
         self.cc.tick()
         self.tick_count += 1
+        if trace_store is not None and trace_id:
+            try:
+                trace_store.end_trace(
+                    trace_id,
+                    str(self.workspace_id),
+                    status="ok" if (not tool_results or all(r.get("ok") for r in tool_results)) else "error",
+                    tokens=out.get("tokens_used", 0),
+                    latency_ms=int((time.time() - t0) * 1000),
+                    output_summary=body,
+                )
+            except Exception:
+                pass
 
         return {
             "query": query,

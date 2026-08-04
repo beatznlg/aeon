@@ -28,7 +28,6 @@ const REFRESH_INTERVAL_MS = 30_000;
 
 // ─── Tool endpoint descriptor ────────────────────────────────────────────────
 
-
 // ─── Context ─────────────────────────────────────────────────────────────────
 
 interface SectorDataContextValue {

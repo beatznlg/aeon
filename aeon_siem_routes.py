@@ -10,13 +10,11 @@ from aeon_auth import require_auth, require_workspace_role
 from aeon_db import (
     SiemExportLog,
     SiemIntegration,
-    create_siem_export_log,
     create_siem_integration,
     delete_siem_integration,
     get_siem_integration,
     list_siem_export_logs,
     list_siem_integrations,
-    update_siem_export_log_status,
     update_siem_integration,
 )
 from aeon_siem import SiemExporter, list_supported_providers

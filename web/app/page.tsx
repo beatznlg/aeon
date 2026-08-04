@@ -326,12 +326,18 @@ function StatusBarSection({
       {cards.map((card) => (
         <StaggerItem key={card.label}>
           <div className="status-bar-card">
-            <div className="status-bar-icon" style={{ background: card.background, color: card.color }}>
+            <div
+              className="status-bar-icon"
+              style={{ background: card.background, color: card.color }}
+            >
               {card.icon}
             </div>
             <div className="status-bar-info">
               <span className="status-bar-label">{card.label}</span>
-              <span className="status-bar-value" style={card.valueColor ? { color: card.valueColor } : undefined}>
+              <span
+                className="status-bar-value"
+                style={card.valueColor ? { color: card.valueColor } : undefined}
+              >
                 {card.value}
               </span>
               <span className="status-bar-sub">{card.sub}</span>
@@ -399,7 +405,9 @@ function ModuleGridSection({ modules, admin }: { modules: CommandModule[]; admin
       <div className="dashboard-section-heading mt-8">
         <div>
           <h2 className="dashboard-section-title">Command Centers</h2>
-          <p className="dashboard-section-caption">Launch a specialized workspace or review what is currently paused.</p>
+          <p className="dashboard-section-caption">
+            Launch a specialized workspace or review what is currently paused.
+          </p>
         </div>
         <span className="dashboard-section-count">{modules.length} surfaces</span>
       </div>
@@ -420,13 +428,19 @@ function ModuleGridSection({ modules, admin }: { modules: CommandModule[]; admin
                     <span
                       className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wider ${mod.status === "active" ? "text-green-400 bg-green-400/10" : "text-slate-500 bg-slate-500/10"}`}
                     >
-                      <span className={`h-1.5 w-1.5 rounded-full ${mod.status === "active" ? "bg-green-400" : "bg-slate-500"}`} />
+                      <span
+                        className={`h-1.5 w-1.5 rounded-full ${mod.status === "active" ? "bg-green-400" : "bg-slate-500"}`}
+                      />
                       {mod.status}
                     </span>
                     <span className="text-[0.65rem] text-slate-500">{mod.tools} tools</span>
                   </div>
                 </div>
-                {mod.status === "active" && <span className="module-card-arrow" aria-hidden="true">↗</span>}
+                {mod.status === "active" && (
+                  <span className="module-card-arrow" aria-hidden="true">
+                    ↗
+                  </span>
+                )}
               </div>
               <div className="module-card-desc">{mod.desc}</div>
               {mod.status === "inactive" && admin && (
@@ -446,7 +460,12 @@ function ModuleGridSection({ modules, admin }: { modules: CommandModule[]; admin
                   {cardContent}
                 </Link>
               ) : (
-                <div className={className} style={style} aria-disabled="true" title="This command center is disabled for this workspace">
+                <div
+                  className={className}
+                  style={style}
+                  aria-disabled="true"
+                  title="This command center is disabled for this workspace"
+                >
                   {cardContent}
                 </div>
               )}

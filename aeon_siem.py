@@ -16,14 +16,10 @@ Usage:
 
 from __future__ import annotations
 
-import hashlib
-import json
 import logging
-import os
 import queue
 import threading
 import time
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
@@ -35,13 +31,12 @@ from aeon_db import (
     create_siem_export_log,
     get_siem_integration,
     list_siem_integrations,
-    update_siem_export_log_status,
 )
 
 logger = logging.getLogger("aeon_siem")
 
 # Singleton background thread / queue shared across the process.
-_export_queue: queue.Queue["_ExportJob"] = queue.Queue()
+_export_queue: queue.Queue[_ExportJob] = queue.Queue()
 _worker_thread: threading.Thread | None = None
 _worker_lock = threading.Lock()
 
@@ -226,7 +221,6 @@ def _deliver(integration: SiemIntegration, payload: dict[str, Any]) -> dict[str,
             # caller to pass a bearer token through custom_headers.
             pass
     elif auth_type == "basic" and integration.username and integration.password_hash:
-        import base64
 
         # Basic auth is intentionally not supported from stored password hash.
         return {"ok": False, "error": "basic auth requires runtime credential injection"}

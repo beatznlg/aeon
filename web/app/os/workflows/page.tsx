@@ -89,6 +89,7 @@ export default function WorkflowBuilderPage() {
   const [mousePos, setMousePos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
   const [zoom, setZoom] = useState(1);
+  const [paletteQuery, setPaletteQuery] = useState("");
   const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
   const lastPanMouse = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -262,6 +263,46 @@ export default function WorkflowBuilderPage() {
       ...prev,
       { source: nodes[0].id, target: nodes[1].id, condition: "always" },
     ]);
+  };
+
+  const autoLayout = () => {
+    if (nodes.length === 0) return;
+    saveSnapshot();
+    const cols = Math.max(1, Math.ceil(Math.sqrt(nodes.length)));
+    const spacingX = 240;
+    const spacingY = 180;
+    setNodes((prev) =>
+      prev.map((node, index) => ({
+        ...node,
+        x: 120 + (index % cols) * spacingX,
+        y: 120 + Math.floor(index / cols) * spacingY,
+      }))
+    );
+  };
+
+  const fitView = () => {
+    if (nodes.length === 0) {
+      setZoom(1);
+      setPan({ x: 0, y: 0 });
+      return;
+    }
+    const xs = nodes.map((n) => n.x);
+    const ys = nodes.map((n) => n.y);
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+    const width = maxX - minX + 220;
+    const height = maxY - minY + 140;
+    const rect = canvasRef.current?.getBoundingClientRect();
+    const viewW = rect?.width || 800;
+    const viewH = rect?.height || 500;
+    const zoomFit = Math.max(0.2, Math.min(1.5, Math.min(viewW / width, viewH / height)));
+    setZoom(zoomFit);
+    setPan({
+      x: viewW / 2 - ((minX + maxX) / 2 + 90) * zoomFit,
+      y: viewH / 2 - ((minY + maxY) / 2 + 35) * zoomFit,
+    });
   };
 
   const updateEdge = (idx: number, patch: Partial<WorkflowEdge>) => {
@@ -488,50 +529,61 @@ export default function WorkflowBuilderPage() {
         </div>
 
         <div className="module-widget">
-          <h3>Add Node</h3>
-          <select
+          <h3>Node Palette</h3>
+          <input
             className="os-input"
-            onChange={(e) => {
-              if (e.target.value) {
-                addNode(e.target.value, "agent");
-                e.target.value = "";
-              }
-            }}
-            defaultValue=""
-          >
-            <option value="">+ Agent node…</option>
-            {apps.map((app) => (
-              <option key={app.id} value={app.id}>
-                {app.icon} {app.name}
-              </option>
-            ))}
-          </select>
-          <select
-            className="os-input"
-            style={{ marginTop: 8 }}
-            onChange={(e) => {
-              if (e.target.value) {
-                addNode(e.target.value, "integration");
-                e.target.value = "";
-              }
-            }}
-            defaultValue=""
-          >
-            <option value="">+ Integration node…</option>
-            {integrations.map((i) => (
-              <option key={i.id} value={i.id}>
-                🔌 {i.name}
-              </option>
-            ))}
-          </select>
-          <button
-            className="btn btn-sm"
-            onClick={addEdge}
-            disabled={nodes.length < 2}
-            style={{ marginTop: 8 }}
-          >
-            Connect first two nodes
-          </button>
+            placeholder="Search nodes…"
+            value={paletteQuery}
+            onChange={(e) => setPaletteQuery(e.target.value)}
+          />
+          <div className="workflow-palette-list">
+            <div className="workflow-palette-group">Agents</div>
+            {apps
+              .filter((app) => app.name.toLowerCase().includes(paletteQuery.toLowerCase()))
+              .map((app) => (
+                <button
+                  key={app.id}
+                  className="workflow-palette-item"
+                  title={`Add ${app.name} node`}
+                  onClick={() => addNode(app.id, "agent")}
+                >
+                  <span className="workflow-palette-item-icon">{app.icon}</span>
+                  <span className="workflow-palette-item-name">{app.name}</span>
+                  <span className="workflow-palette-item-add">+</span>
+                </button>
+              ))}
+            <div className="workflow-palette-group">Integrations</div>
+            {integrations
+              .filter((i) => i.name.toLowerCase().includes(paletteQuery.toLowerCase()))
+              .map((i) => (
+                <button
+                  key={i.id}
+                  className="workflow-palette-item"
+                  title={`Add ${i.name} node`}
+                  onClick={() => addNode(i.id, "integration")}
+                >
+                  <span className="workflow-palette-item-icon">🔌</span>
+                  <span className="workflow-palette-item-name">{i.name}</span>
+                  <span className="workflow-palette-item-add">+</span>
+                </button>
+              ))}
+            {apps.length === 0 && integrations.length === 0 && (
+              <p className="module-empty">No apps or integrations configured yet.</p>
+            )}
+          </div>
+          <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+            <button className="btn btn-sm" onClick={addEdge} disabled={nodes.length < 2}>
+              Connect first two nodes
+            </button>
+            <button
+              className="btn btn-sm"
+              onClick={autoLayout}
+              disabled={nodes.length < 2}
+              title="Arrange nodes in a grid"
+            >
+              🧹 Auto-layout
+            </button>
+          </div>
         </div>
 
         <div className="module-widget">
@@ -926,6 +978,9 @@ export default function WorkflowBuilderPage() {
               <div style={{ width: 1, height: 16, background: "var(--border)", margin: "0 4px" }} />
               <button className="btn btn-sm" onClick={() => setZoom((z) => Math.max(0.2, z - 0.2))}>
                 −
+              </button>
+              <button className="btn btn-sm" onClick={fitView} title="Fit all nodes in view">
+                ⛶ Fit
               </button>
               <button
                 className="btn btn-sm"

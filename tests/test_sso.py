@@ -2,11 +2,65 @@
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
+import json
+import time
+import types
 import uuid
 
 import pytest
+from joserfc.errors import BadSignatureError, ExpiredTokenError
 
 from aeon_cache import get_cache
+
+# ── helpers for OIDC id_token verification tests ─────────────────────────────
+_SECRET = b"regression-test-secret"
+
+
+def _b64url(raw: bytes) -> str:
+    return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
+
+
+def _sign_hmac(data: str, secret: bytes = _SECRET) -> str:
+    return _b64url(hmac.new(secret, data.encode("ascii"), hashlib.sha256).digest())
+
+
+def _make_id_token(
+    *,
+    nonce: str = "nonce-123",
+    exp: int | None = None,
+    secret: bytes = _SECRET,
+    kid: str = "k1",
+) -> str:
+    """Build a compact HS256 id_token signed with the shared secret."""
+    header = {"alg": "HS256", "typ": "JWT", "kid": kid}
+    claims = {"iss": "https://idp.test", "sub": "user-abc", "email": "oidc@test.local", "nonce": nonce}
+    claims["exp"] = exp if exp is not None else int(time.time()) + 3600
+    h = _b64url(json.dumps(header, separators=(",", ":")).encode("ascii"))
+    c = _b64url(json.dumps(claims, separators=(",", ":")).encode("ascii"))
+    signing_input = f"{h}.{c}"
+    return f"{signing_input}.{_sign_hmac(signing_input, secret)}"
+
+
+def _jwks_dict(secret: bytes = _SECRET, kid: str = "k1") -> dict:
+    return {"keys": [{"kty": "oct", "alg": "HS256", "kid": kid, "k": _b64url(secret)}]}
+
+
+class _FakeProvider:
+    """Minimal stand-in for aeon_db.SsoProvider used by the decoder."""
+
+    def __init__(self, config: dict) -> None:
+        self.config = config
+
+
+def _patch_jwks(monkeypatch, jwks: dict, url: str = "https://idp.test/jwks") -> None:
+    def fake_get(uri: str, timeout: int = 30):  # noqa: ARG001
+        assert uri == url
+        return types.SimpleNamespace(json=lambda: jwks)
+
+    monkeypatch.setattr("aeon_sso.requests.get", fake_get)
 
 
 @pytest.fixture
@@ -152,3 +206,69 @@ def test_sso_provider_requires_admin(registered_client):
         json={"protocol": "oidc", "name": "X", "config": {}},
     )
     assert resp.status_code == 401
+
+
+# ── OIDC id_token verification (joserfc) ────────────────────────────────────
+def _decode(token: str, nonce: str, monkeypatch) -> dict:
+    """Decode an id_token against a mocked JWKS endpoint."""
+    from aeon_sso import _decode_oidc_id_token
+
+    _patch_jwks(monkeypatch, _jwks_dict())
+    return _decode_oidc_id_token(_FakeProvider({"jwks_uri": "https://idp.test/jwks"}), token, nonce)
+
+
+def test_oidc_id_token_verified_against_jwks(monkeypatch):
+    """A valid id_token signed with a JWKS key decodes and returns claims."""
+    claims = _decode(_make_id_token(), "nonce-123", monkeypatch)
+    assert claims["sub"] == "user-abc"
+    assert claims["email"] == "oidc@test.local"
+    assert claims["nonce"] == "nonce-123"
+
+
+def test_oidc_id_token_rejects_wrong_nonce(monkeypatch):
+    """A cryptographically valid id_token with a mismatched nonce is rejected."""
+    from aeon_sso import _decode_oidc_id_token
+
+    _patch_jwks(monkeypatch, _jwks_dict())
+    with pytest.raises(ValueError, match="nonce mismatch"):
+        _decode_oidc_id_token(
+            _FakeProvider({"jwks_uri": "https://idp.test/jwks"}),
+            _make_id_token(),
+            "different-nonce",
+        )
+
+
+def test_oidc_id_token_rejects_tampered_signature(monkeypatch):
+    """A token with a corrupted signature fails verification (BadSignatureError)."""
+    good = _make_id_token()
+    header, payload, sig = good.rsplit(".", 2)
+    tampered = f"{header}.{payload}.{('A' if not sig.endswith('A') else 'B')}"
+    assert tampered != good
+    with pytest.raises(BadSignatureError):
+        _decode(tampered, "nonce-123", monkeypatch)
+
+
+def test_oidc_id_token_rejects_wrong_jwks_key(monkeypatch):
+    """A token signed with a different key than the JWKS is rejected."""
+    from aeon_sso import _decode_oidc_id_token
+
+    _patch_jwks(monkeypatch, _jwks_dict(secret=b"some-other-secret"))
+    with pytest.raises(BadSignatureError):
+        _decode_oidc_id_token(
+            _FakeProvider({"jwks_uri": "https://idp.test/jwks"}),
+            _make_id_token(secret=_SECRET),
+            "nonce-123",
+        )
+
+
+def test_oidc_id_token_rejects_expired(monkeypatch):
+    """An exp in the past fails registered-claim validation (ExpiredTokenError)."""
+    from aeon_sso import _decode_oidc_id_token
+
+    _patch_jwks(monkeypatch, _jwks_dict())
+    with pytest.raises(ExpiredTokenError):
+        _decode_oidc_id_token(
+            _FakeProvider({"jwks_uri": "https://idp.test/jwks"}),
+            _make_id_token(exp=int(time.time()) - 60),
+            "nonce-123",
+        )

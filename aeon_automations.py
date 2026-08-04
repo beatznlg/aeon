@@ -806,6 +806,7 @@ _SIMULATED_SIDE_EFFECTS = frozenset({
     "set_variable",
     "delete_variable",
     "increment_variable",
+    "plugin",
 })
 
 
@@ -842,6 +843,20 @@ def _simulate_action(
             "status_code": 200,
             "data": {"simulated": True},
         }
+    if action_type == "plugin":
+        plugin_id = action_config.get("plugin_id")
+        entry = action_config.get("entry")
+        if not plugin_id or not entry:
+            return {"ok": False, "error": "plugin action requires plugin_id and entry", "dry_run": True}
+        return {
+            "ok": True,
+            "dry_run": True,
+            "simulated": True,
+            "action_type": "plugin",
+            "plugin_id": plugin_id,
+            "entry": entry,
+        }
+
     if action_type == "set_variable":
         key = action_config.get("key")
         if not key:
@@ -882,6 +897,45 @@ def _simulate_action(
         }
     # Fallback for any other side-effect action.
     return {"ok": True, "dry_run": True, "simulated": True, "action_type": action_type}
+
+
+def _execute_plugin(
+    action_config: dict[str, Any],
+    event: dict[str, Any],
+    context: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Invoke a marketplace plugin entry point as an automation action.
+
+    ``action_config`` must contain:
+        - ``plugin_id``: the marketplace plugin to call.
+        - ``entry``: the plugin entry point (e.g. ``analyze``, ``score``).
+        - ``params``: optional dict of parameters; values may use the
+          ``{{ event.payload.xxx }}`` / ``{{ rule.xxx }}`` template syntax.
+
+    Execution is scoped to the rule's ``workspace_id`` and fails closed if
+    the plugin is not installed or not enabled in that workspace.
+    """
+    plugin_id = action_config.get("plugin_id")
+    entry = action_config.get("entry")
+    if not plugin_id or not entry:
+        return {"ok": False, "error": "plugin action requires plugin_id and entry"}
+
+    params = action_config.get("params") or {}
+    rule = (context or {}).get("rule") or {}
+    workspace_id = str(rule.get("workspace_id") or event.get("workspace_id") or "default")
+
+    try:
+        from aeon_marketplace import get_marketplace_manager
+
+        result = get_marketplace_manager().run_entry(workspace_id, str(plugin_id), str(entry), params)
+        return {
+            **result,
+            "plugin_id": plugin_id,
+            "entry": entry,
+            "workspace_id": workspace_id,
+        }
+    except Exception as exc:
+        return {"ok": False, "error": f"plugin action failed: {exc}"}
 
 
 def execute_action_by_type(
@@ -949,6 +1003,8 @@ def execute_action_by_type(
         return _execute_increment_variable(interpolated_config, event)
     if action_type == "call_rule":
         return _execute_call_rule(interpolated_config, event, context, dry_run=dry_run)
+    if action_type == "plugin":
+        return _execute_plugin(interpolated_config, event, context)
     if action_type == "transform":
         return _execute_transform(interpolated_config, event)
     if action_type == "parallel":
@@ -1436,6 +1492,7 @@ def _notify_approval_required(rule: dict[str, Any], approval_id: str, event: dic
 def _notify_slack_approval(rule: dict[str, Any], approval_id: str, event: dict[str, Any]) -> None:
     """Send an interactive Slack Block Kit message for an approval request."""
 
+    workspace_id = rule.get("workspace_id")
     bot_token = os.environ.get("SLACK_BOT_TOKEN")
     if not bot_token:
         return

@@ -69,6 +69,7 @@ const ACTION_TYPES = [
   "call_rule",
   "transform",
   "parallel",
+  "plugin",
 ];
 
 function TestConditionButton({ condition }: { condition: Record<string, any> }) {
@@ -225,6 +226,42 @@ function ActionConfigEditor({
             placeholder="Initial input"
             onChange={(e) => updateConfig("initial_input", e.target.value)}
           />
+        </>
+      )}
+      {actionType === "plugin" && (
+        <>
+          <input
+            className="input"
+            placeholder="Plugin ID (e.g. sentiment-analyzer)"
+            value={config?.plugin_id || ""}
+            onChange={(e) => updateConfig("plugin_id", e.target.value)}
+            style={{ marginBottom: 8 }}
+          />
+          <input
+            className="input"
+            placeholder="Entry point (e.g. analyze, score, triage)"
+            value={config?.entry || ""}
+            onChange={(e) => updateConfig("entry", e.target.value)}
+            style={{ marginBottom: 8 }}
+          />
+          <textarea
+            className="input"
+            rows={2}
+            placeholder={'Params JSON, e.g. {"text": "{{ event.payload.message }}"}'}
+            value={config?.params ? JSON.stringify(config.params) : ""}
+            onChange={(e) => {
+              try {
+                updateConfig("params", JSON.parse(e.target.value));
+              } catch {
+                updateConfig("params", { text: e.target.value });
+              }
+            }}
+            style={{ marginBottom: 8 }}
+          />
+          <div style={{ fontSize: "0.75rem", color: "var(--fg-mute)" }}>
+            Runs the plugin entry point for this workspace. The plugin must be installed and enabled
+            in the Marketplace.
+          </div>
         </>
       )}
       {actionType === "delay" && (

@@ -125,6 +125,13 @@ AEON_ADMIN_NAME=AEON Admin
 | **37** | Automation Blueprints & Import/Export (JSON) — portable JSON serialization for rules, workspace-scoped import/export endpoints, and reusable blueprint templates | ✅ |
 | **38** | Automation Versioning & Rollback — automatic snapshots on rule updates, list/restore previous versions of an automation rule | ✅ |
 | **39** | Automation Analytics & Observability — execution metrics (totals, success/failure rates, daily trends) for workspace and per-rule automation health | ✅ |
+| **40** | Plugin Marketplace — 62 modular plugins across AI/automation/communication/data/security categories, per-workspace install/uninstall/enable/disable, callable from agents, automations, and workflows | ✅ |
+| **41** | Agent Tool Discovery — installed plugin entry points and MCP tools surface automatically to the agent kernel as callable tools | ✅ |
+| **42** | MCP (Model Context Protocol) Support — register external MCP servers (streamable HTTP / JSON-RPC 2.0), sync tools, call them from the UI, and expose them to agents | ✅ |
+| **43** | LLM Tracing & Observability — per-run traces with spans, latency, tokens, and p50/p95/p99 summaries (`/traces`) | ✅ |
+| **44** | Enterprise SSO — OIDC + SAML with just-in-time provisioning (joserfc-based verification) | ✅ |
+| **45** | Compliance Tooling — framework registry (SOC 2, ISO 27001, HIPAA, PCI DSS, FedRAMP, CJIS, DORA, Critical Infrastructure), control mapping, evidence-ledger attestation, BAA/SSP templates | ✅ |
+| **46** | Load & HA Evidence — `scripts/loadtest_api.py` concurrent load harness and `scripts/slo_report.py` SLO evaluation with RTO/RPO evidence | ✅ |
 
 ---
 

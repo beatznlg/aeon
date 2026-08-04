@@ -120,6 +120,12 @@ class AuditLog(Base):
     metadata_json = Column("metadata", JSON, default=dict)
     pii_redacted = Column(Boolean, default=False)
     timestamp = Column(DateTime(timezone=True), nullable=False, default=_now)
+    # Tamper-evident hash chain fields. Rows written before this feature was
+    # deployed have NULL hashes; ``verify_audit_chain`` reports them as legacy
+    # rows so an immutable-audit deployment fails closed until backfilled.
+    previous_hash = Column(String(64), nullable=True)
+    record_hash = Column(String(64), nullable=True)
+    hash_version = Column(Integer, nullable=True)
 
 
 class RefreshToken(Base):
@@ -449,13 +455,29 @@ class Database:
             from sqlalchemy import inspect, text
 
             inspector = inspect(self.engine)
-            columns = {col["name"] for col in inspector.get_columns("workspaces")}
-            if "theme_config" not in columns:
+            table_names = set(inspector.get_table_names())
+
+            if "workspaces" in table_names:
+                columns = {col["name"] for col in inspector.get_columns("workspaces")}
+                if "theme_config" not in columns:
+                    with self.engine.begin() as conn:
+                        try:
+                            conn.execute(text("ALTER TABLE workspaces ADD COLUMN theme_config JSON DEFAULT '{}'"))
+                        except Exception:
+                            conn.execute(text("ALTER TABLE workspaces ADD COLUMN theme_config TEXT DEFAULT '{}'"))
+
+            if "audit_logs" in table_names:
+                columns = {col["name"] for col in inspector.get_columns("audit_logs")}
+                # Tamper-evident audit chain columns. Added incrementally so
+                # pre-existing deployments keep their rows and can backfill.
                 with self.engine.begin() as conn:
-                    try:
-                        conn.execute(text("ALTER TABLE workspaces ADD COLUMN theme_config JSON DEFAULT '{}'"))
-                    except Exception:
-                        conn.execute(text("ALTER TABLE workspaces ADD COLUMN theme_config TEXT DEFAULT '{}'"))
+                    for column_name, column_ddl in (
+                        ("previous_hash", "VARCHAR(64)"),
+                        ("record_hash", "VARCHAR(64)"),
+                        ("hash_version", "INTEGER"),
+                    ):
+                        if column_name not in columns:
+                            conn.execute(text(f"ALTER TABLE audit_logs ADD COLUMN {column_name} {column_ddl}"))
         except Exception as exc:
             import logging
 
@@ -572,9 +594,10 @@ def migrate_database(db: Database | None = None) -> Database:
     """
     from pathlib import Path
 
-    from alembic import command
     from alembic.config import Config
     from sqlalchemy import inspect
+
+    from alembic import command
 
     database = db or get_db()
     configured_tables = set(Base.metadata.tables)
@@ -713,6 +736,88 @@ def upsert_workspace_security_config(
         return cfg
 
 
+# Tamper-evident audit hash chain. Rows written before this feature was
+# deployed have NULL hashes; ``verify_audit_chain`` reports them as legacy so
+# an immutable-audit deployment fails closed until they are backfilled.
+AUDIT_HASH_VERSION = 1
+_AUDIT_GENESIS_HASH = "0" * 64
+
+
+def _audit_timestamp_str(timestamp: datetime) -> str:
+    """Format a timestamp for hashing identically on write and read.
+
+    SQLite returns aware datetimes without the UTC offset, so formatting the
+    parsed value directly would differ between write and read. Normalize to
+    UTC with a fixed format so both sides always agree.
+    """
+    ts = timestamp
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    return ts.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
+
+def _audit_canonical_payload(
+    *,
+    id: str,
+    user_id: str | None,
+    email: str | None,
+    action: str,
+    module: str | None,
+    workspace_id: str | None,
+    metadata: dict[str, Any],
+    pii_redacted: bool,
+    timestamp: datetime,
+    previous_hash: str,
+) -> dict[str, Any]:
+    """Return the canonical, sortable payload hashed for one audit record."""
+    return {
+        "id": str(id),
+        "user_id": user_id,
+        "email": email,
+        "action": action,
+        "module": module,
+        "workspace_id": workspace_id,
+        "metadata": metadata,
+        "pii_redacted": bool(pii_redacted),
+        "timestamp": _audit_timestamp_str(timestamp),
+        "previous_hash": previous_hash,
+        "hash_version": AUDIT_HASH_VERSION,
+    }
+
+
+def audit_record_hash(
+    *,
+    id: str,
+    user_id: str | None,
+    email: str | None,
+    action: str,
+    module: str | None,
+    workspace_id: str | None,
+    metadata: dict[str, Any],
+    pii_redacted: bool,
+    timestamp: datetime,
+    previous_hash: str,
+) -> str:
+    """Return the SHA-256 digest for a single audit record payload."""
+    import hashlib
+    import json
+
+    payload = _audit_canonical_payload(
+        id=id,
+        user_id=user_id,
+        email=email,
+        action=action,
+        module=module,
+        workspace_id=workspace_id,
+        metadata=metadata,
+        pii_redacted=pii_redacted,
+        timestamp=timestamp,
+        previous_hash=previous_hash,
+    )
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
+
+
 def add_audit_log(
     action: str,
     module: str,
@@ -723,10 +828,39 @@ def add_audit_log(
     pii_redacted: bool = False,
     timestamp: datetime | None = None,
 ) -> AuditLog:
-    """Persist a single audit log row locally."""
+    """Persist a single audit log row locally with a tamper-evident hash chain.
+
+    Every row links to the most recent hashed predecessor ordered by
+    ``(timestamp, id)``. Rows that predate this feature have NULL hashes and
+    are reported by :func:`verify_audit_chain` as legacy; new rows always chain
+    to the most recent hashed predecessor. Writes must be serialized per
+    database so the chain cannot fork; verification fails closed on a fork.
+    """
     db = get_db()
     with db.session() as s:
+        last_hashed = (
+            s.query(AuditLog)
+            .filter(AuditLog.record_hash.isnot(None))
+            .order_by(AuditLog.timestamp.asc(), AuditLog.id.asc())
+            .all()
+        )
+        previous_hash = last_hashed[-1].record_hash if last_hashed else _AUDIT_GENESIS_HASH
+        log_id = str(uuid.uuid4())
+        resolved_timestamp = timestamp or _now()
+        record_hash = audit_record_hash(
+            id=log_id,
+            user_id=str(user_id) if user_id else None,
+            email=email,
+            action=action,
+            module=module,
+            workspace_id=str(workspace_id) if workspace_id else None,
+            metadata=metadata or {},
+            pii_redacted=pii_redacted,
+            timestamp=resolved_timestamp,
+            previous_hash=previous_hash,
+        )
         log = AuditLog(
+            id=log_id,
             user_id=str(user_id) if user_id else None,
             email=email,
             action=action,
@@ -734,7 +868,10 @@ def add_audit_log(
             workspace_id=str(workspace_id) if workspace_id else None,
             metadata_json=metadata or {},
             pii_redacted=pii_redacted,
-            timestamp=timestamp,
+            timestamp=resolved_timestamp,
+            previous_hash=previous_hash,
+            record_hash=record_hash,
+            hash_version=AUDIT_HASH_VERSION,
         )
         s.add(log)
         s.commit()
@@ -751,6 +888,69 @@ def add_audit_log(
         pass
 
     return log
+
+
+def verify_audit_chain() -> dict[str, Any]:
+    """Verify the tamper-evident hash chain over every audit log row.
+
+    Returns a report with counts and error descriptions only; it never returns
+    audit row contents. A row with NULL hashes is a legacy row: it cannot be
+    proven and is reported so immutable-audit deployments fail closed until
+    the operator backfills or accepts the legacy window. Wholesale deletion of
+    the chain tail is only detectable with an externally anchored last hash.
+    """
+    db = get_db()
+    with db.session() as s:
+        rows = (
+            s.query(AuditLog)
+            .order_by(AuditLog.timestamp.asc(), AuditLog.id.asc())
+            .all()
+        )
+
+    errors: list[str] = []
+    warnings: list[str] = []
+    expected_previous = _AUDIT_GENESIS_HASH
+    hashed = 0
+    legacy = 0
+    last_hash = _AUDIT_GENESIS_HASH
+    for index, row in enumerate(rows, 1):
+        if not row.record_hash or not row.previous_hash:
+            legacy += 1
+            continue
+        hashed += 1
+        if row.previous_hash != expected_previous:
+            errors.append(f"broken hash link before audit record {index}")
+        recomputed = audit_record_hash(
+            id=row.id,
+            user_id=row.user_id,
+            email=row.email,
+            action=row.action,
+            module=row.module,
+            workspace_id=row.workspace_id,
+            metadata=row.metadata_json or {},
+            pii_redacted=row.pii_redacted,
+            timestamp=row.timestamp or _now(),
+            previous_hash=row.previous_hash,
+        )
+        if recomputed != row.record_hash:
+            errors.append(f"audit record {index} hash mismatch (possible tampering)")
+        expected_previous = row.record_hash
+        last_hash = row.record_hash
+
+    if legacy:
+        errors.append(f"{legacy} audit record(s) without hash (legacy backfill required)")
+    if not hashed and not legacy:
+        warnings.append("audit log is empty; anchor the last hash externally to detect wholesale deletion")
+
+    return {
+        "ok": not errors,
+        "records": len(rows),
+        "hashed": hashed,
+        "legacy_unhashed": legacy,
+        "last_hash": last_hash,
+        "warnings": warnings,
+        "errors": errors,
+    }
 
 
 # === Anomaly / incident helpers ==============================================

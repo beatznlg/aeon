@@ -44,6 +44,8 @@ const CORE_LINKS: SidebarLinkDef[] = [
   { href: "/os/ai-studio", label: "AI Studio", icon: "🤖", moduleId: "aiStudio" },
   { href: "/os/notifications", label: "Notifications", icon: "🔔", moduleId: "notifications" },
   { href: "/os/activity", label: "Activity", icon: "📋", moduleId: "activity" },
+  { href: "/os/marketplace", label: "Marketplace", icon: "🏪", moduleId: "integrations" },
+  { href: "/os/integrations/mcp", label: "MCP Servers", icon: "🔌", moduleId: "integrations" },
   { href: "/admin/sectors", label: "Sector Admin", icon: "🏢", moduleId: "sectorAdmin" },
 ];
 

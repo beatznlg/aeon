@@ -33,12 +33,15 @@ class WorkflowNode:
     prompt: str
     x: float = 0.0
     y: float = 0.0
-    type: str = "agent"  # 'agent' or 'integration'
+    type: str = "agent"  # 'agent', 'integration', or 'plugin'
     integration_id: str | None = None
     endpoint: str = ""
     method: str = "GET"
     payload: str = ""
     provider: str | None = None  # LLM provider override per node
+    plugin_id: str | None = None  # marketplace plugin id (type='plugin')
+    entry: str | None = None  # plugin entry point (type='plugin')
+    params: Any = None  # plugin params; may contain "{input}" placeholder
 
 
 @dataclass
@@ -229,6 +232,23 @@ class WorkflowEngine:
                     )
                     current_input = str(output.get("data", output))[:500]
                     node_label = node.integration_id
+                elif node_type == "plugin":
+                    from aeon_marketplace import get_marketplace_manager
+
+                    plugin_id = getattr(node, "plugin_id", None) or node.app_id
+                    entry = getattr(node, "entry", None)
+                    if not plugin_id or not entry:
+                        raise RuntimeError("plugin node missing plugin_id or entry")
+                    params: Any = getattr(node, "params", None) or {}
+                    if isinstance(params, str):
+                        params_str = params.replace("{input}", current_input)
+                        try:
+                            params = json.loads(params_str)
+                        except Exception:
+                            params = {"input": params_str}
+                    output = get_marketplace_manager().run_entry(wsid, plugin_id, entry, params)
+                    current_input = str(output)[:500]
+                    node_label = f"plugin:{plugin_id}"
                 else:
                     prompt = node.prompt
                     if current_input:
