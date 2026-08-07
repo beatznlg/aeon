@@ -38,7 +38,7 @@ supabase>=2.0
 cryptography>=42.0
 sqlalchemy>=2.0
 psycopg2-binary>=2.9
-pyjwt>=2.8
+pyjwt>=2.13.0
 werkzeug>=3.0
 
 # --- caching / rate limiting ---
