@@ -48,6 +48,11 @@ import requests
 
 from aeon_llm import get_llm_provider
 
+# Capture process defaults once. Request handling must not use mutable
+# process-wide provider state as a tenant routing mechanism.
+_DEFAULT_LLM_PROVIDER = os.environ.get("AEON_LLM_PROVIDER")
+_DEFAULT_LLM_MODEL = os.environ.get("AEON_LLM_MODEL")
+
 ROOT = Path(os.environ.get("AEON_ROOT", "/content/aeon_state"))
 ROOT.mkdir(parents=True, exist_ok=True)
 SUB = ROOT / "substrates"; SUB.mkdir(exist_ok=True)
@@ -1118,8 +1123,39 @@ class ReflectiveAgent:
             return {"action": "reduce_error"}
         return {"action": "tick"}
 
-    def act(self, query):
-        """Run one tick, update memory and self-model."""
+    def act(self, query, llm_provider=None):
+        """Run one tick, update memory and self-model.
+
+        ``llm_provider`` is request-scoped.  Legacy callers may omit it and
+        continue using the process-level ``QW`` provider, while HTTP routes can
+        pass a workspace-selected provider without mutating shared process
+        state.
+        """
+        provider = llm_provider
+        if provider is None:
+            # Resolve HTTP requests from their workspace without touching the
+            # process-global provider. This also keeps legacy callers outside a
+            # request on the existing QW fallback.
+            try:
+                from flask import has_request_context, request
+                if has_request_context():
+                    payload = request.get_json(silent=True) or {}
+                    provider_id = payload.get("provider") or _DEFAULT_LLM_PROVIDER
+                    model_id = payload.get("model") or _DEFAULT_LLM_MODEL
+                    request_workspace_id = getattr(getattr(__import__("flask"), "g", None), "workspace_id", None)
+                    user_context = getattr(getattr(__import__("flask"), "g", None), "user", None) or {}
+                    workspace_id = request_workspace_id or user_context.get("workspace_id") or getattr(self, "workspace_id", None)
+                    if not provider_id and workspace_id:
+                        from aeon_db import get_workspace_llm_preference
+                        preference = get_workspace_llm_preference(str(workspace_id))
+                        provider_id = preference.get("provider")
+                        model_id = model_id or preference.get("model")
+                    if provider_id:
+                        provider = get_llm_provider(str(provider_id), model=str(model_id) if model_id else None)
+            except Exception:
+                # A preference lookup must never break the legacy agent loop.
+                provider = None
+        provider = provider or QW
         # For Phase 1 we reuse the v2.1 tool loop inline.
         t0 = time.time()
         tool_count = 0
@@ -1162,7 +1198,7 @@ class ReflectiveAgent:
             + (mcp_block + ". " if mcp_block else "")
             + "Always answer the question; do not refuse."
         )
-        out = QW.generate(query, system=sys_prompt)
+        out = provider.generate(query, system=sys_prompt)
         body = out["text"]
         tool_results = []
         for m in TOOL_RE.finditer(body):
