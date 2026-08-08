@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { sanitizeApprovalResponse } from "@/lib/approval-response";
 
 const AEON_URL = process.env.AEON_PYTHON_URL || "http://127.0.0.1:5000";
 
@@ -8,21 +9,17 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   try {
     const headers: Record<string, string> = {};
     const authHeader = req.headers.get("authorization");
-    if (authHeader) headers["Authorization"] = authHeader;
-
-    const res = await fetch(`${AEON_URL}/approvals/${params.id}`, {
-      method: "GET",
-      headers,
-    });
+    if (authHeader) headers.Authorization = authHeader;
+    const res = await fetch(`${AEON_URL}/approvals/${encodeURIComponent(params.id)}`, { method: "GET", headers, cache: "no-store" });
     const text = await res.text();
-    let data: any;
+    let data: unknown;
     try {
       data = JSON.parse(text);
     } catch {
-      data = { message: text };
+      data = { ok: false, error: text || "Approval service returned an invalid response" };
     }
-    return NextResponse.json(data, { status: res.status });
-  } catch (err: any) {
-    return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
+    return NextResponse.json(sanitizeApprovalResponse(data), { status: res.status });
+  } catch (error) {
+    return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Approval service unavailable" }, { status: 503 });
   }
 }

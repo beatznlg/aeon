@@ -32,7 +32,7 @@ class FakeAgent:
         self.self_model = types.SimpleNamespace(vitals=lambda: {"ok": True})
         self.goals = types.SimpleNamespace(open_goals=lambda: [])
 
-    def act(self, query):
+    def act(self, query, llm_provider=None):
         self.tick_count += 1
         return {"backend": "stub", "answer": f"echo: {query}"}
 
@@ -299,7 +299,26 @@ def _make_module(name, **attrs):
 
 
 # aeon.py
-aeon_mod = _make_module("aeon", ReflectiveAgent=FakeAgent, QW=None)
+# Keep the lightweight test stub compatible with the capability registry's
+# builtin discovery/invocation contract.
+def _fake_safe_run(name, args, root, sec=8):
+    if name == "math":
+        try:
+            import sympy as sp
+
+            return {"ok": True, "output": str(sp.sympify(args.get("expr", "0")).evalf(15))}
+        except Exception as exc:
+            return {"ok": False, "output": f"math err {type(exc).__name__}"}
+    return {"ok": False, "output": f"no tool {name}"}
+
+
+aeon_mod = _make_module(
+    "aeon",
+    ReflectiveAgent=FakeAgent,
+    QW=None,
+    TOOLS={"math": object()},
+    _safe_run=_fake_safe_run,
+)
 sys.modules["aeon"] = aeon_mod
 
 # aeon_os.py
@@ -337,15 +356,9 @@ sys.modules["aeon_usage"] = aeon_usage_mod
 # aeon_governance.py is lightweight; use the real module so governance/audit
 # tests exercise actual local persistence and PII redaction logic.
 
-# aeon_llm.py
-aeon_llm_mod = _make_module(
-    "aeon_llm",
-    list_providers=lambda: [],
-    set_active_provider=lambda p: {"ok": True, "provider": p},
-    get_llm_provider=lambda p=None: None,
-    test_provider=lambda p: {"ok": True},
-)
-sys.modules["aeon_llm"] = aeon_llm_mod
+# aeon_llm is intentionally not stubbed. The focused provider tests and the
+# Flask LLM routes must exercise the real credential-free catalog and custom
+# OpenAI-compatible endpoint validation.
 
 # aeon_api_keys.py
 aeon_api_keys_mod = _make_module("aeon_api_keys", ApiKeyManager=FakeApiKeyManager)

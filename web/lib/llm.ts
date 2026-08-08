@@ -1,24 +1,99 @@
 /**
- * AEON LLM Provider Bridge
+ * AEON server-side LLM bridge.
  *
- * Calls LLM APIs directly via HTTP fetch so the chat route works on Vercel
- * (no Python subprocess needed). Supports OpenAI, Anthropic, HuggingFace,
- * OpenRouter, and a stub provider for testing.
+ * API keys are read only on the server. Provider/model overrides are identifiers
+ * supplied by the caller; credentials and endpoint URLs are never accepted
+ * from the browser.
  */
 
-export type LLMProvider = "openai" | "anthropic" | "hf" | "openrouter" | "stub";
+export type LLMProvider =
+  | "openai"
+  | "anthropic"
+  | "google"
+  | "mistral"
+  | "hf"
+  | "openrouter"
+  | "ollama"
+  | "lmstudio"
+  | "vllm"
+  | "custom"
+  | "stub";
 
 export const DEFAULT_PROVIDER: LLMProvider = "openrouter";
 
-function isValidProvider(p: string): p is LLMProvider {
-  return ["openai", "anthropic", "hf", "openrouter", "stub"].includes(p);
+function isValidProvider(value: string): value is LLMProvider {
+  return [
+    "openai",
+    "anthropic",
+    "google",
+    "mistral",
+    "hf",
+    "openrouter",
+    "ollama",
+    "lmstudio",
+    "vllm",
+    "custom",
+    "stub",
+  ].includes(value);
 }
 
-function getProvider(providerOverride?: LLMProvider | string): LLMProvider {
-  if (providerOverride && isValidProvider(providerOverride)) return providerOverride;
-  const env = (process.env.AEON_LLM_PROVIDER || DEFAULT_PROVIDER).toLowerCase();
-  if (isValidProvider(env)) return env;
-  return DEFAULT_PROVIDER;
+function getProvider(value?: string): LLMProvider {
+  const candidate = (value || process.env.AEON_LLM_PROVIDER || DEFAULT_PROVIDER).toLowerCase();
+  return isValidProvider(candidate) ? candidate : DEFAULT_PROVIDER;
+}
+
+function getModel(provider: LLMProvider, override?: string): string {
+  if (override?.trim()) return override.trim();
+  const envByProvider: Partial<Record<LLMProvider, string | undefined>> = {
+    openai: process.env.OPENAI_MODEL || process.env.AEON_LLM_MODEL || "gpt-5-mini",
+    anthropic: process.env.ANTHROPIC_MODEL || process.env.AEON_LLM_MODEL || "claude-sonnet-4-20250514",
+    google: process.env.GEMINI_MODEL || process.env.AEON_LLM_MODEL || "gemini-2.5-flash",
+    mistral: process.env.MISTRAL_MODEL || process.env.AEON_LLM_MODEL || "mistral-small-latest",
+    hf: process.env.HF_MODEL || process.env.AEON_LLM_MODEL || "Qwen/Qwen2.5-7B-Instruct",
+    openrouter: process.env.OPENROUTER_MODEL || process.env.AEON_LLM_MODEL || "openai/gpt-4.1-mini",
+    ollama: process.env.OLLAMA_MODEL || process.env.AEON_LLM_MODEL || "llama3.1",
+    lmstudio: process.env.LM_STUDIO_MODEL || process.env.AEON_LLM_MODEL || "local-model",
+    vllm: process.env.VLLM_MODEL || process.env.AEON_LLM_MODEL || "served-model",
+    custom: process.env.AEON_CUSTOM_LLM_MODEL || process.env.AEON_LLM_MODEL || "custom-model",
+    stub: "deterministic stub",
+  };
+  return envByProvider[provider] || "custom-model";
+}
+
+function messages(prompt: string, system?: string): Array<{ role: string; content: string }> {
+  return [...(system ? [{ role: "system", content: system }] : []), { role: "user", content: prompt }];
+}
+
+function compatibleBaseUrl(provider: LLMProvider): string {
+  const values: Partial<Record<LLMProvider, string | undefined>> = {
+    openai: process.env.OPENAI_BASE_URL || "https://api.openai.com/v1",
+    google: process.env.GEMINI_BASE_URL || "https://generativelanguage.googleapis.com/v1beta/openai",
+    mistral: process.env.MISTRAL_BASE_URL || "https://api.mistral.ai/v1",
+    hf: process.env.HF_OPENAI_BASE_URL || "https://router.huggingface.co/v1",
+    openrouter: process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1",
+    ollama: process.env.OLLAMA_OPENAI_BASE_URL || `${(process.env.OLLAMA_BASE_URL || "http://127.0.0.1:11434").replace(/\/$/, "")}/v1`,
+    lmstudio: process.env.LM_STUDIO_BASE_URL || "http://127.0.0.1:1234/v1",
+    vllm: process.env.VLLM_BASE_URL || "http://127.0.0.1:8000/v1",
+    custom: process.env.AEON_CUSTOM_LLM_BASE_URL || process.env.AEON_LLM_BASE_URL || "",
+  };
+  const base = values[provider];
+  if (!base) throw new Error("custom LLM endpoint is not configured on the server");
+  const normalized = base.replace(/\/$/, "");
+  return normalized.endsWith("/chat/completions") ? normalized : `${normalized}/chat/completions`;
+}
+
+function apiKey(provider: LLMProvider): string | undefined {
+  const values: Partial<Record<LLMProvider, string | undefined>> = {
+    openai: process.env.OPENAI_API_KEY,
+    google: process.env.GEMINI_API_KEY,
+    mistral: process.env.MISTRAL_API_KEY,
+    hf: process.env.HUGGINGFACE_TOKEN,
+    openrouter: process.env.OPENROUTER_API_KEY,
+    ollama: process.env.OLLAMA_API_KEY,
+    vllm: process.env.VLLM_API_KEY,
+    custom: process.env.AEON_CUSTOM_LLM_API_KEY || process.env.CUSTOM_LLM_API_KEY,
+  };
+  return values[provider];
 }
 
 export interface LLMResponse {
@@ -26,193 +101,46 @@ export interface LLMResponse {
   backend: string;
 }
 
-/**
- * Call the configured LLM provider with a prompt and optional system message,
- * returning the generated text and the backend identifier.
- *
- * `providerOverride` lets the caller request a specific backend at runtime
- * (e.g. from a client-side preference stored in localStorage). It falls back
- * to the `AEON_LLM_PROVIDER` environment variable, then to OpenRouter.
- */
-export async function callLLM(
-  prompt: string,
-  system?: string,
-  providerOverride?: LLMProvider | string
-): Promise<LLMResponse> {
+export async function callLLM(prompt: string, system?: string, providerOverride?: string, modelOverride?: string): Promise<LLMResponse> {
   const provider = getProvider(providerOverride);
-
-  switch (provider) {
-    case "openai":
-      return callOpenAI(prompt, system);
-    case "anthropic":
-      return callAnthropic(prompt, system);
-    case "hf":
-      return callHuggingFace(prompt, system);
-    case "openrouter":
-      return callOpenRouter(prompt, system);
-    case "stub":
-    default:
-      return callStub(prompt);
-  }
+  const model = getModel(provider, modelOverride);
+  if (provider === "stub") return callStub(prompt);
+  if (provider === "anthropic") return callAnthropic(prompt, system, model);
+  return callOpenAICompatible(prompt, system, provider, model);
 }
 
-// ─── OpenAI ─────────────────────────────────────────────────────────────
-
-async function callOpenAI(prompt: string, system?: string): Promise<LLMResponse> {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) throw new Error("OPENAI_API_KEY is not set");
-
-  const messages: Array<{ role: string; content: string }> = [];
-  if (system) messages.push({ role: "system", content: system });
-  messages.push({ role: "user", content: prompt });
-
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+async function callOpenAICompatible(prompt: string, system: string | undefined, provider: LLMProvider, model: string): Promise<LLMResponse> {
+  const key = apiKey(provider);
+  const headers: Record<string, string> = { "Content-Type": "application/json", Accept: "application/json" };
+  if (key) headers.Authorization = `Bearer ${key}`;
+  const res = await fetch(compatibleBaseUrl(provider), {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "gpt-4o-mini",
-      messages,
-      max_tokens: 512,
-      temperature: 0.7,
-    }),
+    headers,
+    body: JSON.stringify({ model, messages: messages(prompt, system), max_tokens: 512, temperature: 0.4 }),
+    signal: AbortSignal.timeout(120_000),
   });
-
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`OpenAI API error ${res.status}: ${body}`);
-  }
-
+  if (!res.ok) throw new Error(`${provider} API error ${res.status}`);
   const json = await res.json();
-  const text = json.choices?.[0]?.message?.content || "";
-  return { text, backend: "openai" };
+  return { text: json.choices?.[0]?.message?.content || "", backend: `${provider}:${model}` };
 }
 
-// ─── Anthropic ──────────────────────────────────────────────────────────
-
-async function callAnthropic(prompt: string, system?: string): Promise<LLMResponse> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not set");
-
-  const body: Record<string, unknown> = {
-    model: "claude-3-haiku-20240307",
-    max_tokens: 512,
-    messages: [{ role: "user", content: prompt }],
-  };
-  if (system) body.system = system;
-
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
+async function callAnthropic(prompt: string, system: string | undefined, model: string): Promise<LLMResponse> {
+  const key = process.env.ANTHROPIC_API_KEY;
+  if (!key) throw new Error("ANTHROPIC_API_KEY is not set");
+  const res = await fetch(`${(process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com").replace(/\/$/, "")}/v1/messages`, {
     method: "POST",
-    headers: {
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
+    headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "Content-Type": "application/json" },
+    body: JSON.stringify({ model, max_tokens: 512, system, messages: [{ role: "user", content: prompt }] }),
+    signal: AbortSignal.timeout(120_000),
   });
-
-  if (!res.ok) {
-    const bodyText = await res.text().catch(() => "");
-    throw new Error(`Anthropic API error ${res.status}: ${bodyText}`);
-  }
-
+  if (!res.ok) throw new Error(`anthropic API error ${res.status}`);
   const json = await res.json();
-  const text =
-    json.content
-      ?.map((c: { type: string; text: string }) => (c.type === "text" ? c.text : ""))
-      .join("") || "";
-  return { text, backend: "anthropic" };
+  return { text: json.content?.filter((item: { type: string }) => item.type === "text").map((item: { text: string }) => item.text).join("") || "", backend: `anthropic:${model}` };
 }
-
-// ─── HuggingFace ───────────────────────────────────────────────────────
-
-async function callHuggingFace(prompt: string, _system?: string): Promise<LLMResponse> {
-  const token = process.env.HUGGINGFACE_TOKEN;
-  if (!token) throw new Error("HUGGINGFACE_TOKEN is not set");
-
-  const model = process.env.HF_MODEL || "microsoft/Phi-3-mini-4k-instruct";
-
-  const res = await fetch(
-    `https://api-inference.huggingface.co/models/${model}/v1/chat/completions`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model,
-        messages: [{ role: "user", content: prompt }],
-        max_tokens: 512,
-        temperature: 0.7,
-      }),
-    }
-  );
-
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`HuggingFace API error ${res.status}: ${body}`);
-  }
-
-  const json = await res.json();
-  const text = json.choices?.[0]?.message?.content || "";
-  return { text, backend: "hf_" + model.split("/").pop() };
-}
-
-// ─── OpenRouter ─────────────────────────────────────────────────────────
-
-async function callOpenRouter(prompt: string, system?: string): Promise<LLMResponse> {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) throw new Error("OPENROUTER_API_KEY is not set");
-
-  const model = process.env.OPENROUTER_MODEL || "meta-llama/llama-3.1-8b-instruct:free";
-
-  const messages: Array<{ role: string; content: string }> = [];
-  if (system) messages.push({ role: "system", content: system });
-  messages.push({ role: "user", content: prompt });
-
-  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": process.env.OPENROUTER_REFERER || "https://aeon-os.vercel.app",
-      "X-Title": "AEON OS",
-    },
-    body: JSON.stringify({
-      model,
-      messages,
-      max_tokens: 512,
-      temperature: 0.7,
-    }),
-  });
-
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`OpenRouter API error ${res.status}: ${body}`);
-  }
-
-  const json = await res.json();
-  const text = json.choices?.[0]?.message?.content || "";
-  return { text, backend: "openrouter" };
-}
-
-// ─── Stub ───────────────────────────────────────────────────────────────
 
 async function callStub(prompt: string): Promise<LLMResponse> {
-  const responses: Record<string, string> = {
-    hello:
-      "Hello! I'm AEON, your autonomous AI operating system. I can help you with cybersecurity, retail, manufacturing, professional services, tourism, health, transport, finance, cultural heritage, utilities, and SME business tools. How can I assist you today?",
-    help: "AEON is running in stub mode. To enable real AI responses, set AEON_LLM_PROVIDER to 'openrouter', 'openai', or 'anthropic' and provide the corresponding API key.",
-    default:
-      "I received your message. AEON is currently operating in stub mode — real LLM responses require an API key (OpenRouter, OpenAI, or Anthropic). For now, know that your request has been logged and processed by the AEON OS kernel.",
-  };
-
   const lower = prompt.toLowerCase().trim();
-  const text =
-    Object.entries(responses).find(([key]) => lower.includes(key))?.[1] || responses.default;
-
-  return { text, backend: "stub" };
+  if (lower.includes("hello")) return { text: "Hello! I'm AEON, your autonomous AI operating system. How can I assist you today?", backend: "stub" };
+  if (lower.includes("help")) return { text: "AEON is running in stub mode. Configure a provider key or a local OpenAI-compatible endpoint to enable live responses.", backend: "stub" };
+  return { text: "AEON is currently operating in stub mode. Configure an LLM provider in the Brain Connector to enable live responses.", backend: "stub" };
 }

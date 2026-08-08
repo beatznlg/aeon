@@ -48,6 +48,14 @@ docker compose -f docker-compose.yml -f monitoring/docker-compose.yml up --build
 | `AEON_DATABASE_URL` | Postgres connection string *(defaults to internal)* | `postgresql://aeon:...@postgres:5432/aeon` |
 | `OPENAI_API_KEY` | OpenAI LLM provider | `sk-...` |
 | `ANTHROPIC_API_KEY` | Anthropic LLM provider | `sk-ant-...` |
+| `AEON_LLM_PROVIDER` | Active backend (`openai`, `anthropic`, `google`, `mistral`, `openrouter`, `ollama`, `lmstudio`, `vllm`, `hf`, `qwen`, `custom`, or `stub`) | `custom` |
+| `AEON_LLM_MODEL` | Active model ID; arbitrary IDs are allowed for custom/local backends | `my-local-model` |
+| `AEON_CUSTOM_LLM_BASE_URL` | Hosted or local OpenAI-compatible server; `/v1` is normalized to `/v1/chat/completions` | `http://127.0.0.1:1234/v1` |
+| `AEON_CUSTOM_LLM_MODEL` | Model ID served by the custom endpoint | `local-model` |
+| `AEON_CUSTOM_LLM_API_KEY` | Optional custom endpoint key; keep it in the Keys/API Keys manager | — |
+| `OLLAMA_OPENAI_BASE_URL` | Optional Ollama-compatible base URL | `http://127.0.0.1:11434/v1` |
+| `LM_STUDIO_BASE_URL` | Optional LM Studio-compatible base URL | `http://127.0.0.1:1234/v1` |
+| `VLLM_BASE_URL` | Optional vLLM-compatible base URL | `http://127.0.0.1:8000/v1` |
 
 ### Admin Seed (First Run)
 
@@ -60,6 +68,20 @@ AEON_ADMIN_NAME=AEON Admin
 ```
 
 ---
+
+## 🧠 LLM Provider and Model Architecture
+
+AEON exposes a credential-free provider catalog through `GET /llm/providers` and supports model selection through `POST /llm/switch` with `{ "provider": "custom", "model": "my-model" }`. The Python kernel uses `GET /llm/models` for catalog discovery when available. Custom hosted and local providers share the OpenAI-compatible chat-completions contract:
+
+```json
+{
+  "model": "my-local-model",
+  "messages": [{"role": "user", "content": "Hello"}],
+  "max_tokens": 512
+}
+```
+
+The endpoint may be an Ollama, LM Studio, vLLM, OpenRouter, private gateway, or any compatible service. AEON accepts `http://` for local endpoints and `https://` for hosted endpoints, rejects URLs containing credentials/query strings/fragments, and never returns API keys or custom endpoint URLs in provider metadata. Configure secrets through the Keys/API Keys manager rather than committing them to the repository.
 
 ## 📦 Architecture
 
@@ -132,10 +154,13 @@ AEON_ADMIN_NAME=AEON Admin
 | **44** | Enterprise SSO — OIDC + SAML with just-in-time provisioning (joserfc-based verification) | ✅ |
 | **45** | Compliance Tooling — framework registry (SOC 2, ISO 27001, HIPAA, PCI DSS, FedRAMP, CJIS, DORA, Critical Infrastructure), control mapping, evidence-ledger attestation, BAA/SSP templates | ✅ |
 | **46** | Load & HA Evidence — `scripts/loadtest_api.py` concurrent load harness and `scripts/slo_report.py` SLO evaluation with RTO/RPO evidence | ✅ |
+| **47** | Unified Capability Registry — workspace-scoped discovery and invocation across built-ins, marketplace plugins, and MCP tools with `/os/capabilities` UI | ✅ |
 
 ---
 
 ## 🛠️ Developer Experience
+
+- **Unified Capability Registry**: See [`docs/CAPABILITIES.md`](docs/CAPABILITIES.md) for the workspace-scoped discovery API, invocation contract, security model, and frontend workflow.
 
 AEON ships with first-class developer tooling and auto-generated multi-language SDKs:
 

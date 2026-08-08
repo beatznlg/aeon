@@ -25,7 +25,9 @@ def test_fresh_database_migration_creates_current_model_tables(tmp_path):
     tables = set(inspect(engine).get_table_names())
 
     assert set(Base.metadata.tables).issubset(tables)
-    assert engine.connect().execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "8f0a6c7d1e2b"
+    assert engine.connect().execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "e4a7b9c2d1f0"
+    workspace_columns = {column["name"] for column in inspect(engine).get_columns("workspaces")}
+    assert {"llm_provider", "llm_model"}.issubset(workspace_columns)
 
 
 def test_legacy_schema_is_preserved_and_stamped(tmp_path, monkeypatch):
@@ -45,4 +47,4 @@ def test_legacy_schema_is_preserved_and_stamped(tmp_path, monkeypatch):
 
     with engine.connect() as connection:
         assert connection.execute(text("SELECT id FROM tenants WHERE slug='legacy'")).scalar_one() == "tenant-1"
-        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "8f0a6c7d1e2b"
+        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "e4a7b9c2d1f0"

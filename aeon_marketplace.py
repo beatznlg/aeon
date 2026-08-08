@@ -1534,6 +1534,133 @@ BUILTIN_PLUGIN_CATALOG: tuple[PluginManifest, ...] = (
         verified=True,
         tags=("real-estate", "valuation", "analytics"),
     ),
+    # ── Platform operations plugins ────────────────────────────────────────
+    PluginManifest(
+        id="trace-observability",
+        name="Trace Observability",
+        version="1.0.0",
+        description="Inspect agent and workflow traces, summarize spans, and surface latency or token anomalies.",
+        author="AEON Labs",
+        category="analytics",
+        icon="🧭",
+        permissions=("read", "execute"),
+        entry_points={
+            "trace": "Create a deterministic trace summary for a workflow run.",
+            "status": "Report trace collection health.",
+            "report": "Summarize latency, spans, and token usage signals.",
+        },
+        config_schema={
+            "sample_rate": {"type": "number", "default": 1.0, "description": "Fraction of runs to sample."},
+            "retention_days": {"type": "number", "default": 30, "description": "Trace retention window."},
+        },
+        verified=True,
+        tags=("tracing", "observability", "latency"),
+    ),
+    PluginManifest(
+        id="mcp-tool-bridge",
+        name="MCP Tool Bridge",
+        version="1.0.0",
+        description="Manage MCP tool inventories and prepare workspace-safe calls for agent workflows.",
+        author="AEON Labs",
+        category="integration",
+        icon="🔌",
+        permissions=("read", "execute", "network"),
+        entry_points={
+            "sync": "Synchronize an MCP server tool inventory.",
+            "call": "Prepare a workspace-scoped MCP tool call.",
+            "health": "Report MCP server bridge health.",
+        },
+        config_schema={
+            "server_id": {"type": "string", "default": "", "description": "MCP server identifier."},
+            "timeout_seconds": {"type": "number", "default": 30, "description": "Bridge timeout."},
+        },
+        verified=False,
+        tags=("mcp", "tools", "agent-interop"),
+    ),
+    PluginManifest(
+        id="compliance-evidence",
+        name="Compliance Evidence",
+        version="1.0.0",
+        description="Map controls to evidence requirements and produce readiness summaries without asserting certification.",
+        author="AEON Labs",
+        category="security",
+        icon="🗂️",
+        permissions=("read", "execute"),
+        entry_points={
+            "collect": "Prepare an evidence collection checklist.",
+            "check": "Check control coverage against a readiness profile.",
+            "report": "Generate an evidence-ledger readiness summary.",
+        },
+        config_schema={
+            "framework": {"type": "string", "default": "baseline", "description": "Readiness framework profile."},
+            "include_gaps": {"type": "boolean", "default": True, "description": "Include uncovered controls."},
+        },
+        verified=True,
+        tags=("compliance", "evidence", "soc2", "fedramp"),
+    ),
+    PluginManifest(
+        id="connector-health",
+        name="Connector Health",
+        version="1.0.0",
+        description="Standardize health checks and delivery status across configured enterprise connectors.",
+        author="AEON Labs",
+        category="integration",
+        icon="🩹",
+        permissions=("read", "execute", "network"),
+        entry_points={
+            "check": "Check connector configuration readiness.",
+            "health": "Report connector delivery health.",
+            "status": "Summarize connector state for a workspace.",
+        },
+        config_schema={
+            "connector": {"type": "string", "default": "all", "description": "Connector name or all."},
+            "timeout_seconds": {"type": "number", "default": 10, "description": "Health-check timeout."},
+        },
+        verified=False,
+        tags=("connectors", "health", "integrations"),
+    ),
+    PluginManifest(
+        id="developer-quality",
+        name="Developer Quality",
+        version="1.0.0",
+        description="Review workflow and automation quality signals: failures, drift, and delivery trends.",
+        author="AEON Labs",
+        category="devops",
+        icon="🧪",
+        permissions=("read", "execute"),
+        entry_points={
+            "scan": "Scan a workflow or automation quality snapshot.",
+            "report": "Generate a developer-quality summary.",
+            "trends": "Summarize quality trends over a time window.",
+        },
+        config_schema={
+            "window_days": {"type": "number", "default": 30, "description": "Quality analysis window."},
+            "failure_threshold": {"type": "number", "default": 0.1, "description": "Failure-rate alert threshold."},
+        },
+        verified=True,
+        tags=("devops", "quality", "ci-cd"),
+    ),
+    PluginManifest(
+        id="data-quality-guard",
+        name="Data Quality Guard",
+        version="1.0.0",
+        description="Profile datasets, flag validation gaps, and prepare quality checks before automation or AI use.",
+        author="AEON Labs",
+        category="data",
+        icon="✅",
+        permissions=("read", "execute"),
+        entry_points={
+            "profile": "Profile completeness and shape signals for a dataset.",
+            "check": "Check a dataset against quality thresholds.",
+            "report": "Summarize quality findings and remediation hints.",
+        },
+        config_schema={
+            "completeness_threshold": {"type": "number", "default": 0.95, "description": "Minimum completeness ratio."},
+            "strict": {"type": "boolean", "default": True, "description": "Fail closed on missing quality signals."},
+        },
+        verified=True,
+        tags=("data-quality", "validation", "governance"),
+    ),
 )
 
 _BUILTIN_BY_ID = {manifest.id: manifest for manifest in BUILTIN_PLUGIN_CATALOG}
@@ -1575,7 +1702,7 @@ def _run_builtin(manifest: PluginManifest, entry: str, params: dict[str, Any], c
         }
     if entry in (
         "status", "health", "rules", "feeds", "route", "fallback", "certify",
-        "monitor", "retrieve", "index", "usage", "sync", "export",
+        "monitor", "retrieve", "index", "usage", "sync", "export", "trace", "collect",
     ):
         return {"ok": True, "status": "healthy", "target": config.get("target", manifest.id), "config": config}
     if entry in (
@@ -1590,7 +1717,7 @@ def _run_builtin(manifest: PluginManifest, entry: str, params: dict[str, Any], c
         }
     if entry in (
         "trigger", "forward", "escalate", "outage_alert", "conflicts", "utilization", "postmortem", "trends",
-        "rotate", "schedule", "build", "publish", "approve",
+        "rotate", "schedule", "build", "publish", "approve", "call",
     ):
         return {
             "ok": True,

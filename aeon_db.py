@@ -88,6 +88,10 @@ class Workspace(Base):
     name = Column(String(255), nullable=False)
     plan = Column(String(50), nullable=False, default="free")
     theme_config = Column(JSON, nullable=False, default=dict)
+    # Non-secret LLM defaults for this workspace. API keys and endpoints stay
+    # in the existing secret/configuration systems and are never persisted here.
+    llm_provider = Column(String(50), nullable=True)
+    llm_model = Column(String(255), nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, default=_now)
 
     memberships = relationship("Membership", back_populates="workspace", cascade="all, delete-orphan")
@@ -148,6 +152,49 @@ class AutomationExecution(Base):
     status = Column(String(50), nullable=True)
     result = Column(JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, default=_now)
+
+
+class OutboxEvent(Base):
+    """Durable event envelope waiting for publication."""
+
+    __tablename__ = "outbox_events"
+
+    id = Column(String(36), primary_key=True)
+    tenant_id = Column(String(36), nullable=False, index=True)
+    workspace_id = Column(String(36), nullable=True, index=True)
+    aggregate_type = Column(String(100), nullable=False)
+    aggregate_id = Column(String(36), nullable=False)
+    aggregate_version = Column(Integer, nullable=False)
+    event_type = Column(String(255), nullable=False, index=True)
+    event_version = Column(Integer, nullable=False, default=1)
+    schema_uri = Column(String(1024), nullable=False)
+    payload = Column(JSON, nullable=False)
+    payload_hash = Column(String(64), nullable=False)
+    occurred_at = Column(DateTime(timezone=True), nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_now)
+    available_at = Column(DateTime(timezone=True), nullable=False, default=_now)
+    published_at = Column(DateTime(timezone=True), nullable=True)
+    status = Column(String(50), nullable=False, default="pending", index=True)
+    lease_owner = Column(String(128), nullable=True)
+    lease_until = Column(DateTime(timezone=True), nullable=True, index=True)
+    attempt_count = Column(Integer, nullable=False, default=0)
+    last_error_code = Column(String(100), nullable=True)
+    last_error_message = Column(Text, nullable=True)
+
+
+class EventConsumption(Base):
+    """Inbox record enforcing one delivery per consumer and event."""
+
+    __tablename__ = "event_consumptions"
+
+    consumer_name = Column(String(255), primary_key=True)
+    event_id = Column(String(36), primary_key=True)
+    status = Column(String(50), nullable=False, default="received")
+    first_seen_at = Column(DateTime(timezone=True), nullable=False, default=_now)
+    processed_at = Column(DateTime(timezone=True), nullable=True)
+    attempt_count = Column(Integer, nullable=False, default=0)
+    last_error_code = Column(String(100), nullable=True)
+    last_error_message = Column(Text, nullable=True)
 
 
 class AutomationPolicy(Base):
@@ -459,12 +506,18 @@ class Database:
 
             if "workspaces" in table_names:
                 columns = {col["name"] for col in inspector.get_columns("workspaces")}
-                if "theme_config" not in columns:
-                    with self.engine.begin() as conn:
+                with self.engine.begin() as conn:
+                    if "theme_config" not in columns:
                         try:
                             conn.execute(text("ALTER TABLE workspaces ADD COLUMN theme_config JSON DEFAULT '{}'"))
                         except Exception:
                             conn.execute(text("ALTER TABLE workspaces ADD COLUMN theme_config TEXT DEFAULT '{}'"))
+                    for column_name, column_ddl in (
+                        ("llm_provider", "VARCHAR(50)"),
+                        ("llm_model", "VARCHAR(255)"),
+                    ):
+                        if column_name not in columns:
+                            conn.execute(text(f"ALTER TABLE workspaces ADD COLUMN {column_name} {column_ddl}"))
 
             if "audit_logs" in table_names:
                 columns = {col["name"] for col in inspector.get_columns("audit_logs")}
@@ -478,6 +531,21 @@ class Database:
                     ):
                         if column_name not in columns:
                             conn.execute(text(f"ALTER TABLE audit_logs ADD COLUMN {column_name} {column_ddl}"))
+
+            if "outbox_events" in table_names:
+                columns = {col["name"] for col in inspector.get_columns("outbox_events")}
+                # Event leases/status are additive so older installations can
+                # adopt multi-worker publication without rewriting payloads.
+                with self.engine.begin() as conn:
+                    for column_name, column_ddl in (
+                        ("status", "VARCHAR(50) DEFAULT 'pending'"),
+                        ("lease_owner", "VARCHAR(128)"),
+                        ("lease_until", "DATETIME"),
+                    ):
+                        if column_name not in columns:
+                            conn.execute(text(f"ALTER TABLE outbox_events ADD COLUMN {column_name} {column_ddl}"))
+                    conn.execute(text("UPDATE outbox_events SET status = 'published' WHERE published_at IS NOT NULL AND status IS NULL"))
+                    conn.execute(text("UPDATE outbox_events SET status = 'pending' WHERE published_at IS NULL AND status IS NULL"))
         except Exception as exc:
             import logging
 
@@ -702,6 +770,42 @@ def update_workspace_theme_config(workspace_id: str, config: dict[str, Any]) -> 
         return updated
 
 
+def get_workspace_llm_preference(workspace_id: str) -> dict[str, Any]:
+    """Return non-secret LLM preference identifiers for one workspace."""
+    db = get_db()
+    with db.session() as s:
+        workspace = s.query(Workspace).filter_by(id=str(workspace_id)).first()
+        if workspace is None:
+            raise ValueError("workspace not found")
+        return {
+            "workspace_id": str(workspace.id),
+            "provider": workspace.llm_provider,
+            "model": workspace.llm_model,
+        }
+
+
+def update_workspace_llm_preference(
+    workspace_id: str,
+    *,
+    provider: str,
+    model: str | None = None,
+) -> dict[str, Any]:
+    """Persist provider/model identifiers without accepting credentials."""
+    db = get_db()
+    with db.session() as s:
+        workspace = s.query(Workspace).filter_by(id=str(workspace_id)).first()
+        if workspace is None:
+            raise ValueError("workspace not found")
+        workspace.llm_provider = provider
+        workspace.llm_model = model
+        s.commit()
+        return {
+            "workspace_id": str(workspace.id),
+            "provider": workspace.llm_provider,
+            "model": workspace.llm_model,
+        }
+
+
 def get_workspace_security_config(workspace_id: str) -> Optional["WorkspaceSecurityConfig"]:
     """Fetch the security/residency configuration for a workspace."""
     db = get_db()
@@ -818,6 +922,61 @@ def audit_record_hash(
     return hashlib.sha256(canonical).hexdigest()
 
 
+def add_audit_log_in_session(
+    session: Session,
+    action: str,
+    module: str,
+    user_id: str | None,
+    workspace_id: str | None,
+    email: str | None,
+    metadata: dict[str, Any] | None = None,
+    pii_redacted: bool = False,
+    timestamp: datetime | None = None,
+) -> AuditLog:
+    """Add an audit record to an existing transaction without committing it."""
+    last_hashed = (
+        session.query(AuditLog)
+        .filter(AuditLog.record_hash.isnot(None))
+        .order_by(AuditLog.timestamp.asc(), AuditLog.id.asc())
+        .all()
+    )
+    previous_hash = last_hashed[-1].record_hash if last_hashed else _AUDIT_GENESIS_HASH
+    log_id = str(uuid.uuid4())
+    resolved_timestamp = timestamp or _now()
+    normalized_user_id = str(user_id) if user_id else None
+    normalized_workspace_id = str(workspace_id) if workspace_id else None
+    normalized_metadata = metadata or {}
+    record_hash = audit_record_hash(
+        id=log_id,
+        user_id=normalized_user_id,
+        email=email,
+        action=action,
+        module=module,
+        workspace_id=normalized_workspace_id,
+        metadata=normalized_metadata,
+        pii_redacted=pii_redacted,
+        timestamp=resolved_timestamp,
+        previous_hash=previous_hash,
+    )
+    log = AuditLog(
+        id=log_id,
+        user_id=normalized_user_id,
+        email=email,
+        action=action,
+        module=module,
+        workspace_id=normalized_workspace_id,
+        metadata_json=normalized_metadata,
+        pii_redacted=pii_redacted,
+        timestamp=resolved_timestamp,
+        previous_hash=previous_hash,
+        record_hash=record_hash,
+        hash_version=AUDIT_HASH_VERSION,
+    )
+    session.add(log)
+    session.flush()
+    return log
+
+
 def add_audit_log(
     action: str,
     module: str,
@@ -838,42 +997,17 @@ def add_audit_log(
     """
     db = get_db()
     with db.session() as s:
-        last_hashed = (
-            s.query(AuditLog)
-            .filter(AuditLog.record_hash.isnot(None))
-            .order_by(AuditLog.timestamp.asc(), AuditLog.id.asc())
-            .all()
-        )
-        previous_hash = last_hashed[-1].record_hash if last_hashed else _AUDIT_GENESIS_HASH
-        log_id = str(uuid.uuid4())
-        resolved_timestamp = timestamp or _now()
-        record_hash = audit_record_hash(
-            id=log_id,
-            user_id=str(user_id) if user_id else None,
-            email=email,
+        log = add_audit_log_in_session(
+            s,
             action=action,
             module=module,
-            workspace_id=str(workspace_id) if workspace_id else None,
-            metadata=metadata or {},
-            pii_redacted=pii_redacted,
-            timestamp=resolved_timestamp,
-            previous_hash=previous_hash,
-        )
-        log = AuditLog(
-            id=log_id,
-            user_id=str(user_id) if user_id else None,
+            user_id=user_id,
+            workspace_id=workspace_id,
             email=email,
-            action=action,
-            module=module,
-            workspace_id=str(workspace_id) if workspace_id else None,
-            metadata_json=metadata or {},
+            metadata=metadata,
             pii_redacted=pii_redacted,
-            timestamp=resolved_timestamp,
-            previous_hash=previous_hash,
-            record_hash=record_hash,
-            hash_version=AUDIT_HASH_VERSION,
+            timestamp=timestamp,
         )
-        s.add(log)
         s.commit()
 
     # Best-effort SIEM forward (lazy import avoids circular dependency).

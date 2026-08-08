@@ -19,6 +19,27 @@ def test_live_returns_alive(client):
     assert data["status"] == "alive"
 
 
+def test_request_id_is_generated_and_returned(client):
+    resp = client.get("/health")
+    request_id = resp.headers.get("X-Request-ID")
+    assert resp.status_code == 200
+    assert request_id
+    assert request_id.startswith("aeon-")
+
+
+def test_request_id_is_preserved_for_distributed_tracing(client):
+    request_id = "proxy-request-123"
+    resp = client.get("/health", headers={"X-Request-ID": request_id})
+    assert resp.status_code == 200
+    assert resp.headers["X-Request-ID"] == request_id
+
+
+def test_invalid_request_id_is_replaced(client):
+    resp = client.get("/health", headers={"X-Request-ID": "bad id value"})
+    assert resp.status_code == 200
+    assert resp.headers["X-Request-ID"].startswith("aeon-")
+
+
 def test_ready_returns_environment_report(client):
     resp = client.get("/ready")
     assert resp.status_code == 200

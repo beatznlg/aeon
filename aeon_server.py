@@ -39,6 +39,7 @@ from aeon_cache import get_cache
 from aeon_compliance import evaluate_environment
 from aeon_db import (
     add_automation_execution,
+    get_workspace_llm_preference,
     get_workspace_security_config,
     get_workspace_theme_config,
     init_db,
@@ -78,6 +79,7 @@ from aeon_automations import _compute_next_run, _execute_action, evaluate_condit
 from aeon_budgets import (
     check_automation_budget,
 )
+from aeon_capabilities_routes import register_capability_routes
 from aeon_compliance_routes import register_compliance_routes
 from aeon_db import (
     create_automation_budget,
@@ -94,8 +96,10 @@ from aeon_governance import GovernanceManager, get_governance
 from aeon_integrations import IntegrationManager, WebhookDelivery, get_integration_catalog
 from aeon_llm import get_llm_provider, list_providers, set_active_provider
 from aeon_llm import test_provider as _test_llm_provider
+from aeon_llm_routes import register_llm_routes
 from aeon_marketplace_routes import register_marketplace_routes
 from aeon_mcp_routes import register_mcp_routes
+from aeon_operating_profile_routes import register_operating_profile_routes
 from aeon_policies import (
     PolicyEffect,
     evaluate_automation_policy,
@@ -230,6 +234,9 @@ from aeon_usage import BillingCalculator, HealthCollector, UsageMeter
 
 app = Flask(__name__)
 register_marketplace_routes(app)
+register_capability_routes(app)
+register_llm_routes(app)
+register_operating_profile_routes(app)
 register_trace_routes(app)
 register_mcp_routes(app)
 register_compliance_routes(app)
@@ -831,16 +838,34 @@ metrics_collector = MetricsCollector()
 
 
 # ── Request lifecycle hooks ──────────────────────────────────────────────────
+_REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
+
+
+def _request_id_for_request() -> str:
+    """Return a bounded, log-safe request ID for the active request.
+
+    Accepting a caller-provided ID makes distributed tracing through the
+    Next.js proxy possible, while the strict character/length check prevents
+    header values from becoming log-injection or unbounded-cardinality input.
+    """
+    candidate = request.headers.get("X-Request-ID", "").strip()
+    if _REQUEST_ID_RE.fullmatch(candidate):
+        return candidate
+    return f"aeon-{secrets.token_urlsafe(16)}"
+
+
 @app.before_request
 def _before_request():
     g.start_time = time.time()
+    g.request_id = _request_id_for_request()
+
     # Health/readiness/metrics endpoints are excluded from rate limiting.
     if request.path in ("/health", "/ready", "/metrics"):
         return None
     if not rate_limiter.is_allowed(rate_limiter.key_for_request()):
         logger.warning("Rate limit exceeded for %s", rate_limiter.key_for_request())
         return jsonify({"ok": False, "error": "rate limit exceeded"}), 429
-    logger.info("%s %s", request.method, request.path)
+    logger.info("request_id=%s %s %s", g.request_id, request.method, request.path)
     return None
 
 
@@ -849,8 +874,9 @@ def _after_request(response):
     start = getattr(g, "start_time", None)
     duration_sec = (time.time() - start) if start else 0
     duration_ms = duration_sec * 1000
-    logger.info("%s %s -> %s (%d ms)", request.method, request.path, response.status_code, int(duration_ms))
-    response.headers["X-Request-ID"] = f"{time.time():.6f}-{id(request)}"
+    request_id = getattr(g, "request_id", None) or _request_id_for_request()
+    logger.info("request_id=%s %s %s -> %s (%d ms)", request_id, request.method, request.path, response.status_code, int(duration_ms))
+    response.headers["X-Request-ID"] = request_id
     # Record Prometheus metrics for every request (except the metrics endpoint itself to avoid loops)
     if request.path != "/metrics":
         metrics_collector.inc("aeon_http_requests_total", labels={
@@ -873,6 +899,42 @@ def _handle_exception(e):
 # ── Agent cache (one per app_id) ─────────────────────────────────────────────
 _agent_lock = threading.Lock()
 _agents: dict[str, ReflectiveAgent] = {}
+
+
+def _request_llm_provider(workspace_id: str | None, provider_override: str | None = None, model_override: str | None = None):
+    """Build a request-local provider from workspace preference or legacy env.
+
+    Only public provider/model identifiers are read from the workspace row;
+    credentials remain in the existing process secret configuration.  The
+    returned provider is intentionally not assigned to ``aeon.QW``.
+    """
+    provider_id = str(provider_override or "").strip() or None
+    model = str(model_override or "").strip() or None
+    if provider_id is None and workspace_id:
+        try:
+            preference = get_workspace_llm_preference(str(workspace_id))
+            provider_id = preference.get("provider") or None
+            model = model or preference.get("model") or None
+        except ValueError:
+            pass
+    return get_llm_provider(provider_id, model=model)
+
+
+def _agent_act_for_request(
+    agent: ReflectiveAgent,
+    query: str,
+    *,
+    workspace_id: str | None,
+    provider_override: str | None = None,
+    model_override: str | None = None,
+):
+    """Run one agent turn with an explicitly request-local provider."""
+    provider = _request_llm_provider(
+        workspace_id,
+        provider_override=provider_override,
+        model_override=model_override,
+    )
+    return agent.act(query, llm_provider=provider)
 
 
 def get_agent(app_id: str) -> ReflectiveAgent:
@@ -911,7 +973,12 @@ class JobQueue:
         try:
             agent = get_agent(app_id)
             if action == "act":
-                result = agent.act(payload.get("query", ""))
+                llm_provider = _request_llm_provider(
+                    payload.get("workspace_id"),
+                    provider_override=payload.get("provider"),
+                    model_override=payload.get("model"),
+                )
+                result = agent.act(payload.get("query", ""), llm_provider=llm_provider)
             elif action == "reflect":
                 result = agent.reflect()
             elif action == "evolve":
@@ -1222,7 +1289,7 @@ def auth_register():
     from aeon_auth import create_access_token
     from aeon_db import Membership, User, Workspace, get_db
 
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     email = (data.get("email") or "").strip().lower()
     password = data.get("password", "")
     name = (data.get("name") or "").strip() or email.split("@")[0]
@@ -1320,7 +1387,7 @@ def auth_jwt_status():
 def auth_jwt_rotate():
     """Rotate the primary JWT signing secret. Accepts an optional explicit secret."""
     from aeon_auth import rotate_jwt_secret
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     new_secret = data.get("secret")
     result = rotate_jwt_secret(new_secret)
     return jsonify({"ok": True, "rotation": result})
@@ -1409,7 +1476,7 @@ def sso_providers_index():
             ],
         })
 
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     protocol = (data.get("protocol") or "").lower()
     name = (data.get("name") or "").strip()
     config = data.get("config") or {}
@@ -1467,7 +1534,7 @@ def sso_provider_detail(provider_id: str):
         _delete_sso_provider(provider_id)
         return jsonify({"ok": True})
 
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     provider = _update_sso_provider(
         provider,
         name=data.get("name"),
@@ -1566,7 +1633,7 @@ def scim_users_index():
     if request.method == "GET":
         filter_expr = request.args.get("filter")
         return scim_list_users(workspace_id, filter_expr)
-    return scim_create_user(workspace_id, request.json or {})
+    return scim_create_user(workspace_id, request.get_json(silent=True) or {})
 
 
 @app.route("/scim/v2/Users/<user_id>", methods=["GET", "PUT", "PATCH"])
@@ -1576,8 +1643,8 @@ def scim_user_detail(user_id: str):
     if request.method == "GET":
         return scim_get_user(workspace_id, user_id)
     if request.method == "PUT":
-        return scim_replace_user(workspace_id, user_id, request.json or {})
-    return scim_patch_user(workspace_id, user_id, request.json or {})
+        return scim_replace_user(workspace_id, user_id, request.get_json(silent=True) or {})
+    return scim_patch_user(workspace_id, user_id, request.get_json(silent=True) or {})
 
 
 @app.route("/scim/v2/Groups", methods=["GET", "POST"])
@@ -1586,7 +1653,7 @@ def scim_groups_index():
     workspace_id = g.scim_workspace_id
     if request.method == "GET":
         return scim_list_groups(workspace_id)
-    return scim_create_group(workspace_id, request.json or {})
+    return scim_create_group(workspace_id, request.get_json(silent=True) or {})
 
 
 @app.route("/scim/v2/Groups/<group_id>", methods=["GET", "PUT", "PATCH"])
@@ -1596,8 +1663,8 @@ def scim_group_detail(group_id: str):
     if request.method == "GET":
         return scim_get_group(workspace_id, group_id)
     if request.method == "PUT":
-        return scim_replace_group(workspace_id, group_id, request.json or {})
-    return scim_patch_group(workspace_id, group_id, request.json or {})
+        return scim_replace_group(workspace_id, group_id, request.get_json(silent=True) or {})
+    return scim_patch_group(workspace_id, group_id, request.get_json(silent=True) or {})
 
 
 # ── Security, Compliance & Data Residency (Phase 45) ─────────────────────────
@@ -1626,7 +1693,7 @@ def workspace_security_config(workspace_id: str):
             "kms_key_id": cfg.kms_key_id,
         })
 
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     try:
         cfg = upsert_workspace_security_config(
             workspace_id,
@@ -1652,7 +1719,7 @@ def workspace_security_config(workspace_id: str):
 @require_workspace_role("ADMIN")
 def workspace_security_scan(workspace_id: str):
     """Scan arbitrary text for PII/PHI based on the workspace security config."""
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     text = data.get("text", "")
     cfg = get_workspace_security_config(workspace_id)
     scanner = SecurityScanner(
@@ -1795,16 +1862,17 @@ def workspace_chat(workspace_id: str):
         return jsonify({"ok": False, "error": "workspace access denied"}), 403
 
     try:
-        # Per-request provider override
-        provider_override = data.get("provider")
-        if provider_override:
-            import aeon as _aeon
-            _aeon.QW = get_llm_provider(str(provider_override))
-            os.environ["AEON_LLM_PROVIDER"] = str(provider_override)
-
+        # Request-local provider: never mutate process-global provider state so
+        # concurrent tenants cannot leak model selection between workspaces.
         # Use workspace_id as the agent key for isolated state
         agent = get_agent(f"ws-{workspace_id}")
-        result = agent.act(query)
+        result = _agent_act_for_request(
+            agent,
+            query,
+            workspace_id=workspace_id,
+            provider_override=data.get("provider"),
+            model_override=data.get("model"),
+        )
         metrics_collector.inc("aeon_chat_requests_total")
         metrics_collector.inc("aeon_agent_ticks_total", labels={"app_id": f"ws-{workspace_id}"})
 
@@ -1814,7 +1882,7 @@ def workspace_chat(workspace_id: str):
             user_id=user_id,
             workspace_id=workspace_id,
             email=ctx.get("email"),
-            metadata=_secure_metadata({"backend": result.get("backend", "unknown"), "provider_override": provider_override}, ctx.get("workspace_id")),
+            metadata=_secure_metadata({"backend": result.get("backend", "unknown"), "provider_override": data.get("provider")}, ctx.get("workspace_id")),
         )
         return jsonify({"ok": True, "data": result, "backend": result.get("backend", "unknown")})
     except Exception as e:
@@ -2092,14 +2160,15 @@ def chat():
         return jsonify({"ok": False, "error": "missing query"}), 400
     ctx = _governance_context()
     try:
-        # Per-request provider override; fall back to the active global QW
-        provider_override = data.get("provider")
-        if provider_override:
-            import aeon as _aeon
-            _aeon.QW = get_llm_provider(str(provider_override))
-            os.environ["AEON_LLM_PROVIDER"] = str(provider_override)
+        # Request-local provider override; never mutate shared process state.
         agent = get_agent("default")
-        result = agent.act(query)
+        result = _agent_act_for_request(
+            agent,
+            query,
+            workspace_id=ctx.get("workspace_id"),
+            provider_override=data.get("provider"),
+            model_override=data.get("model"),
+        )
         metrics_collector.inc("aeon_chat_requests_total")
         metrics_collector.inc("aeon_agent_ticks_total", labels={"app_id": "default"})
         get_governance_manager().log_audit(
@@ -2108,7 +2177,7 @@ def chat():
             user_id=ctx.get("user_id"),
             workspace_id=ctx.get("workspace_id"),
             email=ctx.get("email"),
-            metadata=_secure_metadata({"backend": result.get("backend", "unknown"), "provider_override": provider_override}, ctx.get("workspace_id")),
+            metadata=_secure_metadata({"backend": result.get("backend", "unknown"), "provider_override": data.get("provider")}, ctx.get("workspace_id")),
         )
         return jsonify({"ok": True, "data": result, "backend": result.get("backend", "unknown")})
     except Exception as e:
@@ -2138,7 +2207,13 @@ def app_chat(app_id: str):
         system_hint = data.get("system")
         if system_hint:
             query = f"[{app_id} module context] {system_hint}\n\n{query}"
-        result = agent.act(query)
+        result = _agent_act_for_request(
+            agent,
+            query,
+            workspace_id=ctx.get("workspace_id"),
+            provider_override=data.get("provider"),
+            model_override=data.get("model"),
+        )
         metrics_collector.inc("aeon_app_chat_requests_total", labels={"app_id": app_id})
         metrics_collector.inc("aeon_agent_ticks_total", labels={"app_id": app_id})
         get_governance_manager().log_audit(
@@ -2172,7 +2247,12 @@ def app_tick(app_id: str):
     ctx = _governance_context()
 
     if async_mode:
-        job_id = job_queue.submit(app_id, "act", {"query": query})
+        job_payload: dict[str, Any] = {"query": query, "workspace_id": ctx.get("workspace_id")}
+        if data.get("provider"):
+            job_payload["provider"] = str(data.get("provider"))
+        if data.get("model"):
+            job_payload["model"] = str(data.get("model"))
+        job_id = job_queue.submit(app_id, "act", job_payload)
         metrics_collector.inc("aeon_agent_ticks_total", labels={"app_id": app_id})
         get_governance_manager().log_audit(
             action="APP_TICK_QUEUED",
@@ -2186,7 +2266,13 @@ def app_tick(app_id: str):
 
     try:
         agent = get_agent(app_id)
-        result = agent.act(query)
+        result = _agent_act_for_request(
+            agent,
+            query,
+            workspace_id=ctx.get("workspace_id"),
+            provider_override=data.get("provider"),
+            model_override=data.get("model"),
+        )
         metrics_collector.inc("aeon_agent_ticks_total", labels={"app_id": app_id})
         get_governance_manager().log_audit(
             action="APP_TICK",

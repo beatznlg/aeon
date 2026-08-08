@@ -316,7 +316,7 @@ class AnomalyDetector:
                 "then list the top action item:\n" + "\n".join(summary)
             )
             response = provider.generate(prompt)
-            if response and response.get("text"):
+            if response and response.get("text") and response.get("backend") != "stub":
                 return str(response["text"])
         except Exception as exc:
             logger.debug("LLM anomaly summary unavailable: %s", exc)

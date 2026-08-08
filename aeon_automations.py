@@ -1430,6 +1430,124 @@ def _log_execution_with_status(
         logger.warning("Failed to log automation execution: %s", exc)
 
 
+def _audit_approval_event(
+    action: str,
+    approval_id: str,
+    workspace_id: str | None,
+    *,
+    user_id: str | None = None,
+    status: str | None = None,
+    decision: str | None = None,
+    reason_present: bool = False,
+) -> None:
+    """Persist a safe, workspace-scoped approval lifecycle audit event.
+
+    Approval payloads, arguments, results, and free-form reasons are deliberately
+    excluded. Audit delivery is best-effort and must never change resolution
+    semantics.
+    """
+    metadata: dict[str, Any] = {"approval_id": str(approval_id)}
+    if status:
+        metadata["status"] = status
+    if decision:
+        metadata["decision"] = decision
+    if reason_present:
+        metadata["reason_present"] = True
+    try:
+        from aeon_governance import get_governance
+
+        get_governance().log_audit(
+            action=action,
+            module="approvals",
+            user_id=user_id,
+            workspace_id=str(workspace_id) if workspace_id else None,
+            metadata=metadata,
+        )
+    except Exception as exc:
+        logger.warning("Failed to persist approval audit event %s: %s", action, exc)
+
+
+def expire_pending_approvals(
+    *,
+    workspace_id: str | None = None,
+    now: datetime | None = None,
+    limit: int = 100,
+) -> list[str]:
+    """Atomically mark due pending approvals as expired.
+
+    The initial query only discovers candidates. Each conditional update still
+    requires ``status = pending`` and the original expiry predicate, so a
+    concurrent resolver can win without being overwritten by cleanup.
+    """
+    db_url = _get_db_url()
+    headers = _supabase_headers()
+    if not db_url or not headers:
+        return []
+
+    current = now or datetime.now(timezone.utc)
+    now_iso = current.isoformat()
+    try:
+        import requests
+
+        params: dict[str, str] = {
+            "status": "eq.pending",
+            "expires_at": f"lt.{now_iso}",
+            "select": "id,workspace_id",
+            "order": "expires_at.asc",
+            "limit": str(max(1, min(int(limit), 500))),
+        }
+        if workspace_id:
+            params["workspace_id"] = f"eq.{workspace_id}"
+        candidates = requests.get(
+            f"{db_url}/rest/v1/approval_requests",
+            headers=headers,
+            params=params,
+            timeout=10,
+        )
+        candidates.raise_for_status()
+        rows = candidates.json() or []
+    except Exception as exc:
+        logger.warning("Failed to find expired approval requests: %s", exc)
+        return []
+
+    expired_ids: list[str] = []
+    for row in rows:
+        approval_id = row.get("id")
+        if not approval_id:
+            continue
+        update_params = {
+            "id": f"eq.{approval_id}",
+            "status": "eq.pending",
+            "expires_at": f"lt.{now_iso}",
+        }
+        if workspace_id:
+            update_params["workspace_id"] = f"eq.{workspace_id}"
+        try:
+            response = requests.patch(
+                f"{db_url}/rest/v1/approval_requests",
+                headers={**headers, "Prefer": "return=representation"},
+                params=update_params,
+                json={
+                    "status": "expired",
+                    "reason": "Approval expired",
+                    "resolved_at": "now",
+                },
+                timeout=10,
+            )
+            response.raise_for_status()
+            if response.json() or []:
+                expired_ids.append(str(approval_id))
+                _audit_approval_event(
+                    "approval_expired",
+                    str(approval_id),
+                    row.get("workspace_id") or workspace_id,
+                    status="expired",
+                )
+        except Exception as exc:
+            logger.warning("Failed to expire approval request %s: %s", approval_id, exc)
+    return expired_ids
+
+
 def _create_approval_request(rule: dict[str, Any], event: dict[str, Any]) -> dict[str, Any]:
     """Create a pending approval request for a rule that requires HITL approval."""
     db_url = _get_db_url()
@@ -1593,6 +1711,96 @@ def _notify_slack_approval(rule: dict[str, Any], approval_id: str, event: dict[s
         logger.warning("Failed to send Slack approval message: %s", exc)
 
 
+def _claim_approval_request(
+    db_url: str,
+    headers: dict[str, str],
+    approval_id: str,
+    workspace_id: str,
+    resolver_user_id: str,
+    *,
+    now: datetime | None = None,
+) -> tuple[dict[str, Any] | None, str | None]:
+    """Atomically claim an approval, returning a safe error when unavailable."""
+    import requests
+
+    current = now or datetime.now(timezone.utc)
+    now_iso = current.isoformat()
+    lease_cutoff = (current - timedelta(minutes=5)).isoformat()
+    base_query = {
+        "id": f"eq.{approval_id}",
+        "workspace_id": f"eq.{workspace_id}",
+    }
+    claim_query = {
+        **base_query,
+        "or": (
+            f"(and(status.eq.pending,or(expires_at.is.null,expires_at.gte.{now_iso})),"
+            f"and(status.eq.processing,claimed_at.lt.{lease_cutoff}))"
+        ),
+        "select": "id,rule_id,event_type,event_payload,action_type,action_config,status,workspace_id,user_id,expires_at,claimed_at,claimed_by",
+    }
+    response = requests.patch(
+        f"{db_url}/rest/v1/approval_requests",
+        headers={**headers, "Prefer": "return=representation"},
+        params=claim_query,
+        json={"status": "processing", "claimed_at": "now", "claimed_by": resolver_user_id},
+        timeout=10,
+    )
+    response.raise_for_status()
+    rows = response.json() or []
+    if rows:
+        claimed = rows[0]
+        _audit_approval_event(
+            "approval_claimed",
+            str(approval_id),
+            workspace_id,
+            user_id=resolver_user_id,
+            status="processing",
+        )
+        return claimed, None
+
+    lookup = requests.get(
+        f"{db_url}/rest/v1/approval_requests",
+        headers=headers,
+        params={**base_query, "select": "id,status,expires_at"},
+        timeout=10,
+    )
+    lookup.raise_for_status()
+    existing_rows = lookup.json() or []
+    if not existing_rows:
+        return None, "approval request not found"
+    existing = existing_rows[0]
+    status = existing.get("status")
+    if status == "pending":
+        expiry = existing.get("expires_at")
+        expired = False
+        if expiry:
+            try:
+                expired_at = datetime.fromisoformat(str(expiry).replace("Z", "+00:00"))
+                expired = expired_at <= current
+            except (TypeError, ValueError):
+                expired = False
+        if expired:
+            expire_response = requests.patch(
+                f"{db_url}/rest/v1/approval_requests",
+                headers={**headers, "Prefer": "return=representation"},
+                params={**base_query, "status": "eq.pending", "expires_at": f"lt.{now_iso}"},
+                json={"status": "expired", "reason": "Approval expired before resolution", "resolved_at": "now"},
+                timeout=10,
+            )
+            expire_response.raise_for_status()
+            if expire_response.json() or []:
+                _audit_approval_event(
+                    "approval_expired",
+                    str(approval_id),
+                    workspace_id,
+                    status="expired",
+                )
+            return None, "approval request expired"
+    if status == "processing":
+        return None, "approval request is currently being resolved"
+    return None, f"approval request already {status}"
+
+
 def resolve_approval(
     approval_id: str,
     decision: str,
@@ -1633,26 +1841,23 @@ def resolve_approval(
     try:
         import requests
 
-        # Fetch the approval request constrained to the caller's workspace so an
-        # approval ID cannot cross tenants.
+        approval, claim_error = _claim_approval_request(
+            db_url,
+            headers,
+            approval_id,
+            str(workspace_id),
+            resolver_user_id,
+        )
+        if claim_error:
+            return {"ok": False, "error": claim_error}
+        if not approval:
+            return {"ok": False, "error": "approval request could not be claimed"}
         query = {
             "id": f"eq.{approval_id}",
             "workspace_id": f"eq.{workspace_id}",
+            "status": "eq.processing",
+            "claimed_by": f"eq.{resolver_user_id}",
         }
-        r = requests.get(
-            f"{db_url}/rest/v1/approval_requests",
-            headers=headers,
-            params=query,
-            timeout=10,
-        )
-        r.raise_for_status()
-        rows = r.json() or []
-        if not rows:
-            return {"ok": False, "error": "approval request not found"}
-        approval = rows[0]
-
-        if approval["status"] != "pending":
-            return {"ok": False, "error": f"approval request already {approval['status']}"}
 
         if decision == "rejected":
             update = {
@@ -1661,16 +1866,19 @@ def resolve_approval(
                 "reason": reason or "",
                 "resolved_at": "now",
             }
-            requests.patch(
+            response = requests.patch(
                 f"{db_url}/rest/v1/approval_requests",
-                headers=headers,
+                headers={**headers, "Prefer": "return=representation"},
                 params=query,
                 json=update,
                 timeout=10,
-            ).raise_for_status()
+            )
+            response.raise_for_status()
+            if not (response.json() or []):
+                return {"ok": False, "error": "approval claim was lost before rejection"}
             return {"ok": True, "status": "rejected", "approval_id": approval_id}
 
-        # approved: execute the deferred action
+        # approved: revalidate the workspace policy immediately before execution
         event = {
             "type": approval["event_type"],
             "payload": json.loads(approval.get("event_payload") or "{}"),
@@ -1683,8 +1891,42 @@ def resolve_approval(
             "id": approval.get("rule_id"),
             "workspace_id": approval.get("workspace_id"),
         }
-        approval_context = {"event": event, "rule": approval_rule, "steps": []}
-        result = execute_action_by_type(approval.get("action_type"), action_config, approval_context)
+        if approval.get("action_type") == "capability":
+            from aeon_capabilities import CapabilityRegistry
+
+            capability_id = str(action_config.get("capability_id") or "").strip()
+            arguments = action_config.get("arguments") or {}
+            if not capability_id or not isinstance(arguments, dict):
+                requests.patch(
+                    f"{db_url}/rest/v1/approval_requests",
+                    headers=headers,
+                    params=query,
+                    json={"status": "cancelled", "reason": "Invalid capability approval payload", "resolved_at": "now"},
+                    timeout=10,
+                ).raise_for_status()
+                return {"ok": False, "error": "invalid capability approval payload"}
+            policy = __import__("aeon_capabilities", fromlist=["evaluate_capability_policy"]).evaluate_capability_policy(
+                str(approval.get("workspace_id")), capability_id
+            )
+            if not policy.get("allowed") and policy.get("effect") != "require_approval":
+                requests.patch(
+                    f"{db_url}/rest/v1/approval_requests",
+                    headers=headers,
+                    params=query,
+                    json={"status": "cancelled", "reason": "Capability is now blocked by workspace policy", "resolved_at": "now"},
+                    timeout=10,
+                ).raise_for_status()
+                return {"ok": False, "error": "capability is now blocked by workspace policy"}
+            result = CapabilityRegistry().invoke(
+                str(approval.get("workspace_id")),
+                capability_id,
+                arguments,
+                user_role="OPERATOR",
+                approval_granted=True,
+            )
+        else:
+            approval_context = {"event": event, "rule": approval_rule, "steps": []}
+            result = execute_action_by_type(approval.get("action_type"), action_config, approval_context)
 
         update = {
             "status": "approved",
