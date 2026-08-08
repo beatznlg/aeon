@@ -13,9 +13,9 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import sys
 import hashlib
 import json
+import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -74,8 +74,12 @@ def main() -> None:
         except Exception as exc:  # noqa: BLE001
             events.append({"step": "restore", "seconds": None, "status": "error", "reason": str(exc)})
 
-        rto_seconds = round(restore_elapsed, 4)
-        rpo_seconds = round(backup_elapsed, 4)
+        rto_seconds = next(
+            (e.get("seconds") for e in events if e["step"] == "restore"), None
+        )
+        rpo_seconds = next(
+            (e.get("seconds") for e in events if e["step"] == "backup"), None
+        )
 
     report = {
         "tool": "aeon-dr-drill",

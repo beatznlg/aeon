@@ -30,7 +30,7 @@ jobs:
 
       - name: Compile-check core Python modules
         run: |
-          python -m py_compile aeon.py aeon_server.py aeon_auth.py aeon_db.py
+          python -m py_compile aeon.py aeon_server.py aeon_auth.py aeon_db.py scripts/sbom_report.py scripts/dr_drill.py
           echo "✅ Core Python modules compile"
 
       - name: Lint tests and Python SDK with ruff
@@ -45,8 +45,59 @@ jobs:
       - name: Run pytest
         run: pytest -v
 
-      - name: Run Bandit security scan
-        run: bandit -c bandit.yaml -r aeon*.py -f json -o bandit-report.json
+      - name: Run Bandit security scan (report)
+        # `|| true` so a finding never hides the report; enforcement is the next step.
+        run: bandit -c bandit.yaml -r aeon*.py -q -f json -o bandit-report.json || true
 
-      - name: Run pip-audit dependency scan
+      - name: Enforce Bandit severity gate
+        run: |
+          python - <<'PY'
+          import json, sys
+          with open("bandit-report.json") as f:
+              data = json.load(f)
+          issues = data.get("results", [])
+          bad = [
+              i for i in issues
+              if i.get("issue_severity", "").upper() in ("MEDIUM", "HIGH")
+          ]
+          if bad:
+              for i in bad:
+                  print("FAIL", i.get("test_id"), i.get("issue_severity"),
+                        i.get("filename"), i.get("line_number"))
+              sys.exit(1)
+          print(f"✅ Bandit gate passed: {len(issues)} findings, none Medium/High severity")
+          PY
+
+      - name: Run pip-audit dependency scan (fails on known vulnerabilities)
         run: pip-audit --desc
+
+  security-evidence:
+    name: SBOM + DR Drill Evidence
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install runtime dependencies
+        run: pip install -r requirements.txt --quiet
+
+      - name: Generate SBOM report
+        run: |
+          mkdir -p scripts/output
+          python scripts/sbom_report.py --out scripts/output/sbom.json
+
+      - name: Generate DR drill evidence (measured RTO/RPO)
+        run: |
+          python scripts/dr_drill.py --workspace-id ci --mode simulate --out scripts/output/dr_report.json
+
+      - name: Upload evidence artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: aeon-security-evidence
+          path: scripts/output/
+          if-no-files-found: error

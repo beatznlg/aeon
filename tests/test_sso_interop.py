@@ -104,7 +104,6 @@ def test_oidc_full_flow_entra_style(monkeypatch):
 
 
 def test_oidc_flow_rejects_nonce_mismatch(monkeypatch):
-    import aeon_sso
     from aeon_sso import complete_oidc_login
 
     provider = _patch_endpoints(monkeypatch, _make_id_token(nonce="nonce-abc"))

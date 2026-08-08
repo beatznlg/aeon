@@ -55,3 +55,5 @@ server.log
 
 # Security scan artifacts
 bandit-report.json
+scripts/output/
+scripts/__pycache__/
