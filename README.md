@@ -168,6 +168,7 @@ The endpoint may be an Ollama, LM Studio, vLLM, OpenRouter, private gateway, or 
 
 - **Unified Capability Registry**: See [`docs/CAPABILITIES.md`](docs/CAPABILITIES.md) for the workspace-scoped discovery API, invocation contract, security model, and frontend workflow.
 - **Sector & Industry Fine-Tuning Playbook**: See [`docs/SECTOR_FINETUNING_PLAYBOOK.md`](docs/SECTOR_FINETUNING_PLAYBOOK.md) for the per-sector accuracy ladder, LoRA/QLoRA recipes, eval gates, and the `scripts/sector_eval.py` per-sector benchmark harness.
+- **External Assurance RFP**: See [`docs/RFP_EXTERNAL_ASSURANCE.md`](docs/RFP_EXTERNAL_ASSURANCE.md) for the procurement-ready brief covering the independent pen test, SOC 2, FedRAMP/3PAO, and ISO 27001 engagements required before regulated sales.
 - **Government Readiness Gap Checklist**: See [`docs/GOVERNMENT_READINESS_CHECKLIST.md`](docs/GOVERNMENT_READINESS_CHECKLIST.md) for the exact certifications, agreements, and organizational processes that remain before regulated/government sales — with what the repo already provides. A machine-readable SBOM-style JSON twin (`scripts/government_readiness_report.py`) emits the same 40 items with status/owner/cost properties and rollups for procurement tooling.
 
 AEON ships with first-class developer tooling and auto-generated multi-language SDKs:

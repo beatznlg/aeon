@@ -12,6 +12,10 @@ SBOM-style JSON document for procurement tooling by
 status/owner/cost/requirement properties, plus per-category and overall
 rollups).
 
+**Procurement companion**: the RFP package for the external engagements on
+this list (independent pen test, SOC 2, FedRAMP/3PAO, ISO 27001, HIPAA/PCI)
+is drafted in [`docs/RFP_EXTERNAL_ASSURANCE.md`](RFP_EXTERNAL_ASSURANCE.md).
+
 Legend: **[BLOCKING]** = no path to a paid regulated deployment without it ·
 **[PARTIAL]** = repo tooling/docs exist, external evidence or process missing ·
 **[GAP]** = nothing exists yet.
