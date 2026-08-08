@@ -154,11 +154,13 @@ jobs:
         run: npm install --global vercel@latest
 
       - name: Pull Vercel environment
+        env:
+          GIT_HEAD_REF: ${{ github.head_ref }}
         run: |
           vercel pull \
             --yes \
             --environment=preview \
-            --git-branch=${{ github.head_ref }} \
+            --git-branch="$GIT_HEAD_REF" \
             --token=${{ secrets.VERCEL_TOKEN }} \
             --cwd=web
 
