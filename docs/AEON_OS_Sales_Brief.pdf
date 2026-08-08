@@ -1,0 +1,130 @@
+%PDF-1.4
+%‚„œ”
+1 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+2 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>
+endobj
+4 0 obj
+<< /Type /Pages /Kids [6 0 R] /Count 1 >>
+endobj
+5 0 obj
+<< /Length 7572 >>
+stream
+0.039 0.063 0.122 rg 0.0 0.0 595.0 842.0 re f
+0.227 0.835 0.863 rg 0.0 836.0 595.0 6.0 re f
+BT /F2 30.0 Tf 0.933 0.957 0.988 rg 1 0 0 1 42.0 792.0 Tm (AEON OS) Tj ET
+BT /F1 11.5 Tf 0.227 0.835 0.863 rg 1 0 0 1 42.0 772.5 Tm (Advanced Evolutionary Orchestrator Network - open-source AI agent platform) Tj ET
+BT /F2 10.5 Tf 1.000 0.667 0.333 rg 1 0 0 1 348.0 809.5 Tm (SALES BRIEF - COMPANY & GOVERNMENT) Tj ET
+BT /F1 10.0 Tf 0.620 0.690 0.788 rg 1 0 0 1 348.0 790.0 Tm (v3.0  |  github.com/beatznlg/aeon) Tj ET
+0.141 0.212 0.314 RG 0.8 w 42.0 758.0 m 553.0 758.0 l S
+BT /F1 11.0 Tf 0.933 0.957 0.988 rg 1 0 0 1 42.0 737.0 Tm (AEON OS is an open-source AI orchestration platform: multi-tenant workspaces, a governed) Tj ET
+BT /F1 11.0 Tf 0.933 0.957 0.988 rg 1 0 0 1 42.0 722.0 Tm (agent kernel, RAG knowledge bases, automations with human approvals, and evidence-backed) Tj ET
+BT /F1 11.0 Tf 0.933 0.957 0.988 rg 1 0 0 1 42.0 707.0 Tm (governance - deployable self-hosted, on-prem, or air-gapped.) Tj ET
+BT /F2 14.5 Tf 0.933 0.957 0.988 rg 1 0 0 1 42.0 677.5 Tm (Platform capabilities) Tj ET
+0.227 0.835 0.863 rg 42.0 687.0 150.0 3.0 re f
+0.071 0.110 0.192 rg 42.0 554.0 161.0 118.0 re f
+0.086 0.145 0.243 RG 1.0 42.0 554.0 161.0 118.0 re S
+0.227 0.835 0.863 rg 42.0 668.0 161.0 4.0 re f
+BT /F2 13.0 Tf 0.933 0.957 0.988 rg 1 0 0 1 58.0 643.0 Tm (Multi-tenant workspaces) Tj ET
+BT /F1 9.0 Tf 0.620 0.690 0.788 rg 1 0 0 1 58.0 621.0 Tm (Workspaces, memberships,) Tj ET
+BT /F1 9.0 Tf 0.620 0.690 0.788 rg 1 0 0 1 58.0 608.6 Tm (RBAC) Tj ET
+BT /F1 9.0 Tf 0.620 0.690 0.788 rg 1 0 0 1 58.0 594.5 Tm (Viewer / Operator / Admin) Tj ET
+BT /F1 9.0 Tf 0.620 0.690 0.788 rg 1 0 0 1 58.0 582.1 Tm (roles) Tj ET
+BT /F1 9.0 Tf 0.620 0.690 0.788 rg 1 0 0 1 58.0 568.1 Tm (Tenant-isolated LLM) Tj ET
+BT /F1 9.0 Tf 0.620 0.690 0.788 rg 1 0 0 1 58.0 555.7 Tm (providers) Tj ET
+0.071 0.110 0.192 rg 217.0 554.0 161.0 118.0 re f
+0.086 0.145 0.243 RG 1.0 217.0 554.0 161.0 118.0 re S
+0.325 0.537 1.000 rg 217.0 668.0 161.0 4.0 re f
+BT /F2 13.0 Tf 0.933 0.957 0.988 rg 1 0 0 1 233.0 643.0 Tm (Agent kernel) Tj ET
+BT /F1 9.0 Tf 0.620 0.690 0.788 rg 1 0 0 1 233.0 621.0 Tm (Reflective agents + memory) Tj ET
+BT /F1 9.0 Tf 0.620 0.690 0.788 rg 1 0 0 1 233.0 607.0 Tm (Safe, validated tool runner) Tj ET
+BT /F1 9.0 Tf 0.620 0.690 0.788 rg 1 0 0 1 233.0 592.9 Tm (Swarms & automations) Tj ET
+0.071 0.110 0.192 rg 392.0 554.0 161.0 118.0 re f
+0.086 0.145 0.243 RG 1.0 392.0 554.0 161.0 118.0 re S
+1.000 0.667 0.333 rg 392.0 668.0 161.0 4.0 re f
+BT /F2 13.0 Tf 0.933 0.957 0.988 rg 1 0 0 1 408.0 643.0 Tm (LLM routing & tuning) Tj ET
+BT /F1 9.0 Tf 0.620 0.690 0.788 rg 1 0 0 1 408.0 621.0 Tm (10+ providers, incl. local) Tj ET
+BT /F1 9.0 Tf 0.620 0.690 0.788 rg 1 0 0 1 408.0 607.0 Tm (Ollama / vLLM / LM Studio) Tj ET
+BT /F1 9.0 Tf 0.620 0.690 0.788 rg 1 0 0 1 408.0 592.9 Tm (Fine-tuning playbook) Tj ET
+0.071 0.110 0.192 rg 42.0 420.0 161.0 118.0 re f
+0.086 0.145 0.243 RG 1.0 42.0 420.0 161.0 118.0 re S
+0.353 0.863 0.608 rg 42.0 534.0 161.0 4.0 re f
+BT /F2 13.0 Tf 0.933 0.957 0.988 rg 1 0 0 1 58.0 509.0 Tm (RAG & grounding) Tj ET
+BT /F1 9.0 Tf 0.620 0.690 0.788 rg 1 0 0 1 58.0 487.0 Tm (Hybrid retrieval) Tj ET
+BT /F1 9.0 Tf 0.620 0.690 0.788 rg 1 0 0 1 58.0 473.0 Tm (Grounding & citation gates) Tj ET
+BT /F1 9.0 Tf 0.620 0.690 0.788 rg 1 0 0 1 58.0 458.9 Tm (Per-sector policies) Tj ET
+0.071 0.110 0.192 rg 217.0 420.0 161.0 118.0 re f
+0.086 0.145 0.243 RG 1.0 217.0 420.0 161.0 118.0 re S
+0.227 0.835 0.863 rg 217.0 534.0 161.0 4.0 re f
+BT /F2 13.0 Tf 0.933 0.957 0.988 rg 1 0 0 1 233.0 509.0 Tm (Governance & audit) Tj ET
+BT /F1 9.0 Tf 0.620 0.690 0.788 rg 1 0 0 1 233.0 487.0 Tm (Hash-chained audit ledger) Tj ET
+BT /F1 9.0 Tf 0.620 0.690 0.788 rg 1 0 0 1 233.0 473.0 Tm (PII / PHI redaction) Tj ET
+BT /F1 9.0 Tf 0.620 0.690 0.788 rg 1 0 0 1 233.0 458.9 Tm (Human-in-the-loop) Tj ET
+0.071 0.110 0.192 rg 392.0 420.0 161.0 118.0 re f
+0.086 0.145 0.243 RG 1.0 392.0 420.0 161.0 118.0 re S
+0.325 0.537 1.000 rg 392.0 534.0 161.0 4.0 re f
+BT /F2 13.0 Tf 0.933 0.957 0.988 rg 1 0 0 1 408.0 509.0 Tm (Deployment) Tj ET
+BT /F1 9.0 Tf 0.620 0.690 0.788 rg 1 0 0 1 408.0 487.0 Tm (Self-hosted or on-prem) Tj ET
+BT /F1 9.0 Tf 0.620 0.690 0.788 rg 1 0 0 1 408.0 473.0 Tm (Air-gapped capable) Tj ET
+BT /F1 9.0 Tf 0.620 0.690 0.788 rg 1 0 0 1 408.0 458.9 Tm (No SaaS lock-in) Tj ET
+BT /F2 14.5 Tf 0.933 0.957 0.988 rg 1 0 0 1 42.0 391.5 Tm (Sector-adaptive intelligence) Tj ET
+0.227 0.835 0.863 rg 42.0 401.0 150.0 3.0 re f
+0.071 0.110 0.192 rg 42.0 316.0 511.0 70.0 re f
+0.086 0.145 0.243 RG 1.0 42.0 316.0 511.0 70.0 re S
+0.353 0.863 0.608 rg 42.0 382.0 511.0 4.0 re f
+BT /F2 13.0 Tf 0.933 0.957 0.988 rg 1 0 0 1 58.0 357.0 Tm (Seven policy-gated sector packs) Tj ET
+BT /F1 10.0 Tf 0.620 0.690 0.788 rg 1 0 0 1 58.0 334.0 Tm (Health, finance, government, defense, critical infrastructure, manufacturing, utilities -) Tj ET
+BT /F1 10.0 Tf 0.620 0.690 0.788 rg 1 0 0 1 58.0 320.2 Tm (each with its own inference policy \(grounding, citations, human review\), a fine-tuning) Tj ET
+BT /F1 10.0 Tf 0.620 0.690 0.788 rg 1 0 0 1 58.0 306.4 Tm (playbook, and automated per-sector accuracy gates.) Tj ET
+BT /F2 14.5 Tf 0.933 0.957 0.988 rg 1 0 0 1 42.0 287.5 Tm (Trust & readiness evidence) Tj ET
+0.227 0.835 0.863 rg 42.0 297.0 150.0 3.0 re f
+0.071 0.110 0.192 rg 42.0 170.0 511.0 112.0 re f
+0.086 0.145 0.243 RG 1.0 42.0 170.0 511.0 112.0 re S
+0.227 0.835 0.863 rg 42.0 278.0 511.0 4.0 re f
+BT /F2 13.0 Tf 0.933 0.957 0.988 rg 1 0 0 1 58.0 253.0 Tm (Verified engineering evidence - pilot-grade today) Tj ET
+BT /F1 9.5 Tf 0.620 0.690 0.788 rg 1 0 0 1 58.0 230.5 Tm (Measured quality gate in CI: 414 tests, Bandit 0 High, pip-audit clean; SBOM + DR-drill evidence) Tj ET
+BT /F1 9.5 Tf 0.620 0.690 0.788 rg 1 0 0 1 58.0 217.4 Tm (artifacts per run.) Tj ET
+BT /F1 9.5 Tf 0.620 0.690 0.788 rg 1 0 0 1 58.0 202.6 Tm (Enforced grounding gates \(retrieval >= 0.78, groundedness >= 0.90, citations 1.0\) with) Tj ET
+BT /F1 9.5 Tf 0.620 0.690 0.788 rg 1 0 0 1 58.0 189.5 Tm (hash-chained audit and assurance ledgers.) Tj ET
+BT /F1 9.5 Tf 0.620 0.690 0.788 rg 1 0 0 1 58.0 174.6 Tm (Threat model \(prompt injection, tenant isolation, SSRF, exfiltration\); IdP interop matrix \(Entra) Tj ET
+BT /F1 9.5 Tf 0.620 0.690 0.788 rg 1 0 0 1 58.0 161.5 Tm (ID, Okta, PIV/CAC\); formal IR / access-review / retention policies.) Tj ET
+BT /F1 9.5 Tf 0.620 0.690 0.788 rg 1 0 0 1 58.0 146.7 Tm (Model registry records provider, adapter version, and eval fingerprint \(SHA-256\) for every) Tj ET
+BT /F1 9.5 Tf 0.620 0.690 0.788 rg 1 0 0 1 58.0 133.6 Tm (approved deployment.) Tj ET
+0.071 0.110 0.192 rg 42.0 62.0 511.0 92.0 re f
+0.086 0.145 0.243 RG 1.0 42.0 62.0 511.0 92.0 re S
+1.000 0.667 0.333 rg 42.0 150.0 511.0 4.0 re f
+BT /F2 13.0 Tf 0.933 0.957 0.988 rg 1 0 0 1 58.0 125.0 Tm (Pilot-ready - never self-certified) Tj ET
+BT /F1 10.0 Tf 0.620 0.690 0.788 rg 1 0 0 1 58.0 102.0 Tm (AEON ships engineering readiness evidence and deployment controls, not self-issued) Tj ET
+BT /F1 10.0 Tf 0.620 0.690 0.788 rg 1 0 0 1 58.0 88.2 Tm (certifications. FedRAMP, SOC 2, HIPAA, PCI, and CJIS require independent audits and agency) Tj ET
+BT /F1 10.0 Tf 0.620 0.690 0.788 rg 1 0 0 1 58.0 74.4 Tm (agreements. AEON is built for the pilots and controlled assessments that lead there.) Tj ET
+0.141 0.212 0.314 RG 0.8 w 42.0 30.0 m 553.0 30.0 l S
+BT /F1 9.0 Tf 0.620 0.690 0.788 rg 1 0 0 1 42.0 18.0 Tm (AEON OS | sales brief | github.com/beatznlg/aeon | August 2026) Tj ET
+BT /F2 9.0 Tf 0.227 0.835 0.863 rg 1 0 0 1 539.0 18.0 Tm (1) Tj ET
+endstream
+endobj
+6 0 obj
+<< /Type /Page /Parent 4 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 1 0 R /F2 2 0 R /F3 3 0 R >> >> /Contents 5 0 R >>
+endobj
+7 0 obj
+<< /Type /Catalog /Pages 4 0 R /PageLayout /SinglePage >>
+endobj
+xref
+0 8
+0000000000 65535 f 
+0000000015 00000 n 
+0000000085 00000 n 
+0000000160 00000 n 
+0000000228 00000 n 
+0000000285 00000 n 
+0000007908 00000 n 
+0000008054 00000 n 
+trailer
+<< /Size 8 /Root 7 0 R >>
+startxref
+8127
+%%EOF

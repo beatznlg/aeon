@@ -1,0 +1,123 @@
+%PDF-1.4
+%‚„œ”
+1 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+2 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>
+endobj
+4 0 obj
+<< /Type /Pages /Kids [6 0 R] /Count 1 >>
+endobj
+5 0 obj
+<< /Length 7238 >>
+stream
+0.039 0.063 0.122 rg 0.0 0.0 595.0 842.0 re f
+0.227 0.835 0.863 rg 0.0 836.0 595.0 6.0 re f
+BT /F2 30.0 Tf 0.933 0.957 0.988 rg 1 0 0 1 42.0 792.0 Tm (AEON OS) Tj ET
+BT /F2 13.5 Tf 0.227 0.835 0.863 rg 1 0 0 1 42.0 770.5 Tm (Demo Agenda - 15-Minute Briefing) Tj ET
+BT /F2 10.5 Tf 1.000 0.667 0.333 rg 1 0 0 1 383.0 805.5 Tm (COMPANY & GOVERNMENT) Tj ET
+BT /F1 9.5 Tf 0.620 0.690 0.788 rg 1 0 0 1 383.0 788.5 Tm (v3.0  |  github.com/beatznlg/aeon) Tj ET
+0.141 0.212 0.314 RG 0.8 w 42.0 758.0 m 553.0 758.0 l S
+BT /F2 14.5 Tf 0.933 0.957 0.988 rg 1 0 0 1 42.0 731.5 Tm (The 15-minute arc) Tj ET
+0.227 0.835 0.863 rg 42.0 741.0 150.0 3.0 re f
+0.071 0.110 0.192 rg 42.0 422.0 511.0 296.0 re f
+0.086 0.145 0.243 RG 1.0 42.0 422.0 511.0 296.0 re S
+BT /F2 9.5 Tf 0.227 0.835 0.863 rg 1 0 0 1 58.0 714.5 Tm (0:00-0:30) Tj ET
+BT /F2 10.5 Tf 0.933 0.957 0.988 rg 1 0 0 1 134.0 713.5 Tm (Landing & login) Tj ET
+BT /F1 9.0 Tf 0.620 0.690 0.788 rg 1 0 0 1 134.0 698.0 Tm (Dashboard: workspaces, automations, approvals, capabilities. Login) Tj ET
+BT /F1 9.0 Tf 0.620 0.690 0.788 rg 1 0 0 1 134.0 686.0 Tm (admin@demo.local / demo-admin-password.) Tj ET
+BT /F2 9.5 Tf 0.227 0.835 0.863 rg 1 0 0 1 58.0 680.5 Tm (0:30-3:00) Tj ET
+BT /F2 10.5 Tf 0.933 0.957 0.988 rg 1 0 0 1 134.0 679.5 Tm (Multi-tenant LLM control) Tj ET
+BT /F1 9.0 Tf 0.620 0.690 0.788 rg 1 0 0 1 134.0 664.0 Tm (Open /llm; switch provider and model per workspace. Two tenants run) Tj ET
+BT /F1 9.0 Tf 0.620 0.690 0.788 rg 1 0 0 1 134.0 652.0 Tm (different models with zero cross-talk \(provider isolation\).) Tj ET
+BT /F2 9.5 Tf 0.227 0.835 0.863 rg 1 0 0 1 58.0 646.5 Tm (3:00-5:00) Tj ET
+BT /F2 10.5 Tf 0.933 0.957 0.988 rg 1 0 0 1 134.0 645.5 Tm (RAG & grounding) Tj ET
+BT /F1 9.0 Tf 0.620 0.690 0.788 rg 1 0 0 1 134.0 630.0 Tm (acme-health: ask a grounded question, show citations and the) Tj ET
+BT /F1 9.0 Tf 0.620 0.690 0.788 rg 1 0 0 1 134.0 618.0 Tm (enforcement gates \(retrieval >= 0.78, groundedness >= 0.90, citations) Tj ET
+BT /F2 9.5 Tf 0.227 0.835 0.863 rg 1 0 0 1 58.0 612.5 Tm (5:00-7:00) Tj ET
+BT /F2 10.5 Tf 0.933 0.957 0.988 rg 1 0 0 1 134.0 611.5 Tm (Workflows & automations) Tj ET
+BT /F1 9.0 Tf 0.620 0.690 0.788 rg 1 0 0 1 134.0 596.0 Tm (acme-manufacturing: run a workflow, trigger an automation, show) Tj ET
+BT /F1 9.0 Tf 0.620 0.690 0.788 rg 1 0 0 1 134.0 584.0 Tm (execution history and metrics.) Tj ET
+BT /F2 9.5 Tf 0.227 0.835 0.863 rg 1 0 0 1 58.0 578.5 Tm (7:00-9:00) Tj ET
+BT /F2 10.5 Tf 0.933 0.957 0.988 rg 1 0 0 1 134.0 577.5 Tm (Human-in-the-loop) Tj ET
+BT /F1 9.0 Tf 0.620 0.690 0.788 rg 1 0 0 1 134.0 562.0 Tm (acme-finance: show a pending approval, approve it, watch the deferred) Tj ET
+BT /F1 9.0 Tf 0.620 0.690 0.788 rg 1 0 0 1 134.0 550.0 Tm (action execute.) Tj ET
+BT /F2 9.5 Tf 0.227 0.835 0.863 rg 1 0 0 1 58.0 544.5 Tm (9:00-11:00) Tj ET
+BT /F2 10.5 Tf 0.933 0.957 0.988 rg 1 0 0 1 134.0 543.5 Tm (Marketplace + MCP) Tj ET
+BT /F1 9.0 Tf 0.620 0.690 0.788 rg 1 0 0 1 134.0 528.0 Tm (Install a plugin, connect an MCP server, invoke a tool from chat.) Tj ET
+BT /F2 9.5 Tf 0.227 0.835 0.863 rg 1 0 0 1 58.0 510.5 Tm (11:00-13:00) Tj ET
+BT /F2 10.5 Tf 0.933 0.957 0.988 rg 1 0 0 1 134.0 509.5 Tm (Governance) Tj ET
+BT /F1 9.0 Tf 0.620 0.690 0.788 rg 1 0 0 1 134.0 494.0 Tm (gov-city: compliance profile, /ready gate, audit-chain integrity) Tj ET
+BT /F1 9.0 Tf 0.620 0.690 0.788 rg 1 0 0 1 134.0 482.0 Tm (check, SSO/SCIM config \(redacted\).) Tj ET
+BT /F2 9.5 Tf 0.227 0.835 0.863 rg 1 0 0 1 58.0 476.5 Tm (13:00-15:00) Tj ET
+BT /F2 10.5 Tf 0.933 0.957 0.988 rg 1 0 0 1 134.0 475.5 Tm (Evidence & pilot framing) Tj ET
+BT /F1 9.0 Tf 0.620 0.690 0.788 rg 1 0 0 1 134.0 460.0 Tm (Model registry with eval fingerprints, SBOM, DR drill. State honestly:) Tj ET
+BT /F1 9.0 Tf 0.620 0.690 0.788 rg 1 0 0 1 134.0 448.0 Tm (pilot-ready, not certified.) Tj ET
+BT /F1 9.5 Tf 1.000 0.667 0.333 rg 1 0 0 1 58.0 432.5 Tm (Run it live, or scroll to any step on request - the demo is fully scripted and idempotent.) Tj ET
+BT /F2 14.5 Tf 0.933 0.957 0.988 rg 1 0 0 1 42.0 395.5 Tm (Sector scenarios - the four seeded workspaces) Tj ET
+0.227 0.835 0.863 rg 42.0 405.0 150.0 3.0 re f
+0.071 0.110 0.192 rg 42.0 294.0 248.5 96.0 re f
+0.086 0.145 0.243 RG 1.0 42.0 294.0 248.5 96.0 re S
+0.227 0.835 0.863 rg 42.0 386.0 248.5 4.0 re f
+BT /F2 10.5 Tf 0.933 0.957 0.988 rg 1 0 0 1 56.0 365.5 Tm (acme-health  |  Healthcare) Tj ET
+BT /F1 8.5 Tf 0.620 0.690 0.788 rg 1 0 0 1 56.0 345.5 Tm (Diagnostics demo - mandatory human review + BAA) Tj ET
+BT /F1 8.5 Tf 0.620 0.690 0.788 rg 1 0 0 1 56.0 333.5 Tm (profile declaration. Demo data, not clinical) Tj ET
+BT /F1 8.5 Tf 0.620 0.690 0.788 rg 1 0 0 1 56.0 321.5 Tm (advice.) Tj ET
+0.071 0.110 0.192 rg 304.5 294.0 248.5 96.0 re f
+0.086 0.145 0.243 RG 1.0 304.5 294.0 248.5 96.0 re S
+0.325 0.537 1.000 rg 304.5 386.0 248.5 4.0 re f
+BT /F2 10.5 Tf 0.933 0.957 0.988 rg 1 0 0 1 318.5 365.5 Tm (acme-finance  |  Banking) Tj ET
+BT /F1 8.5 Tf 0.620 0.690 0.788 rg 1 0 0 1 318.5 345.5 Tm (Fraud/risk scoring with human approval gates. No) Tj ET
+BT /F1 8.5 Tf 0.620 0.690 0.788 rg 1 0 0 1 318.5 333.5 Tm (autonomous lending or credit decisions.) Tj ET
+0.071 0.110 0.192 rg 42.0 190.0 248.5 96.0 re f
+0.086 0.145 0.243 RG 1.0 42.0 190.0 248.5 96.0 re S
+0.353 0.863 0.608 rg 42.0 282.0 248.5 4.0 re f
+BT /F2 10.5 Tf 0.933 0.957 0.988 rg 1 0 0 1 56.0 261.5 Tm (gov-city  |  Government) Tj ET
+BT /F1 8.5 Tf 0.620 0.690 0.788 rg 1 0 0 1 56.0 241.5 Tm (RBAC, SSO, immutable audit, readiness gate.) Tj ET
+BT /F1 8.5 Tf 0.620 0.690 0.788 rg 1 0 0 1 56.0 229.5 Tm (CJIS/FedRAMP require agency processes.) Tj ET
+0.071 0.110 0.192 rg 304.5 190.0 248.5 96.0 re f
+0.086 0.145 0.243 RG 1.0 304.5 190.0 248.5 96.0 re S
+1.000 0.667 0.333 rg 304.5 282.0 248.5 4.0 re f
+BT /F2 10.5 Tf 0.933 0.957 0.988 rg 1 0 0 1 318.5 261.5 Tm (acme-manufacturing  |  Manufacturing) Tj ET
+BT /F1 8.5 Tf 0.620 0.690 0.788 rg 1 0 0 1 318.5 241.5 Tm (Maintenance/logistics automation with the) Tj ET
+BT /F1 8.5 Tf 0.620 0.690 0.788 rg 1 0 0 1 318.5 229.5 Tm (condition engine \(run_if, thresholds\).) Tj ET
+BT /F2 14.5 Tf 0.933 0.957 0.988 rg 1 0 0 1 42.0 163.5 Tm (Before the briefing \(5 minutes\)) Tj ET
+0.227 0.835 0.863 rg 42.0 173.0 150.0 3.0 re f
+0.071 0.110 0.192 rg 42.0 94.0 511.0 64.0 re f
+0.086 0.145 0.243 RG 1.0 42.0 94.0 511.0 64.0 re S
+0.353 0.863 0.608 rg 42.0 154.0 511.0 4.0 re f
+BT /F1 9.5 Tf 0.933 0.957 0.988 rg 1 0 0 1 58.0 126.5 Tm (python3 scripts/prepare_demo.py # idempotent; re-run the morning of the demo) Tj ET
+BT /F1 9.5 Tf 0.933 0.957 0.988 rg 1 0 0 1 58.0 109.8 Tm (Evidence at hand: scripts/output/demo_ready.json, sbom.json, dr_report.json,) Tj ET
+BT /F1 9.5 Tf 0.933 0.957 0.988 rg 1 0 0 1 58.0 94.8 Tm (government_readiness.json) Tj ET
+BT /F1 9.5 Tf 0.933 0.957 0.988 rg 1 0 0 1 58.0 78.1 Tm (Never claim certification \(FedRAMP/HIPAA/PCI/CJIS/SOC 2\) - pilot-ready framing only) Tj ET
+BT /F1 9.5 Tf 0.933 0.957 0.988 rg 1 0 0 1 58.0 63.1 Tm (\(docs/COMPLIANCE_READINESS.md\).) Tj ET
+0.141 0.212 0.314 RG 0.8 w 42.0 30.0 m 553.0 30.0 l S
+BT /F1 9.0 Tf 0.620 0.690 0.788 rg 1 0 0 1 42.0 18.0 Tm (AEON OS | demo agenda | github.com/beatznlg/aeon | August 2026) Tj ET
+BT /F2 9.0 Tf 0.227 0.835 0.863 rg 1 0 0 1 539.0 18.0 Tm (1) Tj ET
+endstream
+endobj
+6 0 obj
+<< /Type /Page /Parent 4 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 1 0 R /F2 2 0 R /F3 3 0 R >> >> /Contents 5 0 R >>
+endobj
+7 0 obj
+<< /Type /Catalog /Pages 4 0 R /PageLayout /SinglePage >>
+endobj
+xref
+0 8
+0000000000 65535 f 
+0000000015 00000 n 
+0000000085 00000 n 
+0000000160 00000 n 
+0000000228 00000 n 
+0000000285 00000 n 
+0000007574 00000 n 
+0000007720 00000 n 
+trailer
+<< /Size 8 /Root 7 0 R >>
+startxref
+7793
+%%EOF

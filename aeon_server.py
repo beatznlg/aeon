@@ -99,6 +99,7 @@ from aeon_llm import test_provider as _test_llm_provider
 from aeon_llm_routes import register_llm_routes
 from aeon_marketplace_routes import register_marketplace_routes
 from aeon_mcp_routes import register_mcp_routes
+from aeon_model_registry_routes import register_model_registry_routes
 from aeon_operating_profile_routes import register_operating_profile_routes
 from aeon_policies import (
     PolicyEffect,
@@ -239,6 +240,7 @@ register_llm_routes(app)
 register_operating_profile_routes(app)
 register_trace_routes(app)
 register_mcp_routes(app)
+register_model_registry_routes(app)
 register_compliance_routes(app)
 
 from aeon_anomalies_routes import anomalies_bp

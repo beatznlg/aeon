@@ -30,7 +30,7 @@ jobs:
 
       - name: Compile-check core Python modules
         run: |
-          python -m py_compile aeon.py aeon_server.py aeon_auth.py aeon_db.py scripts/sbom_report.py scripts/dr_drill.py
+          python -m py_compile aeon.py aeon_server.py aeon_auth.py aeon_db.py aeon_model_registry.py aeon_model_registry_routes.py scripts/sbom_report.py scripts/dr_drill.py scripts/sector_eval.py scripts/build_sales_brief.py scripts/build_demo_agenda.py scripts/prepare_demo.py scripts/government_readiness_report.py scripts/test_count_report.py
           echo "✅ Core Python modules compile"
 
       - name: Lint tests and Python SDK with ruff
@@ -43,7 +43,27 @@ jobs:
         run: ruff check aeon*.py
 
       - name: Run pytest
-        run: pytest -v
+        run: pytest -v --junitxml=pytest-report.xml
+
+      - name: Generate tests-passing badge from gate results
+        run: python scripts/test_count_report.py --junit-xml pytest-report.xml --out docs/badges/tests-passing.json
+
+      - name: Verify tests-passing badge
+        run: |
+          python - <<'PY'
+          import json, sys
+          from pathlib import Path
+          endpoint = json.loads(Path("docs/badges/tests-passing.json").read_text())
+          if endpoint.get("schemaVersion") != 1:
+              print("FAIL tests badge missing schemaVersion 1"); sys.exit(1)
+          if endpoint.get("label") != "tests passing":
+              print("FAIL tests badge wrong label"); sys.exit(1)
+          if "passing" not in endpoint.get("message", ""):
+              print("FAIL tests badge message missing count"); sys.exit(1)
+          if not endpoint.get("color"):
+              print("FAIL tests badge missing color"); sys.exit(1)
+          print(f"✅ Tests-passing badge verified: {endpoint['message']}")
+          PY
 
       - name: Run Bandit security scan (report)
         # `|| true` so a finding never hides the report; enforcement is the next step.
@@ -72,7 +92,7 @@ jobs:
         run: pip-audit --desc
 
   security-evidence:
-    name: SBOM + DR Drill Evidence
+    name: SBOM + DR Drill + Demo Evidence
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -94,6 +114,82 @@ jobs:
       - name: Generate DR drill evidence (measured RTO/RPO)
         run: |
           python scripts/dr_drill.py --workspace-id ci --mode simulate --out scripts/output/dr_report.json
+
+      - name: Generate per-sector LLM eval evidence (stub mode)
+        run: |
+          python scripts/sector_eval.py --sector all --stub \
+              --out scripts/output/sector_eval.json
+
+      - name: Build scripted demo environment (admin + sector workspaces + registry + evals)
+        run: |
+          python scripts/prepare_demo.py \
+              --root "$RUNNER_TEMP/aeon_demo_state" \
+              --database-url "sqlite:////$RUNNER_TEMP/aeon_demo_ci.db" \
+              --out scripts/output/demo_ready.json
+
+      - name: Verify demo readiness report
+        run: |
+          python - <<'PY'
+          import json, sys
+          report = json.load(open("scripts/output/demo_ready.json"))
+          workspaces = report.get("workspaces", [])
+          if len(workspaces) != 4:
+              print("FAIL expected 4 workspaces, got", len(workspaces)); sys.exit(1)
+          active = [w for w in workspaces if w.get("active_deployments")]
+          if len(active) != 4:
+              print("FAIL expected 4 active deployments, got", len(active)); sys.exit(1)
+          evals = report.get("evals", [])
+          failed = [e for e in evals if not e.get("ok")]
+          low = [e for e in evals if (e.get("accuracy") or 0) < 0.8]
+          if failed or low:
+              print("FAIL evals with errors or accuracy < 0.8:", failed, low); sys.exit(1)
+          print(f"✅ Demo seed verified: {len(workspaces)} workspaces, "
+                f"{len(active)} active deployments, {len(evals)} evals ok")
+          PY
+
+      - name: Generate machine-readable government-readiness report + badges
+        run: |
+          python scripts/government_readiness_report.py \
+              --out scripts/output/government_readiness.json \
+              --badge-out docs/badges/government-readiness.svg \
+              --badge-endpoint-out docs/badges/government-readiness.json
+
+      - name: Verify government-readiness report
+        run: |
+          python - <<'PY'
+          import json, sys
+          report = json.load(open("scripts/output/government_readiness.json"))
+          controls = report.get("components", [])
+          if len(controls) != 40:
+              print("FAIL expected 40 controls, got", len(controls)); sys.exit(1)
+          allowed = {"BLOCKING", "PARTIAL", "GAP"}
+          bad = [c["bom-ref"] for c in controls
+                 if not c.get("properties") or c["properties"][0]["value"] not in allowed]
+          if bad:
+              print("FAIL controls with invalid status:", bad); sys.exit(1)
+          print(f"✅ Gov-readiness report verified: {len(controls)} controls, "
+                f"{report['summary']['by_status']['BLOCKING']} blocking")
+          PY
+
+      - name: Verify government-readiness badges
+        run: |
+          python - <<'PY'
+          import json, sys
+          from pathlib import Path
+          svg = Path("docs/badges/government-readiness.svg").read_text()
+          if not svg.lstrip().startswith("<svg"):
+              print("FAIL badge is not an SVG"); sys.exit(1)
+          if "non-blocking" not in svg or "gov readiness" not in svg:
+              print("FAIL badge missing label or ratio"); sys.exit(1)
+          endpoint = json.loads(Path("docs/badges/government-readiness.json").read_text())
+          if endpoint.get("schemaVersion") != 1:
+              print("FAIL endpoint badge missing schemaVersion 1"); sys.exit(1)
+          if endpoint.get("label") != "gov readiness" or "non-blocking" not in endpoint.get("message", ""):
+              print("FAIL endpoint badge wrong label/message"); sys.exit(1)
+          if not endpoint.get("color"):
+              print("FAIL endpoint badge missing color"); sys.exit(1)
+          print("✅ Gov-readiness badges verified (SVG + shields endpoint JSON)")
+          PY
 
       - name: Upload evidence artifacts
         uses: actions/upload-artifact@v4

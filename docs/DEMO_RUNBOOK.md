@@ -12,12 +12,15 @@ CJIS, SOC 2). Never claim certification (see docs/COMPLIANCE_READINESS.md).
 2. `python3 scripts/sbom_report.py --out scripts/output/sbom.json` — SBOM present.
 3. `python3 scripts/dr_drill.py --workspace-id demo --mode simulate --out scripts/output/dr_report.json` — evidence report.
 4. `bandit -c bandit.yaml -r aeon*.py` and `pip-audit -r requirements.txt -r requirements-dev.txt --desc` — clean.
-5. Seed an admin, create 2 demo workspaces (acme-health, gov-city) with distinct LLM preferences.
+5. Seed the scripted demo environment: `python3 scripts/prepare_demo.py`. It creates the dev admin (`admin@demo.local` / `demo-admin-password`), 4 sector workspaces (acme-health, acme-finance, gov-city, acme-manufacturing) with distinct per-workspace LLM preferences + operating profiles, approved/activated model-registry deployments, and per-sector stub evals with fingerprints auto-attached to the matching deployment (report: `scripts/output/demo_ready.json`). Idempotent — safe to re-run before every briefing.
 6. Configure providers: OpenAI/Anthropic (if keys), plus a **custom OpenAI-compatible** endpoint and a local stub, to demo provider/model switching live.
 7. Verify `/health`, `/live`, `/ready`, `/metrics` respond; check `/audit/integrity` reports a verified chain.
 8. Dry-run each scripted scenario below so timing is predictable.
 
 ## 2. The 15-minute arc (companies)
+
+> Printable one-page agenda mapping this arc to the seeded workspaces:
+> `docs/AEON_OS_Demo_Agenda.pdf` (regenerate with `python3 scripts/build_demo_agenda.py`).
 
 1. **Landing**: show the dashboard — workspaces, automations, approvals, capabilities.
 2. **Multi-LLM control**: open `/llm`; switch provider and model per workspace and chat — demonstrate that two tenants run different models without cross-talk (provider isolation).
@@ -58,4 +61,5 @@ Each scenario: pre-seed data, walk one workflow, show audit trail entries, and h
 - docs/security/IDP_INTEROP_MATRIX.md — IdP interop evidence matrix.
 - docs/compliance/CONTROL_MATRIX.md and docs/compliance/SSP_SKELETON.md.
 - docs/policies/INCIDENT_RESPONSE.md, ACCESS_REVIEW.md, RETENTION.md, SUPPORT.md.
+- docs/GOVERNMENT_READINESS_CHECKLIST.md — the exact certifications, agreements, and org processes that remain (machine-readable JSON twin: `scripts/government_readiness_report.py` → `scripts/output/government_readiness.json`).
 - scripts/output/ artifacts: sbom.json, slo_report.md, dr_report.json.
