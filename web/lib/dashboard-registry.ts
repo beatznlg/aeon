@@ -189,13 +189,14 @@ export function resolveEnabledComponents(
 ): DashboardComponent[] {
   // Use per-workspace component list, or default to all default-enabled components
   const enabledIds = config?.dashboardComponents ?? getDefaultEnabledIds();
-  const isAdmin = role === "admin" || role === "super_admin";
+  const normalizedRole = role.trim().toLowerCase();
+  const isAdmin = normalizedRole === "admin" || normalizedRole === "super_admin";
 
   return ALL_COMPONENTS.filter((comp) => {
     if (!enabledIds.includes(comp.id)) return false;
     // Role-based access
     if (comp.minRole === "admin" && !isAdmin) return false;
-    if (comp.minRole === "operator" && !isAdmin && role !== "operator") return false;
+    if (comp.minRole === "operator" && !isAdmin && normalizedRole !== "operator") return false;
     return true;
   });
 }

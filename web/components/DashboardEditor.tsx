@@ -1,11 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import {
-  DashboardComponent,
-  getAllComponents,
-  getComponentsByCategory,
-} from "@/lib/dashboard-registry";
+import { getAllComponents } from "@/lib/dashboard-registry";
 
 /* ─── Props ─── */
 
@@ -93,7 +89,6 @@ export default function DashboardEditor({
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                 {all
                   .filter((c) => c.category === cat)
-                  .filter((c) => !filter || c.id === "placeholder")
                   .map((comp) => {
                     const enabled = enabledComponents.includes(comp.id);
                     const accessDenied = comp.minRole === "admin" && !isAdmin;

@@ -7,6 +7,7 @@ import { SystemHealthPanel, AlertBanner, AlertPanel } from "../components/LiveMo
 import { useTheme } from "@/components/ThemeProvider";
 import { isWorkspaceAdmin, isModuleEnabled } from "@/lib/theme-config";
 import { resolveEnabledComponents, DashboardComponent } from "@/lib/dashboard-registry";
+import { getAuthHeaders } from "@/lib/flask-auth";
 import ThreeBackground from "@/components/ThreeBackground";
 import {
   motion,
@@ -354,20 +355,23 @@ function LiveMetricsSection({
   loading,
   lastUpdated,
   fetchStats,
+  error,
 }: {
   stats: Record<string, string | number>;
   loading: boolean;
   lastUpdated: Date | null;
   fetchStats: () => Promise<void>;
+  error: string | null;
 }) {
   return (
     <>
       <div className="mb-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <h2 className="text-sm font-semibold text-slate-300">Live Metrics</h2>
-          {lastUpdated && (
+          {lastUpdated && !error && (
             <span className="text-xs text-slate-500">· {lastUpdated.toLocaleTimeString()}</span>
           )}
+          {error && <span className="text-xs text-amber-400">· {error}</span>}
         </div>
         <button
           onClick={fetchStats}
@@ -375,10 +379,10 @@ function LiveMetricsSection({
           className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium text-slate-400 transition hover:bg-white/[0.04] hover:text-slate-200 disabled:opacity-50"
         >
           <span
-            className={`inline-block h-2 w-2 rounded-full ${loading ? "animate-pulse bg-amber-400" : "bg-emerald-400"}`}
-            style={!loading ? { boxShadow: "0 0 6px rgba(34,197,94,0.5)" } : {}}
+            className={`inline-block h-2 w-2 rounded-full ${loading ? "animate-pulse bg-amber-400" : error ? "bg-amber-400" : "bg-emerald-400"}`}
+            style={!loading && !error ? { boxShadow: "0 0 6px rgba(34,197,94,0.5)" } : {}}
           />
-          {loading ? "Refreshing..." : "Live"}
+          {loading ? "Refreshing..." : error ? "Retry" : "Live"}
         </button>
       </div>
       <div className="dashboard-grid">
@@ -396,6 +400,95 @@ function LiveMetricsSection({
         ))}
       </div>
     </>
+  );
+}
+
+function OperationalSummarySection({
+  counts,
+  enabledIds,
+}: {
+  counts: DashboardCounts | null;
+  enabledIds: Set<string>;
+}) {
+  const cards = [
+    {
+      id: "anomaly_summary",
+      href: "/anomalies",
+      icon: "⚠️",
+      label: "Anomalies",
+      value: counts ? counts.anomalies : "…",
+      detail: counts ? "detected in this workspace" : "Waiting for backend",
+      color: "#f59e0b",
+    },
+    {
+      id: "incident_summary",
+      href: "/incidents",
+      icon: "🚨",
+      label: "Incident response",
+      value: counts ? counts.open_incidents : "…",
+      detail: counts ? "open incidents requiring attention" : "Waiting for backend",
+      color: "#ef4444",
+    },
+    {
+      id: "automation_status",
+      href: "/os/automations/metrics",
+      icon: "🤖",
+      label: "Automation status",
+      value: counts ? counts.automations : "…",
+      detail: counts
+        ? `${counts.automation_executions_30d.toLocaleString()} runs in the last 30 days`
+        : "Waiting for backend",
+      color: "#6366f1",
+    },
+  ].filter((card) => enabledIds.has(card.id));
+
+  if (cards.length === 0) return null;
+
+  return (
+    <FadeIn delay={0.2}>
+      <div className="dashboard-section-heading mt-8">
+        <div>
+          <h2 className="dashboard-section-title">Operational overview</h2>
+          <p className="dashboard-section-caption">
+            Workspace-scoped signals connected to the AEON control plane.
+          </p>
+        </div>
+        <span className="dashboard-section-count">Live control plane</span>
+      </div>
+      <StaggerContainer className="grid gap-3 md:grid-cols-3">
+        {cards.map((card) => (
+          <StaggerItem key={card.id}>
+            <Link
+              href={card.href}
+              className="glass-card group block p-4 transition hover:-translate-y-0.5"
+              style={{ borderColor: `${card.color}35` }}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <span
+                  className="flex h-9 w-9 items-center justify-center rounded-xl text-lg"
+                  style={{ background: `${card.color}18`, color: card.color }}
+                >
+                  {card.icon}
+                </span>
+                <span className="text-slate-500 transition group-hover:translate-x-0.5 group-hover:text-slate-300">
+                  ↗
+                </span>
+              </div>
+              <div className="mt-4 flex items-end justify-between gap-3">
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                    {card.label}
+                  </div>
+                  <div className="mt-1 text-2xl font-semibold text-white">{card.value}</div>
+                </div>
+                <span className="mb-1 h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.55)]" />
+              </div>
+              <p className="mt-2 text-xs text-slate-500">{card.detail}</p>
+            </Link>
+          </StaggerItem>
+        ))}
+      </StaggerContainer>
+    </FadeIn>
   );
 }
 
@@ -546,6 +639,7 @@ export default function DashboardPage() {
   const [liveStats, setLiveStats] = useState<DashboardCounts | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [loading, setLoading] = useState(false);
+  const [statsError, setStatsError] = useState<string | null>(null);
   const { modules, admin, config } = useFilteredModules();
 
   // Resolve enabled dashboard components from workspace config
@@ -560,14 +654,19 @@ export default function DashboardPage() {
   const fetchStats = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/dashboard/stats", { cache: "no-store" });
+      const res = await fetch("/api/dashboard/stats", {
+        cache: "no-store",
+        headers: getAuthHeaders(),
+      });
       const d = await res.json();
-      if (d?.ok && d?.counts) {
-        setLiveStats(d.counts as DashboardCounts);
-        setLastUpdated(new Date());
+      if (!res.ok || !d?.ok || !d?.counts) {
+        throw new Error(d?.error || `Backend unavailable (${res.status})`);
       }
-    } catch {
-      // silently fail
+      setLiveStats(d.counts as DashboardCounts);
+      setStatsError(null);
+      setLastUpdated(new Date());
+    } catch (error) {
+      setStatsError(error instanceof Error ? error.message : "Backend unavailable");
     } finally {
       setLoading(false);
     }
@@ -647,8 +746,14 @@ export default function DashboardPage() {
               loading={loading}
               lastUpdated={lastUpdated}
               fetchStats={fetchStats}
+              error={statsError}
             />
           </FadeIn>
+        )}
+        {(enabledIds.has("anomaly_summary") ||
+          enabledIds.has("incident_summary") ||
+          enabledIds.has("automation_status")) && (
+          <OperationalSummarySection counts={liveStats} enabledIds={enabledIds} />
         )}
         {enabledIds.has("command_centers") && (
           <FadeIn key="modules" delay={0.2}>
