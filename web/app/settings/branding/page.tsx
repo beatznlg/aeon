@@ -132,15 +132,19 @@ export default function BrandingSettingsPage() {
   }
 
   return (
-    <div className="settings-page">
-      <div className="flex items-center justify-between flex-wrap gap-4">
+    <div className="settings-page">        <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h1>🎨 Workspace Branding</h1>
           <p>Customize AEON OS for your company or organization.</p>
         </div>
-        <Link href="/settings" className="btn btn-sm">
-          ← Back to Settings
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link href="/onboarding" className="btn btn-sm">
+            🎯 Industry presets
+          </Link>
+          <Link href="/settings" className="btn btn-sm">
+            ← Back to Settings
+          </Link>
+        </div>
       </div>
 
       {error && (

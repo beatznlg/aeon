@@ -7,7 +7,10 @@ export default auth((req) => {
   const role = getRole(req.auth);
 
   const isProtectedRoute =
-    pathname.startsWith("/os") || pathname.startsWith("/settings") || pathname.startsWith("/chat");
+    pathname.startsWith("/os") ||
+    pathname.startsWith("/settings") ||
+    pathname.startsWith("/chat") ||
+    pathname.startsWith("/onboarding");
 
   if (isProtectedRoute && !isLoggedIn) {
     return Response.redirect(new URL("/login", req.nextUrl));

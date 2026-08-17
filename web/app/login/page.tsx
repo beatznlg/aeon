@@ -120,7 +120,8 @@ function AuthForm() {
       });
 
       if (signInResult?.ok) {
-        router.push(callbackUrl);
+        // New accounts go through industry onboarding before landing on the dashboard.
+        router.push("/onboarding");
       } else {
         setError("Account created! Please sign in.");
         setMode("login");
