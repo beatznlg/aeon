@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { getAuthHeaders } from "@/lib/flask-auth";
+import ErrorState from "@/components/ui/ErrorState";
 
 type UsageSummary = {
   period_days: number;
@@ -111,7 +112,7 @@ function SnapshotStat({
   );
 }
 
-function useFetch<T>(url: string, authenticated = false) {
+function useFetch<T>(url: string, authenticated = false, retryKey = 0) {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -142,7 +143,7 @@ function useFetch<T>(url: string, authenticated = false) {
     return () => {
       mounted = false;
     };
-  }, [authenticated, url]);
+  }, [authenticated, url, retryKey]);
 
   return { data, loading, error };
 }
@@ -245,25 +246,43 @@ function BarChart({ data }: { data: { label: string; value: number }[] }) {
 export default function ObservabilityPage() {
   const { data: session } = useSession();
   const workspaceId = ((session?.user as any)?.workspaceId as string) || "default";
+  const [retryKey, setRetryKey] = useState(0);
 
-  const { data: usage, loading: usageLoading } = useFetch<{ ok: boolean; summary: UsageSummary }>(
-    "/api/os/observability/usage"
+  const {
+    data: usage,
+    loading: usageLoading,
+    error: usageError,
+  } = useFetch<{ ok: boolean; summary: UsageSummary }>("/api/os/observability/usage", false, retryKey);
+  const {
+    data: billing,
+    loading: billingLoading,
+    error: billingError,
+  } = useFetch<{ ok: boolean; billing: BillingStatus }>(
+    "/api/os/observability/billing",
+    false,
+    retryKey
   );
-  const { data: billing, loading: billingLoading } = useFetch<{
+  const {
+    data: health,
+    loading: healthLoading,
+    error: healthError,
+  } = useFetch<{ ok: boolean } & HealthStatus>(
+    "/api/os/observability/health",
+    false,
+    retryKey
+  );
+  const { data: metrics, error: metricsError } = useFetch<{
     ok: boolean;
-    billing: BillingStatus;
-  }>("/api/os/observability/billing");
-  const { data: health, loading: healthLoading } = useFetch<{ ok: boolean } & HealthStatus>(
-    "/api/os/observability/health"
-  );
-  const { data: metrics } = useFetch<{ ok: boolean; metrics: UsageSummary }>(
-    "/api/os/observability/metrics"
-  );
+    metrics: UsageSummary;
+  }>("/api/os/observability/metrics", false, retryKey);
   const {
     data: snapshot,
     loading: snapshotLoading,
     error: snapshotError,
-  } = useFetch<OperationsSnapshot>("/api/os/observability/snapshot", true);
+  } = useFetch<OperationsSnapshot>("/api/os/observability/snapshot", true, retryKey);
+
+  const loadError =
+    usageError || billingError || healthError || metricsError || snapshotError || null;
 
   const actionBars = useMemo(() => {
     const byAction = usage?.summary?.by_action || {};
@@ -304,6 +323,16 @@ export default function ObservabilityPage() {
           ← OS Launcher
         </Link>
       </header>
+
+      {loadError && (
+        <div className="mb-4">
+          <ErrorState
+            error={loadError}
+            onRetry={() => setRetryKey((k) => k + 1)}
+            title="Could not load observability data"
+          />
+        </div>
+      )}
 
       {(usageLoading || billingLoading || healthLoading || snapshotLoading) && (
         <div className="skeleton-page" role="status" aria-label="Loading observability">

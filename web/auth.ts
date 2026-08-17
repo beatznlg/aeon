@@ -10,7 +10,10 @@ interface AeonUser {
   email: string;
   name?: string | null;
   role: AeonRole;
+  workspaceId?: string;
 }
+
+const AEON_PYTHON_URL = process.env.AEON_PYTHON_URL || "http://127.0.0.1:5000";
 
 /**
  * Fallback admin user that works when Supabase is not configured.
@@ -38,6 +41,36 @@ async function verifyFallbackPassword(password: string): Promise<boolean> {
   // API Keys commonly stores ADMIN_PASSWORD as a plain value. Keep this
   // fallback Edge-runtime compatible; hashed values should use the hash key.
   return password === configuredPassword;
+}
+
+/**
+ * Authenticate against the AEON Flask backend.
+ *
+ * The frontend identity layer (NextAuth/Supabase) and the Python backend keep
+ * users in separate stores, so a user registered through the backend (e.g. the
+ * one-click demo account or the "Create Account" tab) is invisible to NextAuth.
+ * This bridge lets those backend users sign in through the normal NextAuth
+ * credentials flow while Supabase users and the env fallback admin still work.
+ */
+async function loginViaFlask(email: string, password: string): Promise<AeonUser | null> {
+  try {
+    const res = await fetch(`${AEON_PYTHON_URL}/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await res.json();
+    if (!data?.ok || !data?.user?.id) return null;
+    return {
+      id: String(data.user.id),
+      email: String(data.user.email),
+      name: data.user.name || null,
+      role: (data.user.role as AeonRole) || "VIEWER",
+      workspaceId: data.user.workspace_id,
+    };
+  } catch {
+    return null;
+  }
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
@@ -68,31 +101,39 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         // ── Supabase-backed user lookup ───────────────────────────────
         const sb = getSupabaseServerClient();
-        if (!sb) {
-          console.warn("[auth] Supabase not configured; only fallback admin is available");
-          return null;
+        if (sb) {
+          const { data: user, error } = await sb
+            .from("users")
+            .select("id, email, name, password, role")
+            .eq("email", email)
+            .single();
+
+          if (!error && user?.password) {
+            const isValid = await bcrypt.compare(password, String(user.password));
+            if (isValid) {
+              return {
+                id: user.id,
+                email: user.email,
+                name: user.name,
+                role: user.role as AeonRole,
+              };
+            }
+            // Known Supabase user with a wrong password — do not fall through
+            // to the backend with the same credentials.
+            return null;
+          }
+          // Supabase configured but this user isn't there → try the backend.
+        } else {
+          console.warn("[auth] Supabase not configured; falling back to AEON backend");
         }
 
-        const { data: user, error } = await sb
-          .from("users")
-          .select("id, email, name, password, role")
-          .eq("email", email)
-          .single();
+        // ── AEON Flask backend bridge ─────────────────────────────────
+        // Authenticates users that live in the Python backend's database
+        // (self-service registrations and the one-click demo account).
+        const flaskUser = await loginViaFlask(email, password);
+        if (flaskUser) return flaskUser;
 
-        if (error || !user?.password) {
-          console.error("[auth] user lookup failed:", error?.message);
-          return null;
-        }
-
-        const isValid = await bcrypt.compare(password, String(user.password));
-        if (!isValid) return null;
-
-        return {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          role: user.role as AeonRole,
-        };
+        return null;
       },
     }),
   ],
@@ -101,7 +142,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (user) {
         token.id = user.id;
         token.role = (user as AeonUser).role;
-        token.workspaceId = (user as any).workspaceId;
+        token.workspaceId = (user as AeonUser).workspaceId;
       }
       return token;
     },

@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { BACKEND_DOWN_MESSAGE } from "@/lib/backend-status";
 
 const AEON_PYTHON_URL = process.env.AEON_PYTHON_URL || "http://127.0.0.1:5000";
 
@@ -43,11 +44,21 @@ export async function proxyApiRequest(
     }
   }
 
-  const upstream = await fetch(url.toString(), {
-    method: request.method,
-    headers,
-    body,
-  });
+  let upstream: Response;
+  try {
+    upstream = await fetch(url.toString(), {
+      method: request.method,
+      headers,
+      body,
+    });
+  } catch {
+    // The Python backend is unreachable — return a structured response so
+    // client pages can detect it and degrade gracefully instead of a raw 500.
+    return Response.json(
+      { ok: false, error: BACKEND_DOWN_MESSAGE, backend_down: true },
+      { status: 502 }
+    );
+  }
 
   const responseBody = await upstream.arrayBuffer();
   const responseHeaders = new Headers();

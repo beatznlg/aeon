@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import ErrorState from "@/components/ui/ErrorState";
 
 interface AeonEvent {
   type: string;
@@ -181,8 +182,12 @@ export default function ActivityStreamPage() {
       </header>
 
       {error && (
-        <div className="module-alert danger" style={{ marginBottom: 16 }}>
-          {error}
+        <div style={{ marginBottom: 16 }}>
+          <ErrorState
+            error={error}
+            onRetry={() => window.location.reload()}
+            title="Activity stream disconnected"
+          />
         </div>
       )}
 

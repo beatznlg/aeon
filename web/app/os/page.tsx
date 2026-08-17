@@ -7,6 +7,8 @@ import { useTheme } from "@/components/ThemeProvider";
 import { isModuleEnabled, isWorkspaceAdmin } from "@/lib/theme-config";
 import { FadeIn, StaggerContainer, StaggerItem, ScaleOnHover } from "@/components/animations";
 import CrossSectorSearch from "@/components/CrossSectorSearch";
+import ErrorState from "@/components/ui/ErrorState";
+import { isBackendDownError } from "@/lib/backend-status";
 
 type AppDefinition = {
   id: string;
@@ -45,6 +47,7 @@ export default function OSPage() {
   const [installed, setInstalled] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
   const { config } = useTheme();
   const { data: session } = useSession();
   const admin = isWorkspaceAdmin((session?.user as any)?.role);
@@ -52,6 +55,8 @@ export default function OSPage() {
   const isVisible = (moduleId: string) => isModuleEnabled(config, moduleId, true) || admin;
 
   useEffect(() => {
+    setError(null);
+    setLoading(true);
     fetch("/api/os/apps", { cache: "no-store" })
       .then((r) => r.json())
       .then((data) => {
@@ -67,7 +72,7 @@ export default function OSPage() {
         setError(String(e));
         setLoading(false);
       });
-  }, []);
+  }, [retryKey]);
 
   const install = async (appId: string) => {
     try {
@@ -128,7 +133,15 @@ export default function OSPage() {
         </div>
       </FadeIn>
 
-      {error && <div className="module-alert danger">{error}</div>}
+      {error && (
+        <div className="mb-6">
+          <ErrorState
+            error={error}
+            onRetry={() => setRetryKey((k) => k + 1)}
+            title={isBackendDownError(error) ? undefined : "Could not load modules"}
+          />
+        </div>
+      )}
 
       <FadeIn key="content" delay={0.1}>
         {loading ? (

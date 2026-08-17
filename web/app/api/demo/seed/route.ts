@@ -19,32 +19,40 @@ interface AuthResponse {
 }
 
 async function registerOrLogin(): Promise<AuthResponse> {
-  // Try register first (idempotent if user exists).
-  let res = await fetch(`${AEON_URL}/auth/register`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      email: DEMO_EMAIL,
-      password: DEMO_PASSWORD,
-      name: DEMO_NAME,
-    }),
-  });
-  let data = (await res.json()) as AuthResponse;
-
-  // If the user already exists, fall back to login.
-  if (!data.ok) {
-    res = await fetch(`${AEON_URL}/auth/login`, {
+  try {
+    // Try register first (idempotent if user exists).
+    let res = await fetch(`${AEON_URL}/auth/register`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         email: DEMO_EMAIL,
         password: DEMO_PASSWORD,
+        name: DEMO_NAME,
       }),
     });
-    data = (await res.json()) as AuthResponse;
-  }
+    let data = (await res.json()) as AuthResponse;
 
-  return data;
+    // If the user already exists, fall back to login.
+    if (!data.ok) {
+      res = await fetch(`${AEON_URL}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: DEMO_EMAIL,
+          password: DEMO_PASSWORD,
+        }),
+      });
+      data = (await res.json()) as AuthResponse;
+    }
+
+    return data;
+  } catch (err: any) {
+    return {
+      ok: false,
+      error:
+        "AEON backend unreachable — is the Python server running? Start it with `npm run dev:full` from web/, or set AEON_PYTHON_URL.",
+    };
+  }
 }
 
 export async function POST(_req: NextRequest) {

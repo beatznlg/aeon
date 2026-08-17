@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import Link from "next/link";
+import ErrorState from "@/components/ui/ErrorState";
 
 type AppDefinition = {
   id: string;
@@ -70,6 +71,7 @@ export default function WorkflowBuilderPage() {
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
 
   const [name, setName] = useState("New Workflow");
   const [description, setDescription] = useState("");
@@ -167,6 +169,7 @@ export default function WorkflowBuilderPage() {
   };
 
   useEffect(() => {
+    setError(null);
     Promise.all([
       fetch("/api/os/apps", { cache: "no-store" }).then((r) => r.json()),
       fetch("/api/os/workflows", { cache: "no-store" }).then((r) => r.json()),
@@ -199,7 +202,7 @@ export default function WorkflowBuilderPage() {
         setError(String(e));
         setLoading(false);
       });
-  }, []);
+  }, [retryKey]);
 
   useEffect(() => {
     if (loading) return;
@@ -487,7 +490,15 @@ export default function WorkflowBuilderPage() {
         </div>
       </header>
 
-      {error && <div className="module-alert danger">{error}</div>}
+      {error && (
+        <div className="mb-4">
+          <ErrorState
+            error={error}
+            onRetry={() => setRetryKey((k) => k + 1)}
+            title="Could not load workflows"
+          />
+        </div>
+      )}
 
       <section className="module-widgets-grid" style={{ marginBottom: 24 }}>
         <div className="module-widget">

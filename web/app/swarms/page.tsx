@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef, forwardRef } from "react";
+import ErrorState from "@/components/ui/ErrorState";
+import { isBackendDownError } from "@/lib/backend-status";
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -1258,7 +1260,9 @@ export default function SwarmsPage() {
         </button>
       </div>
 
-      {error && (
+      {error && isBackendDownError(error) ? (
+        <ErrorState error={error} onRetry={() => setError(null)} />
+      ) : error ? (
         <div className="swarm-alert danger">
           <span>⚠️</span> {error}
           <button
@@ -1269,7 +1273,7 @@ export default function SwarmsPage() {
             ✕
           </button>
         </div>
-      )}
+      ) : null}
 
       {/* ═══ Create Swarm Form ═══ */}
       {formOpen && (

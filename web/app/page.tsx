@@ -8,6 +8,8 @@ import { useTheme } from "@/components/ThemeProvider";
 import { isWorkspaceAdmin, isModuleEnabled } from "@/lib/theme-config";
 import { resolveEnabledComponents, DashboardComponent } from "@/lib/dashboard-registry";
 import { getAuthHeaders } from "@/lib/flask-auth";
+import { BACKEND_DOWN_MESSAGE, isBackendDown, isBackendDownError } from "@/lib/backend-status";
+import ErrorState from "@/components/ui/ErrorState";
 import ThreeBackground from "@/components/ThreeBackground";
 import {
   motion,
@@ -371,7 +373,9 @@ function LiveMetricsSection({
           {lastUpdated && !error && (
             <span className="text-xs text-slate-500">· {lastUpdated.toLocaleTimeString()}</span>
           )}
-          {error && <span className="text-xs text-amber-400">· {error}</span>}
+          {error && !isBackendDownError(error) && (
+            <span className="text-xs text-amber-400">· {error}</span>
+          )}
         </div>
         <button
           onClick={fetchStats}
@@ -385,6 +389,11 @@ function LiveMetricsSection({
           {loading ? "Refreshing..." : error ? "Retry" : "Live"}
         </button>
       </div>
+      {error && isBackendDownError(error) && (
+        <div className="mb-4">
+          <ErrorState error={error} onRetry={fetchStats} />
+        </div>
+      )}
       <div className="dashboard-grid">
         {[
           { value: stats.uptime as string, label: "Uptime", color: "#10b981" },
@@ -660,7 +669,11 @@ export default function DashboardPage() {
       });
       const d = await res.json();
       if (!res.ok || !d?.ok || !d?.counts) {
-        throw new Error(d?.error || `Backend unavailable (${res.status})`);
+        throw new Error(
+          isBackendDown(res, d)
+            ? BACKEND_DOWN_MESSAGE
+            : d?.error || `Backend unavailable (${res.status})`
+        );
       }
       setLiveStats(d.counts as DashboardCounts);
       setStatsError(null);

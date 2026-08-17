@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { getAuthHeaders } from "@/lib/flask-auth";
+import ErrorState from "@/components/ui/ErrorState";
 
 type ApprovalStatus = "pending" | "approved" | "rejected" | "cancelled";
 type JsonRecord = Record<string, unknown>;
@@ -150,7 +151,11 @@ export default function ApprovalsPage() {
         </div>
       </header>
 
-      {error && <div className="notice notice-error" style={{ marginTop: 20 }}>{error}</div>}
+      {error && (
+        <div style={{ marginTop: 20 }}>
+          <ErrorState error={error} onRetry={loadApprovals} title="Could not load approvals" />
+        </div>
+      )}
 
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", margin: "24px 0 16px" }}>
         <span className="text-muted" style={{ fontSize: 13 }}>View:</span>

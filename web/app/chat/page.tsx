@@ -4,6 +4,10 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { getFlaskToken, getFlaskUser, getAuthHeaders } from "@/lib/flask-auth";
+import {
+  BACKEND_DOWN_MESSAGE,
+  isBackendDownError,
+} from "@/lib/backend-status";
 
 // ── Types ────────────────────────────────────────────────────────────────
 interface Message {
@@ -244,7 +248,15 @@ export default function ChatPage() {
 
       setMessages((prev) => [...prev, { role: "aeon", text: reply, backend }]);
     } catch (e: any) {
-      setMessages((prev) => [...prev, { role: "aeon", text: `Error: ${e.message}` }]);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "aeon",
+          text: isBackendDownError(e?.message)
+            ? BACKEND_DOWN_MESSAGE
+            : `Error: ${e?.message || "request failed"}`,
+        },
+      ]);
     } finally {
       setLoading(false);
       inputRef.current?.focus();
@@ -374,7 +386,13 @@ export default function ChatPage() {
             {pluginsLoading && plugins.length === 0 && (
               <div className="chat-plugins-status">Loading plugins…</div>
             )}
-            {pluginsError && <div className="chat-plugins-status error">{pluginsError}</div>}
+            {pluginsError && (
+              <div className="chat-plugins-status error">
+                {isBackendDownError(pluginsError)
+                  ? "Control plane offline — plugin tools are unavailable. Chat still works."
+                  : pluginsError}
+              </div>
+            )}
             {!pluginsLoading && !pluginsError && plugins.length === 0 && (
               <div className="chat-plugins-status">
                 No plugin tools installed in this workspace yet.{" "}

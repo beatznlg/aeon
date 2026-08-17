@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import ErrorState from "@/components/ui/ErrorState";
 
 interface AutomationRule {
   id: string;
@@ -1048,8 +1049,8 @@ export default function AutomationsPage() {
       </header>
 
       {error && (
-        <div className="module-alert danger" style={{ marginBottom: 16 }}>
-          {error}
+        <div style={{ marginBottom: 16 }}>
+          <ErrorState error={error} onRetry={loadRules} title="Could not load automations" />
         </div>
       )}
 

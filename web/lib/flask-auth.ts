@@ -6,7 +6,13 @@
 
 const FLASK_TOKEN_KEY = "aeon_flask_token";
 const FLASK_USER_KEY = "aeon_flask_user";
-const AEON_URL = process.env.NEXT_PUBLIC_AEON_PYTHON_URL || "http://127.0.0.1:5000";
+
+/**
+ * Auth calls are proxied through a Next.js API route so the browser never has
+ * to reach the Flask origin directly (which may be a private 127.0.0.1 address
+ * or a CORS-restricted host in hosted/preview environments).
+ */
+const FLASK_AUTH_PROXY = "/api/auth/flask";
 
 export interface FlaskUser {
   id: string;
@@ -50,10 +56,10 @@ export async function loginToFlask(
   password: string
 ): Promise<{ token: string; user: FlaskUser } | null> {
   try {
-    const res = await fetch(`${AEON_URL}/auth/login`, {
+    const res = await fetch(FLASK_AUTH_PROXY, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ action: "login", email, password }),
     });
     const data = await res.json();
     if (data.ok && data.token) {
@@ -71,10 +77,15 @@ export async function registerToFlask(
   name?: string
 ): Promise<{ token: string; user: FlaskUser } | null> {
   try {
-    const res = await fetch(`${AEON_URL}/auth/register`, {
+    const res = await fetch(FLASK_AUTH_PROXY, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password, name: name || email.split("@")[0] }),
+      body: JSON.stringify({
+        action: "register",
+        email,
+        password,
+        name: name || email.split("@")[0],
+      }),
     });
     const data = await res.json();
     if (data.ok && data.token) {

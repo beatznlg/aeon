@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
+import ErrorState from "@/components/ui/ErrorState";
 
 type AuditRow = {
   id: string;
@@ -26,7 +27,7 @@ type ComplianceResult = {
   note?: string;
 };
 
-function useFetch<T>(url: string) {
+function useFetch<T>(url: string, retryKey = 0) {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -48,7 +49,7 @@ function useFetch<T>(url: string) {
     return () => {
       mounted = false;
     };
-  }, [url]);
+  }, [url, retryKey]);
 
   return { data, loading, error };
 }
@@ -102,6 +103,7 @@ export default function GovernancePage() {
   const [retentionDays, setRetentionDays] = useState(365);
   const [retentionAction, setRetentionAction] = useState<"archive" | "delete">("archive");
   const [retentionMsg, setRetentionMsg] = useState("");
+  const [auditRetry, setAuditRetry] = useState(0);
 
   const auditUrl = useMemo(() => {
     const params = new URLSearchParams({
@@ -118,7 +120,7 @@ export default function GovernancePage() {
     data: audit,
     loading: auditLoading,
     error: auditError,
-  } = useFetch<{ ok: boolean; rows: AuditRow[]; count: number }>(auditUrl);
+  } = useFetch<{ ok: boolean; rows: AuditRow[]; count: number }>(auditUrl, auditRetry);
 
   const { data: retention } = useFetch<{
     ok: boolean;
@@ -308,7 +310,15 @@ export default function GovernancePage() {
           </div>
 
           {auditLoading && <div style={{ color: "var(--fg-mute)" }}>Loading audit logs…</div>}
-          {auditError && <div className="module-alert danger">{auditError}</div>}
+          {auditError && (
+            <div className="mb-3">
+              <ErrorState
+                error={auditError}
+                onRetry={() => setAuditRetry((k) => k + 1)}
+                title="Could not load audit logs"
+              />
+            </div>
+          )}
 
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>

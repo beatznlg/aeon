@@ -3,13 +3,17 @@
 import { useState, Suspense, useEffect } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { loginToFlask, storeFlaskSession } from "@/lib/flask-auth";
+import { loginToFlask, registerToFlask, storeFlaskSession } from "@/lib/flask-auth";
 import { defaultThemeConfig } from "@/lib/theme-config";
-
-const AEON_URL = process.env.NEXT_PUBLIC_AEON_PYTHON_URL || "http://127.0.0.1:5000";
 
 const DEMO_EMAIL = "admin@demo.local";
 const DEMO_PASSWORD = "demo123";
+
+const SIGN_IN_ERRORS: Record<string, string> = {
+  CredentialsSignin: "Invalid email or password.",
+  Configuration: "Sign-in is not configured correctly. Check the server environment variables.",
+  AccessDenied: "Access denied.",
+};
 
 function AuthForm() {
   const router = useRouter();
@@ -37,7 +41,10 @@ function AuthForm() {
     });
 
     if (result?.error) {
-      setError(result.error);
+      setError(
+        SIGN_IN_ERRORS[result.error] ||
+          "Sign-in failed. Check your credentials and that the AEON backend is running."
+      );
       setLoading(false);
       return false;
     }
@@ -85,7 +92,9 @@ function AuthForm() {
       setPassword(data.password || DEMO_PASSWORD);
       await finishSignIn(data.email || DEMO_EMAIL, data.password || DEMO_PASSWORD);
     } catch (err: any) {
-      setError(err.message || "Demo setup failed");
+      setError(
+        "Demo setup failed — the AEON backend isn't reachable. Start it with `npm run dev:full` from web/ (or set AEON_PYTHON_URL) and try again."
+      );
     } finally {
       setDemoSeeding(false);
     }
@@ -93,22 +102,15 @@ function AuthForm() {
 
   const handleRegister = async () => {
     try {
-      const res = await fetch(`${AEON_URL}/auth/register`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email,
-          password,
-          name: name || email.split("@")[0],
-        }),
-      });
-      const data = await res.json();
-      if (!data.ok) {
-        setError(data.error || "Registration failed");
+      const flask = await registerToFlask(email, password, name || email.split("@")[0]);
+      if (!flask) {
+        setError(
+          "Registration failed — the AEON backend is unreachable or returned an error. Start it with `npm run dev:full` from web/ and try again."
+        );
         return;
       }
 
-      storeFlaskSession(data.token, data.user);
+      storeFlaskSession(flask.token, flask.user);
 
       const signInResult = await signIn("credentials", {
         email,

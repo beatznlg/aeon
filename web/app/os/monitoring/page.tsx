@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { getAuthHeaders } from "@/lib/flask-auth";
+import ErrorState from "@/components/ui/ErrorState";
 
 type MetricPoint = { label: string; value: number; color?: string };
 
@@ -302,6 +303,16 @@ export default function MonitoringPage() {
           </button>
         ))}
       </div>
+
+      {incidentError && (
+        <div className="mb-4">
+          <ErrorState
+            error={incidentError}
+            onRetry={loadData}
+            title="Could not load monitoring data"
+          />
+        </div>
+      )}
 
       {loading && (
         <div style={{ color: "var(--fg-mute)", padding: 40, textAlign: "center" }}>

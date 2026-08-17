@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import ErrorState from "@/components/ui/ErrorState";
 
 type SystemStats = {
   total_users: number;
@@ -46,6 +47,7 @@ export default function AdminPage() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [workspaces, setWorkspaces] = useState<AdminWorkspace[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [editingRole, setEditingRole] = useState<string | null>(null);
   const [notifSending, setNotifSending] = useState(false);
@@ -57,6 +59,7 @@ export default function AdminPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const [statsRes, usersRes, workspacesRes] = await Promise.all([
         fetch("/api/admin/stats", { cache: "no-store" }),
@@ -66,11 +69,24 @@ export default function AdminPage() {
       const s = await statsRes.json();
       const u = await usersRes.json();
       const w = await workspacesRes.json();
-      if (s.ok) setStats(s.stats);
-      if (u.ok) setUsers(u.users);
-      if (w.ok) setWorkspaces(w.workspaces);
+      let anyOk = false;
+      if (s.ok) {
+        setStats(s.stats);
+        anyOk = true;
+      }
+      if (u.ok) {
+        setUsers(u.users);
+        anyOk = true;
+      }
+      if (w.ok) {
+        setWorkspaces(w.workspaces);
+        anyOk = true;
+      }
+      if (!anyOk) {
+        setLoadError(s.error || u.error || w.error || "Failed to load admin data");
+      }
     } catch (e: any) {
-      setMessage({ ok: false, text: e?.message || "Failed to load admin data" });
+      setLoadError(e?.message || "Failed to load admin data");
     } finally {
       setLoading(false);
     }
@@ -181,6 +197,12 @@ export default function AdminPage() {
           </p>
         </div>
       </header>
+
+      {loadError && (
+        <div style={{ marginBottom: 20 }}>
+          <ErrorState error={loadError} onRetry={fetchData} title="Could not load admin data" />
+        </div>
+      )}
 
       {message && (
         <div className={`module-alert ${message.ok ? "" : "danger"}`} style={{ marginBottom: 20 }}>
