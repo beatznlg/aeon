@@ -64,9 +64,50 @@ def test_catalog_covers_all_modules_and_sectors() -> None:
     for keyword in (
         "healthcare", "finance", "retail", "logistics", "manufacturing", "tourism",
         "utility", "heritage", "sme", "gov", "energy", "telecom",
-        "agri", "cyber", "education", "safety", "realestate",
+        "agri", "cyber", "education", "safety", "realestate", "contract", "accounting",
     ):
         assert any(keyword in sid for sid in sector_ids), f"missing sector plugin for: {keyword}"
+
+
+def test_catalog_covers_every_registry_sector_tag() -> None:
+    """Every industry in the frontend sector registry has sector plugins.
+
+    Mirrors the sector ids in web/lib/sector-registry.ts (plus the government
+    preset used by onboarding) mapped to the tag the catalog uses for that
+    vertical, so adding a new sector without plugins fails the suite.
+    """
+    sector_plugins = [m for m in BUILTIN_PLUGIN_CATALOG if m.category == "sector"]
+    tags = {t for m in sector_plugins for t in m.tags}
+    registry_to_tag = {
+        "cybersecurity": "cybersecurity",
+        "health": "health",
+        "finance": "finance",
+        "retail": "retail",
+        "transport": "transport",
+        "manufacturing": "manufacturing",
+        "tourism": "tourism",
+        "utilities": "utilities",
+        "cultural_heritage": "heritage",
+        "professional": "professional",
+        "sme": "sme",
+        "government": "government",
+    }
+    for sector_id, tag in registry_to_tag.items():
+        assert tag in tags, f"no sector plugin tagged for registry sector '{sector_id}'"
+
+
+def test_professional_services_plugins_are_installable_and_runnable(tmp_path) -> None:
+    """Professional-services sector plugins install and every entry point runs."""
+    mgr = MarketplaceManager(tmp_path)
+    for plugin_id in ("contract-review-ai", "accounting-audit-ai", "data-privacy-ai"):
+        manifest = next(m for m in BUILTIN_PLUGIN_CATALOG if m.id == plugin_id)
+        assert manifest.category == "sector"
+        assert "professional" in manifest.tags
+        installed = mgr.install("ws-pro", plugin_id)
+        assert installed["ok"] is True, installed.get("error")
+        for entry in manifest.entry_points:
+            result = mgr.run_entry("ws-pro", plugin_id, entry, {"text": "sample", "severity": 0.9})
+            assert result["ok"] is True, (plugin_id, entry, result.get("error"))
 
 
 def test_every_entry_point_has_runnable_handler() -> None:

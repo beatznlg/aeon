@@ -54,6 +54,63 @@ const CATEGORY_ICONS: Record<string, string> = {
   sector: "🏭",
 };
 
+// Sector tags → readable labels for the per-sector filter. Kept in display order;
+// any sector tag present on a sector plugin but missing here still shows (raw tag).
+const SECTOR_TAG_LABELS: Record<string, string> = {
+  cybersecurity: "Cybersecurity",
+  health: "Healthcare",
+  healthcare: "Healthcare",
+  pharma: "Pharma",
+  finance: "Finance",
+  lending: "Lending",
+  retail: "Retail",
+  supply_chain: "Supply Chain",
+  transport: "Transport",
+  logistics: "Logistics",
+  manufacturing: "Manufacturing",
+  tourism: "Tourism",
+  hospitality: "Hospitality",
+  utilities: "Utilities",
+  grid: "Energy Grid",
+  energy: "Energy",
+  heritage: "Cultural Heritage",
+  culture: "Culture",
+  sme: "SME",
+  professional: "Professional Services",
+  legal: "Legal",
+  government: "Government",
+  telecom: "Telecom",
+  agriculture: "Agriculture",
+  education: "Education",
+  "public-safety": "Public Safety",
+  "real-estate": "Real Estate",
+};
+
+const SECTOR_TAG_ICONS: Record<string, string> = {
+  cybersecurity: "🛡️",
+  health: "🏥",
+  healthcare: "🏥",
+  finance: "💰",
+  retail: "🛒",
+  transport: "🚚",
+  logistics: "🚚",
+  manufacturing: "🏭",
+  tourism: "🏨",
+  utilities: "⚡",
+  energy: "🛢️",
+  heritage: "🏛️",
+  culture: "🎭",
+  sme: "🏢",
+  professional: "📋",
+  legal: "⚖️",
+  government: "🏛️",
+  telecom: "📡",
+  agriculture: "🌾",
+  education: "🎓",
+  "public-safety": "🚔",
+  "real-estate": "🏠",
+};
+
 // Fixed, stable order for the filter bar (module categories first, sector last).
 const CATEGORY_ORDER: string[] = [
   "automation",
@@ -102,6 +159,7 @@ export default function MarketplacePage() {
   const [error, setError] = useState<string | null>(null);
 
   const [category, setCategory] = useState<string>("all");
+  const [sector, setSector] = useState<string>("all");
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -245,18 +303,32 @@ export default function MarketplacePage() {
     }
   };
 
+  // Per-sector filter derived from the tags on sector-category plugins.
+  const sectorOptions = useMemo(() => {
+    const byTag = new Map<string, number>();
+    for (const p of plugins) {
+      if (p.category !== "sector") continue;
+      for (const t of p.tags) byTag.set(t, (byTag.get(t) || 0) + 1);
+    }
+    return Array.from(byTag.entries())
+      .map(([tag, count]) => ({ tag, count, label: SECTOR_TAG_LABELS[tag] || tag }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [plugins]);
+
   const filtered = useMemo(() => {
     return plugins.filter((p) => {
       const matchCategory = category === "all" || p.category === category;
+      const matchSector =
+        sector === "all" || (p.category === "sector" && p.tags.includes(sector));
       const q = query.trim().toLowerCase();
       const matchQuery =
         !q ||
         p.name.toLowerCase().includes(q) ||
         p.description.toLowerCase().includes(q) ||
         p.tags.some((t) => t.toLowerCase().includes(q));
-      return matchCategory && matchQuery;
+      return matchCategory && matchSector && matchQuery;
     });
-  }, [plugins, category, query]);
+  }, [plugins, category, sector, query]);
 
   // Filter-bar categories derived from the loaded catalog: guaranteed complete
   // even if the backend summary is empty, ordered by CATEGORY_ORDER, with counts.
@@ -524,6 +596,59 @@ export default function MarketplacePage() {
           ))}
         </div>
       </div>
+
+      {/* sector filter */}
+      {sectorOptions.length > 0 && (
+        <div
+          style={{
+            display: "flex",
+            gap: 8,
+            marginBottom: 20,
+            flexWrap: "wrap",
+            alignItems: "center",
+          }}
+        >
+          <span
+            style={{
+              fontSize: "0.78rem",
+              textTransform: "uppercase",
+              letterSpacing: "0.06em",
+              color: "var(--fg-mute)",
+            }}
+          >
+            Industry
+          </span>
+          <button
+            className="btn btn-sm"
+            onClick={() => setSector("all")}
+            style={{
+              background: sector === "all" ? "var(--accent, #6366f1)" : "transparent",
+              color: sector === "all" ? "#fff" : "var(--fg-soft)",
+              borderColor: sector === "all" ? "var(--accent, #6366f1)" : "var(--border, #334155)",
+            }}
+          >
+            All industries
+          </button>
+          {sectorOptions.map(({ tag, count, label }) => (
+            <button
+              key={tag}
+              className="btn btn-sm"
+              onClick={() => setSector(sector === tag ? "all" : tag)}
+              style={{
+                background: sector === tag ? "var(--accent, #6366f1)" : "transparent",
+                color: sector === tag ? "#fff" : "var(--fg-soft)",
+                borderColor: sector === tag ? "var(--accent, #6366f1)" : "var(--border, #334155)",
+              }}
+            >
+              <span className="marketplace-filter-icon" aria-hidden="true">
+                {SECTOR_TAG_ICONS[tag] || "🏭"}
+              </span>
+              {label}
+              <span className="marketplace-filter-count">{count}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {loading ? (
         <p style={{ color: "var(--fg-soft)" }}>Loading marketplace…</p>
