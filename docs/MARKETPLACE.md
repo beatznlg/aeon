@@ -22,9 +22,10 @@ A **plugin** is a capability package described by a manifest:
 | `config_schema`| Declarative config validation schema                                |
 | `verified`     | Whether AEON Labs verified the plugin                               |
 
-The shipped catalog (`aeon_marketplace.BUILTIN_PLUGIN_CATALOG`) contains 68
+The shipped catalog (`aeon_marketplace.BUILTIN_PLUGIN_CATALOG`) contains 71
 plugins across security, analytics, sector (health, finance, utilities,
-transport, retail), data, productivity, communication, devops, ai, and
+transport, retail, telecom, agriculture, education, public safety, real estate,
+professional services), data, productivity, communication, devops, ai, and
 integration categories. The platform-operations set also covers trace
 observability, MCP tool bridging, compliance evidence, connector health,
 developer quality, and data quality checks.

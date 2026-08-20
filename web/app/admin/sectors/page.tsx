@@ -446,7 +446,7 @@ export default function AdminSectorsPage() {
           </Link>
           <h1>🏢 Sector Data Manager</h1>
           <p className="dashboard-subtitle">
-            Unified view of all 10 industry verticals — view threat intel, diagnostics, market data,
+            Unified view of all 16 industry verticals — view threat intel, diagnostics, market data,
             and more from one dashboard
           </p>
         </div>
@@ -720,7 +720,7 @@ export default function AdminSectorsPage() {
 
 // ─── Tool Data Preview ────────────────────────────────────────────────────────
 
-// Common ID field candidates across all 40 tools
+// Common ID field candidates across all sector tools
 const ID_FIELD_CANDIDATES = [
   "id",
   "cve",

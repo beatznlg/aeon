@@ -13,9 +13,12 @@ export async function POST(req: NextRequest, { params }: { params: { workspaceId
 
   try {
     const body = await req.json();
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    const authorization = req.headers.get("authorization");
+    if (authorization) headers.Authorization = authorization;
     const res = await fetch(`${url}/billing/${encodeURIComponent(params.workspaceId)}/credits`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify(body),
     });
     const data = await res.json();

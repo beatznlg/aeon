@@ -3,7 +3,7 @@ import { listSectorTools, generateSectorData } from "@/lib/sector-data-gen";
 import { getSectorDefinition } from "@/lib/sector-registry";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60; // Can take time to search all 40+ tools
+export const maxDuration = 60; // Can take time to search all registered sector tools
 
 // ─── Search logic ────────────────────────────────────────────────────────────
 

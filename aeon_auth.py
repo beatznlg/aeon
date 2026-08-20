@@ -268,6 +268,50 @@ def get_current_user_context() -> dict[str, Any] | None:
 
 # === Flask decorators =========================================================
 
+def _authorize_sensitive_workspace_request(ctx: dict[str, Any]):
+    """Enforce tenant scope for legacy auth-protected billing/usage routes.
+
+    These endpoints historically used ``@require_auth`` because their workspace
+    identifier can arrive in JSON or a query string rather than a route path.
+    Keep the rule centralized so a caller cannot turn a valid token into access
+    to another tenant's billing or usage data.
+    """
+    path = request.path
+    if path not in {"/usage", "/usage/summary", "/stripe/checkout", "/stripe/portal"} and not path.startswith("/stripe/subscription/"):
+        return None
+
+    workspace_id = None
+    if path == "/usage/summary":
+        workspace_id = request.args.get("workspace_id")
+    elif path.startswith("/stripe/subscription/"):
+        workspace_id = (request.view_args or {}).get("workspace_id")
+    else:
+        payload = request.get_json(silent=True) or {}
+        if isinstance(payload, dict):
+            workspace_id = payload.get("workspace_id")
+
+    workspace_id = str(workspace_id or ctx.get("workspace_id") or "").strip()
+    if not workspace_id:
+        return jsonify({"ok": False, "error": "workspace_id required"}), 400
+    is_super_admin = has_role(ctx.get("role"), "SUPER_ADMIN")
+    membership = None
+    try:
+        from aeon_db import get_db
+        membership = get_db().get_membership(workspace_id, ctx.get("user_id"))
+    except Exception:
+        membership = None
+    service_auth = ctx.get("auth_method") == "api_token"
+    if not is_super_admin and not membership and not service_auth:
+        return jsonify({"ok": False, "error": "workspace access denied"}), 403
+
+    if path in {"/stripe/checkout", "/stripe/portal"}:
+        if not is_super_admin and not service_auth and not has_role(getattr(membership, "role", None), "ADMIN"):
+            return jsonify({"ok": False, "error": "workspace admin required"}), 403
+
+    g.workspace_id = workspace_id
+    return None
+
+
 def require_auth(func: Callable) -> Callable:
     """Decorator that requires a valid authenticated user."""
     @wraps(func)
@@ -276,6 +320,9 @@ def require_auth(func: Callable) -> Callable:
         if not ctx:
             return jsonify({"ok": False, "error": "unauthorized"}), 401
         g.user = ctx
+        scope_error = _authorize_sensitive_workspace_request(ctx)
+        if scope_error is not None:
+            return scope_error
         return func(*args, **kwargs)
     return wrapper
 

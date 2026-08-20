@@ -74,6 +74,29 @@ class StripeClient:
             raise RuntimeError("Stripe is not configured")
         return self._stripe
 
+    def _workspace_access(self, workspace_id: str, required_role: str) -> bool:
+        """Enforce workspace membership when called from an authenticated request.
+
+        Stripe helpers are also usable as a standalone library, so calls outside
+        Flask retain their existing behavior. HTTP calls must never be able to
+        create or manage billing for another workspace.
+        """
+        try:
+            from flask import has_request_context
+            if not has_request_context():
+                return True
+            from aeon_auth import get_current_user_context, has_role
+            context = get_current_user_context()
+            if not context:
+                return False
+            if has_role(context.get("role"), "SUPER_ADMIN"):
+                return True
+            from aeon_db import get_db
+            membership = get_db().get_membership(workspace_id, context.get("user_id"))
+            return bool(membership and has_role(membership.role, required_role))
+        except Exception:
+            return False
+
     # ── Customer helpers ────────────────────────────────────────────────
 
     def _load_json(self, path: Path) -> dict[str, Any]:
@@ -176,11 +199,19 @@ class StripeClient:
     ) -> dict[str, Any]:
         """Create a Stripe Checkout Session for a subscription plan.
 
-        Returns a dict with 'url' (redirect URL) or an error.
-        Falls back to simulated plan change if Stripe is not configured.
+        Returns a dict with 'url' (redirect URL) or an error. Development/test
+        environments may use the simulated fallback; production never does.
         """
+        if not self._workspace_access(workspace_id, "ADMIN"):
+            return {"ok": False, "error": "workspace admin required"}
         if not self.available:
-            # Fallback: simulate plan change directly
+            if os.environ.get("AEON_ENV", "development").lower() in {"production", "prod", "staging"}:
+                return {
+                    "ok": False,
+                    "error": "Stripe billing is not configured for this environment",
+                    "configured": False,
+                }
+            # Development/test fallback: simulate plan changes without charging.
             logger.info("Stripe unavailable — simulating plan upgrade for %s -> %s", workspace_id, plan_id)
             self._sync_to_billing(workspace_id, plan_id)
             return {"ok": True, "url": None, "simulated": True, "plan_id": plan_id}
@@ -221,10 +252,18 @@ class StripeClient:
     ) -> dict[str, Any]:
         """Create a Stripe Billing Portal session for managing subscriptions.
 
-        Returns a dict with 'url' (redirect URL) or an error.
-        Falls back gracefully if Stripe is not configured.
+        Returns a dict with 'url' (redirect URL) or an error. Development/test
+        environments may use the simulated fallback; production never does.
         """
+        if not self._workspace_access(workspace_id, "ADMIN"):
+            return {"ok": False, "error": "workspace admin required"}
         if not self.available:
+            if os.environ.get("AEON_ENV", "development").lower() in {"production", "prod", "staging"}:
+                return {
+                    "ok": False,
+                    "error": "Stripe billing is not configured for this environment",
+                    "configured": False,
+                }
             return {"ok": True, "url": None, "simulated": True}
 
         try:
@@ -459,6 +498,9 @@ class StripeClient:
         Returns a dict with plan_id, status, and subscription_id if found.
         Falls back to local billing system.
         """
+        if not self._workspace_access(workspace_id, "VIEWER"):
+            return {"ok": False, "error": "workspace access denied"}
+
         subs = self._load_json(self._subscriptions_file)
         entry = subs.get(workspace_id)
 

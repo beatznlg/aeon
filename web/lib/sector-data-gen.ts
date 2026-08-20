@@ -1,7 +1,7 @@
 /**
  * Sector Data Generator
  * ======================
- * Generates time-varying mock data for all 10 sector tool endpoints.
+ * Generates time-varying mock data for all 16 sectors and their registered tools.
  * Data changes slightly on each call (poll) so dashboards appear live.
  *
  * Each generator function accepts a `seed` (derived from the sector/tool name)

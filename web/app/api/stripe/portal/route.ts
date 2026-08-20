@@ -15,6 +15,9 @@ export async function POST(req: NextRequest) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        ...(req.headers.get("authorization")
+          ? { Authorization: req.headers.get("authorization") as string }
+          : {}),
       },
       body: JSON.stringify(body),
     });

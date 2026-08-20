@@ -34,7 +34,11 @@ export async function GET(req: Request) {
   }
 
   try {
+    const headers: Record<string, string> = {};
+    const authorization = req.headers.get("authorization");
+    if (authorization) headers.Authorization = authorization;
     const res = await fetch(`${url}/billing/${encodeURIComponent(workspaceId)}?days=${days}`, {
+      headers,
       cache: "no-store",
     });
     const data = await res.json();

@@ -34,6 +34,9 @@ export async function GET(req: Request) {
     const res = await fetch(
       `${url}/usage/summary?workspace_id=${encodeURIComponent(workspaceId)}&days=${days}`,
       {
+        headers: req.headers.get("authorization")
+          ? { Authorization: req.headers.get("authorization") as string }
+          : undefined,
         cache: "no-store",
       }
     );

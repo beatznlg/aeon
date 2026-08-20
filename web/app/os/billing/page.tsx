@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useSession } from "next-auth/react";
+import { getAuthHeaders } from "@/lib/flask-auth";
 
 type BillingPlan = {
   id: string;
@@ -110,10 +111,19 @@ export default function BillingPage() {
     setLoading(true);
     try {
       const [billingRes, usageRes, stripeRes, stripeSubRes] = await Promise.all([
-        fetch(`/api/os/observability/billing?workspace_id=${workspaceId}`, { cache: "no-store" }),
-        fetch(`/api/os/observability/usage?workspace_id=${workspaceId}`, { cache: "no-store" }),
-        fetch(`/api/stripe/config`, { cache: "no-store" }),
-        fetch(`/api/stripe/subscription/${workspaceId}`, { cache: "no-store" }),
+        fetch(`/api/os/observability/billing?workspace_id=${workspaceId}`, {
+          cache: "no-store",
+          headers: getAuthHeaders(),
+        }),
+        fetch(`/api/os/observability/usage?workspace_id=${workspaceId}`, {
+          cache: "no-store",
+          headers: getAuthHeaders(),
+        }),
+        fetch(`/api/stripe/config`, { cache: "no-store", headers: getAuthHeaders() }),
+        fetch(`/api/stripe/subscription/${workspaceId}`, {
+          cache: "no-store",
+          headers: getAuthHeaders(),
+        }),
       ]);
       const billingData = await billingRes.json();
       const usageData = await usageRes.json();
@@ -141,7 +151,7 @@ export default function BillingPage() {
     try {
       const res = await fetch(`/api/stripe/checkout`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders(),
         body: JSON.stringify({
           workspace_id: workspaceId,
           plan_id: planId,
@@ -183,7 +193,7 @@ export default function BillingPage() {
     try {
       const res = await fetch(`/api/stripe/portal`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders(),
         body: JSON.stringify({
           workspace_id: workspaceId,
           return_url: `${window.location.origin}/os/billing`,
@@ -213,7 +223,7 @@ export default function BillingPage() {
     try {
       const res = await fetch(`/api/os/observability/billing/${workspaceId}/credits`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ amount }),
       });
       const data = await res.json();

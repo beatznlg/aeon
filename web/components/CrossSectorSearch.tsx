@@ -82,7 +82,7 @@ interface CrossSectorSearchProps {
 
 export default function CrossSectorSearch({
   className = "",
-  placeholder = "Search across all 40+ sector tools...",
+  placeholder = "Search across all sector tools...",
   autoFocus = false,
 }: CrossSectorSearchProps) {
   const [query, setQuery] = useState("");
@@ -299,7 +299,7 @@ export default function CrossSectorSearch({
             {!loading && !searched && !query && (
               <div className="sector-search-empty">
                 <p className="sector-search-empty-hint">
-                  Type to search across all 40+ sector tools
+                  Type to search across all sector tools
                 </p>
               </div>
             )}

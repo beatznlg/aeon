@@ -1,8 +1,8 @@
 """
 AEON OS — Sector Data Seeder
 ==============================
-Seeds a workspace with realistic demo data for all 10 industry sectors
-and their tools (40 tool endpoints total).
+Seeds a workspace with realistic demo data for all 16 industry sectors
+and their tools (58 tool endpoints total).
 
 Usage:
     from aeon_seed_sectors import seed_all_sectors
@@ -22,7 +22,11 @@ logger = logging.getLogger("aeon_seed_sectors")
 
 
 def _sector_data() -> dict[str, dict[str, Any]]:
-    """Return the canonical seed data for all 10 sectors × 4-5 tools each."""
+    """Return the canonical static seed data for all 16 sectors.
+
+    Used when the live generator is unavailable (``live=False``); the shapes
+    mirror the TOOL_META mocks in aeon_sectors.py.
+    """
     return {
         # ═══ Cybersecurity ═══
         "cybersecurity": {
@@ -273,14 +277,138 @@ def _sector_data() -> dict[str, dict[str, Any]]:
                 {"chain_id": "SC-003", "health_score": 85, "lead_time_days": 7, "risk_level": "low", "bottlenecks": []},
             ],
         },
+        # ═══ Telecom ═══
+        "telecom": {
+            "network": [
+                {"id": "tel-1", "element": "core_router_01", "type": "core", "health_score": 99.2, "uptime_pct": 99.2, "sla_status": "met", "region": "US-East"},
+                {"id": "tel-2", "element": "edge_switch_14", "type": "edge", "health_score": 97.5, "uptime_pct": 97.5, "sla_status": "met", "region": "US-East"},
+                {"id": "tel-3", "element": "radio_tower_07", "type": "radio", "health_score": 95.4, "uptime_pct": 95.4, "sla_status": "at_risk", "region": "US-West"},
+                {"id": "tel-4", "element": "backhaul_05", "type": "transport", "health_score": 94.7, "uptime_pct": 94.7, "sla_status": "breached", "region": "APAC"},
+            ],
+            "capacity": [
+                {"id": "cap-1", "node": "backbone_01", "current_utilization_pct": 82, "forecast_utilization_pct": 95, "recommended_action": "add_capacity"},
+                {"id": "cap-2", "node": "backbone_02", "current_utilization_pct": 58, "forecast_utilization_pct": 66, "recommended_action": "monitor"},
+                {"id": "cap-3", "node": "metro_agg_11", "current_utilization_pct": 91, "forecast_utilization_pct": 104, "recommended_action": "rebalance_traffic"},
+                {"id": "cap-4", "node": "edge_pop_03", "current_utilization_pct": 44, "forecast_utilization_pct": 52, "recommended_action": "no_action"},
+            ],
+            "faults": [
+                {"id": "fault-1", "element": "core_router_01", "severity": "high", "status": "fixing", "opened_at": "2026-08-19T08:30:00Z", "summary": "Packet loss above 2% threshold"},
+                {"id": "fault-2", "element": "radio_tower_07", "severity": "medium", "status": "triage", "opened_at": "2026-08-19T09:15:00Z", "summary": "Handover failures on small cell"},
+                {"id": "fault-3", "element": "backhaul_05", "severity": "critical", "status": "open", "opened_at": "2026-08-19T10:00:00Z", "summary": "Optical signal attenuation on fiber"},
+            ],
+        },
+        # ═══ Agriculture ═══
+        "agriculture": {
+            "yield": [
+                {"id": "yld-1", "field": "field_alpha", "crop": "wheat", "forecast_tons": 320.5, "previous_tons": 295.0, "confidence": 0.91},
+                {"id": "yld-2", "field": "field_beta", "crop": "corn", "forecast_tons": 410.2, "previous_tons": 380.4, "confidence": 0.87},
+                {"id": "yld-3", "field": "field_gamma", "crop": "soybean", "forecast_tons": 215.8, "previous_tons": 228.1, "confidence": 0.84},
+                {"id": "yld-4", "field": "field_delta", "crop": "barley", "forecast_tons": 190.3, "previous_tons": 175.6, "confidence": 0.89},
+            ],
+            "irrigation": [
+                {"id": "irr-1", "zone": "zone_north", "crop": "wheat", "schedule": "sensor_triggered", "water_needed_mm": 32, "status": "optimal"},
+                {"id": "irr-2", "zone": "zone_south", "crop": "corn", "schedule": "every_2_days", "water_needed_mm": 48, "status": "low"},
+                {"id": "irr-3", "zone": "zone_east", "crop": "soybean", "schedule": "daily", "water_needed_mm": 22, "status": "optimal"},
+                {"id": "irr-4", "zone": "zone_west", "crop": "barley", "schedule": "weekly", "water_needed_mm": 18, "status": "optimal"},
+            ],
+            "pests": [
+                {"id": "pst-1", "field": "field_alpha", "crop": "wheat", "pest": "aphid", "risk_level": "moderate", "treatment": "targeted_spray"},
+                {"id": "pst-2", "field": "field_beta", "crop": "corn", "pest": "corn_borer", "risk_level": "low", "treatment": "biological_control"},
+                {"id": "pst-3", "field": "field_gamma", "crop": "soybean", "pest": "armyworm", "risk_level": "high", "treatment": "quarantine_zone"},
+                {"id": "pst-4", "field": "field_delta", "crop": "barley", "pest": "rust_fungus", "risk_level": "low", "treatment": "none_required"},
+            ],
+        },
+        # ═══ Education ═══
+        "education": {
+            "at-risk": [
+                {"id": "stu-1", "student_id": "S-2026-1001", "name": "Ava Thompson", "gpa": 2.1, "attendance_pct": 74, "risk_score": 0.82, "risk_level": "high"},
+                {"id": "stu-2", "student_id": "S-2026-1002", "name": "Liam Rodriguez", "gpa": 3.4, "attendance_pct": 96, "risk_score": 0.22, "risk_level": "low"},
+                {"id": "stu-3", "student_id": "S-2026-1003", "name": "Maya Patel", "gpa": 2.8, "attendance_pct": 85, "risk_score": 0.55, "risk_level": "watch"},
+                {"id": "stu-4", "student_id": "S-2026-1004", "name": "Noah Kim", "gpa": 1.9, "attendance_pct": 61, "risk_score": 0.93, "risk_level": "high"},
+            ],
+            "interventions": [
+                {"id": "plan-1", "student_id": "S-2026-1001", "plan": "Attendance Recovery", "actions": ["counseling", "parent_meeting"], "status": "active", "owner": "Advisor Ward"},
+                {"id": "plan-2", "student_id": "S-2026-1004", "plan": "Academic Support", "actions": ["tutoring", "mentorship"], "status": "active", "owner": "Dean Patel"},
+                {"id": "plan-3", "student_id": "S-2026-1003", "plan": "Social-Emotional Support", "actions": ["counseling"], "status": "draft", "owner": "Counselor Reed"},
+            ],
+            "outcomes": [
+                {"id": "out-1", "program": "STEM Accelerator", "completion_rate": 0.88, "avg_score": 84.2, "trend": "improving"},
+                {"id": "out-2", "program": "Literacy Boost", "completion_rate": 0.79, "avg_score": 76.5, "trend": "stable"},
+                {"id": "out-3", "program": "Math Recovery", "completion_rate": 0.64, "avg_score": 68.1, "trend": "improving"},
+                {"id": "out-4", "program": "College Readiness", "completion_rate": 0.92, "avg_score": 89.7, "trend": "improving"},
+            ],
+        },
+        # ═══ Public Safety ═══
+        "public_safety": {
+            "incidents": [
+                {"id": "inc-1", "incident_id": "INC-2026001", "type": "traffic_accident", "priority": "high", "status": "on_scene", "location": "Downtown", "reported_at": "2026-08-19T08:05:00Z"},
+                {"id": "inc-2", "incident_id": "INC-2026002", "type": "medical_emergency", "priority": "critical", "status": "dispatched", "location": "Riverside", "reported_at": "2026-08-19T09:40:00Z"},
+                {"id": "inc-3", "incident_id": "INC-2026003", "type": "theft", "priority": "medium", "status": "resolving", "location": "Northgate", "reported_at": "2026-08-19T10:12:00Z"},
+                {"id": "inc-4", "incident_id": "INC-2026004", "type": "fire_report", "priority": "high", "status": "on_scene", "location": "Southside", "reported_at": "2026-08-19T10:55:00Z"},
+            ],
+            "dispatch": [
+                {"id": "disp-1", "unit_id": "unit_101", "unit_type": "patrol_car", "status": "en_route", "current_incident": "INC-2026001", "eta_minutes": 4},
+                {"id": "disp-2", "unit_id": "unit_207", "unit_type": "ambulance", "status": "on_scene", "current_incident": "INC-2026002", "eta_minutes": 0},
+                {"id": "disp-3", "unit_id": "unit_309", "unit_type": "fire_engine", "status": "available", "current_incident": "none", "eta_minutes": 12},
+                {"id": "disp-4", "unit_id": "unit_114", "unit_type": "motorcycle_unit", "status": "returning", "current_incident": "none", "eta_minutes": 8},
+            ],
+            "briefs": [
+                {"id": "brf-1", "title": "Overnight Shift Summary", "period": "24h", "highlights": "Property crimes down 8%; one critical response in Riverside", "recommendations": ["Extend night patrol coverage", "Deploy traffic units pre-rush"]},
+                {"id": "brf-2", "title": "Weekend Operations Review", "period": "72h", "highlights": "Traffic incidents up 12% near airport; added patrol coverage", "recommendations": ["Pre-position medics at venues", "Monitor hot spots"]},
+                {"id": "brf-3", "title": "Special Event Plan", "period": "weekly", "highlights": "Concert attendance 40k — staged resource plan active", "recommendations": ["Review camera coverage gaps", "Add drone support"]},
+            ],
+        },
+        # ═══ Real Estate ═══
+        "real_estate": {
+            "valuations": [
+                {"id": "val-1", "property": "24 Maple Avenue", "type": "single_family", "valuation": 645000, "estimate_low": 612000, "estimate_high": 689000, "confidence": 0.94, "location": "Midtown"},
+                {"id": "val-2", "property": "88 Harbor Drive", "type": "condo", "valuation": 412000, "estimate_low": 388000, "estimate_high": 443000, "confidence": 0.91, "location": "Westside"},
+                {"id": "val-3", "property": "1500 Oak Street", "type": "multi_family", "valuation": 1180000, "estimate_low": 1105000, "estimate_high": 1275000, "confidence": 0.88, "location": "East Village"},
+                {"id": "val-4", "property": "330 Commerce Blvd", "type": "commercial", "valuation": 1420000, "estimate_low": 1330000, "estimate_high": 1520000, "confidence": 0.86, "location": "Lake District"},
+            ],
+            "market": [
+                {"id": "mkt-1", "region": "Midtown", "median_price": 645000, "price_change_pct": 4.2, "inventory": 84, "days_on_market": 24},
+                {"id": "mkt-2", "region": "Westside", "median_price": 512000, "price_change_pct": 2.8, "inventory": 61, "days_on_market": 31},
+                {"id": "mkt-3", "region": "East Village", "median_price": 738000, "price_change_pct": 6.5, "inventory": 47, "days_on_market": 18},
+                {"id": "mkt-4", "region": "Lake District", "median_price": 895000, "price_change_pct": -1.6, "inventory": 32, "days_on_market": 48},
+            ],
+            "comparables": [
+                {"id": "cmp-1", "property": "24 Maple Avenue", "comparable_address": "26 Maple Avenue", "price": 628000, "sqft": 2450, "delta_pct": -2.6},
+                {"id": "cmp-2", "property": "24 Maple Avenue", "comparable_address": "30 Maple Avenue", "price": 671000, "sqft": 2580, "delta_pct": 4.0},
+                {"id": "cmp-3", "property": "88 Harbor Drive", "comparable_address": "90 Harbor Drive", "price": 398000, "sqft": 1380, "delta_pct": -3.4},
+                {"id": "cmp-4", "property": "1500 Oak Street", "comparable_address": "1496 Oak Street", "price": 1125000, "sqft": 4100, "delta_pct": -4.6},
+            ],
+        },
+        # ═══ Professional Services ═══
+        "professional": {
+            "legal": [
+                {"doc": "Service Agreement", "type": "contract", "risk_score": "medium", "obligations": ["Confidentiality", "Indemnification"]},
+                {"doc": "NDA", "type": "non-disclosure", "risk_score": "low", "obligations": ["Confidentiality"]},
+                {"doc": "Employment Contract", "type": "employment", "risk_score": "medium", "obligations": ["Non-compete", "IP Assignment"]},
+                {"doc": "Lease Agreement", "type": "lease", "risk_score": "high", "obligations": ["Termination Notice", "Indemnification"]},
+            ],
+            "accounting": [
+                {"invoice_id": "INV-1001", "vendor": "Acme Corp", "amount": 4200, "anomalies_detected": True, "auto_approved": False},
+                {"invoice_id": "INV-1002", "vendor": "TechSupply Inc", "amount": 1850, "anomalies_detected": False, "auto_approved": True},
+                {"invoice_id": "INV-1003", "vendor": "DataServices LLC", "amount": 6900, "anomalies_detected": False, "auto_approved": True},
+                {"invoice_id": "INV-1004", "vendor": "CloudHost Ltd", "amount": 3100, "anomalies_detected": True, "auto_approved": False},
+            ],
+            "data-management": [
+                {"dataset": "Customer DB", "pii_records_found": 1850, "compliance": "GDPR-ready"},
+                {"dataset": "Employee Records", "pii_records_found": 640, "compliance": "HIPAA-compliant"},
+                {"dataset": "Transaction Logs", "pii_records_found": 2300, "compliance": "needs_review"},
+                {"dataset": "Marketing Data", "pii_records_found": 980, "compliance": "compliant"},
+            ],
+        },
     }
 
 
 def seed_all_sectors(workspace_id: str, *, live: bool = True) -> dict[str, int]:
-    """Seed all 10 sectors with data for a workspace.
+    """Seed all registered sectors with data for a workspace.
 
     By default, ``live=True`` generates time-varying data and persists it to
-    Postgres. Pass ``live=False`` to fall back to the original static demo data.
+    Postgres. Pass ``live=False`` to fall back to the canonical static demo
+    data (covers every sector in the tenant registry).
 
     Returns a dict mapping sector_id -> number of tools seeded.
     Is idempotent — calling it again replaces existing data.

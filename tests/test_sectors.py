@@ -88,6 +88,25 @@ def test_frontend_sector_registry_matches_backend():
     )
 
 
+def test_static_sector_seed_covers_every_registry_tool():
+    """The canonical static seed (aeon_seed_sectors._sector_data) must cover
+    every sector and tool in the tenant registry, so the ``live=False``
+    fallback can never produce a gap when the live generator is unavailable.
+    """
+    from aeon_seed_sectors import _sector_data
+    from aeon_sectors import SECTOR_ALIASES, list_sector_catalog
+
+    data = _sector_data()
+    for sector in list_sector_catalog():
+        seed_key = next(
+            (key for key in data if SECTOR_ALIASES.get(key, key) == sector["id"]),
+            None,
+        )
+        assert seed_key is not None, f"no static seed data for sector {sector['id']}"
+        missing = [tool["id"] for tool in sector["tools"] if tool["id"] not in data[seed_key]]
+        assert not missing, f"static seed missing tools for {sector['id']}: {missing}"
+
+
 def test_unknown_sector_tool_is_rejected_consistently(client):
     token, _workspace_id = _register(client, "unknown")
     headers = _headers(token)

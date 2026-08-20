@@ -3,7 +3,7 @@ import { pythonUrl } from "@/lib/kernel";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(_req: NextRequest, { params }: { params: { workspaceId: string } }) {
+export async function GET(req: NextRequest, { params }: { params: { workspaceId: string } }) {
   const url = pythonUrl();
   if (!url) {
     return NextResponse.json({ ok: false, error: "AEON_PYTHON_URL not set" }, { status: 503 });
@@ -13,6 +13,9 @@ export async function GET(_req: NextRequest, { params }: { params: { workspaceId
     const res = await fetch(
       `${url}/stripe/subscription/${encodeURIComponent(params.workspaceId)}`,
       {
+        headers: req.headers.get("authorization")
+          ? { Authorization: req.headers.get("authorization") as string }
+          : undefined,
         cache: "no-store",
       }
     );

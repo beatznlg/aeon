@@ -13,7 +13,7 @@ This document describes the current engineering baseline. It does not claim that
 - Docker backend/frontend images, Postgres, Redis, Celery worker/beat services, health probes, Prometheus metrics, and monitoring configuration.
 - Python, TypeScript, SDK, OpenAPI, automation, governance, SSO, SCIM, residency, incident, and disaster-recovery test coverage.
 - A hash-chained, non-sensitive assurance evidence ledger with optional external tail anchoring and a CLI release check; this records observations but does not create legal certification.
-- A registry-backed sector contract at `/sectors/catalog` covering 40 tools across cybersecurity, health, finance, retail, transport, manufacturing, tourism, utilities, cultural heritage, and SME operations. Sector reads/writes are authenticated, workspace-scoped, normalized through the cultural-heritage alias, and reject unknown tools or invalid dataset shapes.
+- A registry-backed sector contract at `/sectors/catalog` covering 58 tools across 16 sectors: cybersecurity, health, finance, retail, transport, manufacturing, tourism, utilities, cultural heritage, SME, telecom, agriculture, education, public safety, real estate, and professional services. Sector reads/writes are authenticated, workspace-scoped, normalized through the cultural-heritage alias, and reject unknown tools or invalid dataset shapes.
 
 ## Sector data boundaries
 
@@ -33,6 +33,12 @@ The supported public identifiers are:
 - `utilities`: `resources`, `services`, `waste`, `grid`
 - `heritage` (also `cultural_heritage`): `visitors`, `sites`, `exhibitions`, `tours`
 - `sme`: `workflows`, `documents`, `support`, `supply-chain`
+- `telecom`: `network`, `capacity`, `faults`
+- `agriculture`: `yield`, `irrigation`, `pests`
+- `education`: `at-risk`, `interventions`, `outcomes`
+- `public_safety`: `incidents`, `dispatch`, `briefs`
+- `real_estate`: `valuations`, `market`, `comparables`
+- `professional`: `legal`, `accounting`, `data-management`
 
 The catalog endpoint is the source of truth for clients and SDK generators; the UI may expose additional presentation-only modules, but those are not backend capabilities until they appear in the catalog.
 
@@ -56,7 +62,7 @@ The backend honors the platform-provided `PORT` when `AEON_PYTHON_PORT` is not s
 
 The repository's latest local validation recorded:
 
-- `pytest -q`: 223 passed
+- `pytest -q`: 446 passed
 - Python compilation: passed
 - Frontend `npx tsc --noEmit`: passed
 - Frontend `npm run lint`: passed
