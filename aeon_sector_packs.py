@@ -74,6 +74,23 @@ def _regulated_policy(*, review: bool = False, risk: str = "high") -> InferenceP
     )
 
 
+def _grounded_policy(*, review: bool = False, risk: str = "medium") -> InferencePolicy:
+    """Grounded decision-support policy for medium-risk sectors.
+
+    Outputs must be grounded in retrieved evidence and cited, but do not
+    require mandatory human review for advisory outputs.
+    """
+    return InferencePolicy(
+        require_grounding=True,
+        min_retrieval_score=0.72,
+        min_groundedness_score=0.85,
+        min_citation_coverage=0.90,
+        require_citations=True,
+        require_human_review=review,
+        risk_level=risk,
+    )
+
+
 SECTOR_PACKS: tuple[SectorPack, ...] = (
     SectorPack(
         id="general-business",
@@ -160,6 +177,71 @@ SECTOR_PACKS: tuple[SectorPack, ...] = (
         blocked_task_types=("autonomous_safety_override", "unapproved_machine_control"),
         output_schema=_GENERAL_SCHEMA,
         approved_model_tags=("private", "edge", "manufacturing", "grounded"),
+    ),
+    SectorPack(
+        id="telecom-operator",
+        version="1.0.0",
+        sector="telecom",
+        jurisdictions=("global",),
+        risk_level="high",
+        inference_policy=_regulated_policy(review=True),
+        allowed_task_types=("sla_analysis", "capacity_planning", "fault_triage", "network_analysis"),
+        blocked_task_types=("autonomous_network_change", "autonomous_traffic_shaping"),
+        output_schema=_GENERAL_SCHEMA,
+        approved_model_tags=("private", "telecom", "grounded", "edge"),
+        notes=("Network-affecting actions require scoped human approval; SLA assessments are decision support.",),
+    ),
+    SectorPack(
+        id="agriculture-producer",
+        version="1.0.0",
+        sector="agriculture",
+        jurisdictions=("global",),
+        risk_level="medium",
+        inference_policy=_grounded_policy(),
+        allowed_task_types=("yield_forecast", "irrigation_planning", "pest_risk_assessment", "field_analysis"),
+        blocked_task_types=("autonomous_chemical_release", "autonomous_water_release"),
+        output_schema=_GENERAL_SCHEMA,
+        approved_model_tags=("private", "agriculture", "grounded"),
+        notes=("Physical actuation (irrigation, chemical application) stays manual; outputs are decision support.",),
+    ),
+    SectorPack(
+        id="education-institution",
+        version="1.0.0",
+        sector="education",
+        jurisdictions=("global",),
+        risk_level="high",
+        inference_policy=_regulated_policy(review=True),
+        allowed_task_types=("at_risk_analysis", "intervention_planning", "outcome_analytics", "curriculum_support"),
+        blocked_task_types=("autonomous_grade_change", "autonomous_disciplinary_action", "autonomous_enrollment_decision"),
+        output_schema=_GENERAL_SCHEMA,
+        approved_model_tags=("private", "education", "grounded"),
+        notes=("Student-impacting decisions require human review; data handling should follow applicable student-privacy law.",),
+    ),
+    SectorPack(
+        id="public-safety-agency",
+        version="1.0.0",
+        sector="public_safety",
+        jurisdictions=("global",),
+        risk_level="critical",
+        inference_policy=_regulated_policy(review=True, risk="critical"),
+        allowed_task_types=("incident_prioritization", "dispatch_suggestion", "ops_briefing", "resource_analysis"),
+        blocked_task_types=("autonomous_dispatch_authorization", "autonomous_enforcement", "autonomous_use_of_force"),
+        output_schema=_GENERAL_SCHEMA,
+        approved_model_tags=("private", "public_safety", "grounded", "provenance"),
+        notes=("Emergency-response outputs are decision support; dispatch and enforcement authority remains with qualified personnel.",),
+    ),
+    SectorPack(
+        id="real-estate-portfolio",
+        version="1.0.0",
+        sector="real_estate",
+        jurisdictions=("global",),
+        risk_level="medium",
+        inference_policy=_grounded_policy(),
+        allowed_task_types=("valuation_analysis", "market_analysis", "comparables_report", "portfolio_review"),
+        blocked_task_types=("autonomous_acquisition", "autonomous_price_commitment"),
+        output_schema=_GENERAL_SCHEMA,
+        approved_model_tags=("private", "real_estate", "grounded"),
+        notes=("Valuations are advisory estimates; final pricing and acquisition decisions stay with humans.",),
     ),
 )
 

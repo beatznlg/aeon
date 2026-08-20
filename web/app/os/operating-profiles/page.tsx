@@ -35,7 +35,34 @@ type CurrentProfile = {
   };
 };
 
-const SECTORS = ["general", "government", "health", "finance", "manufacturing", "utilities", "education", "cybersecurity", "defense", "retail", "transport", "heritage", "professional"];
+type SectorPack = {
+  id: string;
+  version: string;
+  sector: string;
+  jurisdictions: string[];
+  risk_level: string;
+  inference_policy: {
+    require_grounding: boolean;
+    min_retrieval_score: number;
+    min_groundedness_score: number;
+    min_citation_coverage: number;
+    require_citations: boolean;
+    require_human_review: boolean;
+    risk_level: string;
+  };
+  allowed_task_types: string[];
+  blocked_task_types: string[];
+  approved_model_tags: string[];
+  notes: string[];
+};
+
+const SECTORS = ["general", "government", "health", "finance", "manufacturing", "utilities", "education", "cybersecurity", "defense", "retail", "transport", "heritage", "professional", "telecom", "agriculture", "public_safety", "real_estate"];
+const RISK_COLORS: Record<string, string> = {
+  low: "#22c55e",
+  medium: "#eab308",
+  high: "#f97316",
+  critical: "#dc2626",
+};
 const ORG_TYPES = ["startup", "sme", "enterprise", "nonprofit", "university", "healthcare-provider", "financial-institution", "manufacturer", "utility", "municipality", "government-agency", "defense-contractor", "public-safety-agency"];
 const DEPLOYMENTS = ["cloud", "hybrid", "on-premise", "air-gapped", "edge"];
 const CLASSIFICATIONS = ["public", "internal", "confidential", "restricted", "secret"];
@@ -57,6 +84,8 @@ export default function OperatingProfilesPage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [packs, setPacks] = useState<SectorPack[]>([]);
+  const [packsError, setPacksError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -82,6 +111,21 @@ export default function OperatingProfilesPage() {
       setError(String(loadError));
     } finally {
       setLoading(false);
+    }
+
+    // Sector packs catalog (read-only policy view) — degrade gracefully when
+    // the control plane is offline instead of breaking the profiles page.
+    setPacksError(null);
+    try {
+      const packsResponse = await fetch("/api/os/sector-packs", { headers: getAuthHeaders(), cache: "no-store" });
+      const packsBody = await packsResponse.json();
+      if (!packsResponse.ok || !packsBody.ok) {
+        setPacksError(packsBody.backend_down ? "Control plane offline — sector packs unavailable. Reconnect the backend and refresh to review policies." : packsBody.error || "Unable to load sector packs");
+        return;
+      }
+      setPacks(packsBody.packs || []);
+    } catch (packError) {
+      setPacksError(String(packError));
     }
   }, []);
 
@@ -163,6 +207,45 @@ export default function OperatingProfilesPage() {
       </section>
 
       {selected && <section className="module-widget" style={{ marginTop: 22 }}><div className="eyebrow">SELECTED PROFILE DETAILS</div><h2 style={{ margin: "8px 0" }}>{selected.name}</h2><p className="text-muted">{selected.description}</p><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16, marginTop: 16 }}><div><strong>Supported deployments</strong><div className="text-muted" style={{ marginTop: 6 }}>{selected.deployment_modes.map(label).join(" · ")}</div></div><div><strong>Data classifications</strong><div className="text-muted" style={{ marginTop: 6 }}>{selected.data_classifications.map(label).join(" · ")}</div></div><div><strong>Approval areas</strong><div className="text-muted" style={{ marginTop: 6 }}>{selected.approval_required_for.map(label).join(" · ") || "None declared"}</div></div></div>{selected.notes.length > 0 && <div className="notice" style={{ marginTop: 16 }}>{selected.notes.join(" ")}</div>}</section>}
+
+      <section className="module-widget" style={{ marginTop: 28 }}>
+        <div className="eyebrow">SECTOR PACKS</div>
+        <h2 style={{ margin: "8px 0 4px" }}>Inference policies by sector</h2>
+        <p className="text-muted" style={{ margin: 0 }}>Declarative quality and safety boundaries applied when a sector is selected. Packs are runtime defaults — they do not grant permissions or certify compliance.</p>
+        {packsError ? (
+          <div className="notice notice-error" style={{ marginTop: 16 }}>{packsError}</div>
+        ) : packs.length === 0 ? (
+          <div className="text-muted" style={{ marginTop: 16 }}>Loading sector packs…</div>
+        ) : (
+          <div className="module-widgets-grid" style={{ marginTop: 16 }}>
+            {packs.map((pack) => (
+              <div key={pack.id} className="module-widget">
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                  <span className="badge">{label(pack.sector)}</span>
+                  <span className="badge" style={{ color: RISK_COLORS[pack.risk_level] || "var(--aeon-primary)", borderColor: RISK_COLORS[pack.risk_level] || "var(--aeon-primary)" }}>{pack.risk_level.toUpperCase()} RISK</span>
+                </div>
+                <h3 style={{ margin: "14px 0 6px" }}>{pack.id}</h3>
+                <div className="text-muted" style={{ fontSize: 12, marginBottom: 12 }}>v{pack.version} · {pack.jurisdictions.join(", ")}</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 16px", fontSize: 13 }}>
+                  <div><span className="text-muted">Grounding</span><div style={{ marginTop: 2 }}>{pack.inference_policy.require_grounding ? "Required" : "Off"}</div></div>
+                  <div><span className="text-muted">Citations</span><div style={{ marginTop: 2 }}>{pack.inference_policy.require_citations ? "Required" : "Off"}</div></div>
+                  <div><span className="text-muted">Human review</span><div style={{ marginTop: 2 }}>{pack.inference_policy.require_human_review ? "Required" : "Advisory"}</div></div>
+                  <div><span className="text-muted">Retrieval ≥</span><div style={{ marginTop: 2 }}>{pack.inference_policy.min_retrieval_score.toFixed(2)}</div></div>
+                </div>
+                <div style={{ marginTop: 14 }}>
+                  <strong style={{ fontSize: 12 }}>Approved model tags</strong>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>{pack.approved_model_tags.length > 0 ? pack.approved_model_tags.map((tag) => <span className="badge" key={tag}>{tag}</span>) : <span className="text-muted" style={{ fontSize: 12 }}>None</span>}</div>
+                </div>
+                <div style={{ marginTop: 14 }}>
+                  <strong style={{ fontSize: 12 }}>Blocked tasks</strong>
+                  <div className="text-muted" style={{ fontSize: 12, marginTop: 6 }}>{pack.blocked_task_types.map(label).join(" · ") || "None"}</div>
+                </div>
+                {pack.notes.length > 0 && <div className="notice" style={{ marginTop: 14 }}>{pack.notes.join(" ")}</div>}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
     </main>
   );
 }

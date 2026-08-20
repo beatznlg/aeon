@@ -115,6 +115,10 @@ html {
     @apply rounded-aeon border border-aeon-border bg-aeon-bg-1 p-5 shadow-aeon transition-all;
   }
 
+  .sector-policy-card {
+    @apply rounded-aeon border border-aeon-border bg-aeon-bg-1 p-4;
+  }
+
   .aeon-card-hover:hover {
     @apply border-aeon-primary shadow-aeon-lg;
   }

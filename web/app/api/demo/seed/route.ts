@@ -106,6 +106,11 @@ export async function POST(_req: NextRequest) {
         { id: "professional", label: "Professional Hub", icon: "📋", enabled: true },
         { id: "utilities", label: "Utilities Command", icon: "⚡", enabled: true },
         { id: "sme", label: "SME Business Suite", icon: "🏢", enabled: true },
+        { id: "telecom", label: "Telecom Command", icon: "📡", enabled: true },
+        { id: "agriculture", label: "AgriTech Command", icon: "🌾", enabled: true },
+        { id: "education", label: "Education Command", icon: "🎓", enabled: true },
+        { id: "public_safety", label: "Public Safety Command", icon: "🚔", enabled: true },
+        { id: "real_estate", label: "Real Estate Command", icon: "🏠", enabled: true },
       ],
     };
 

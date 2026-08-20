@@ -13,6 +13,7 @@ from aeon_operating_profiles import (
     list_profiles,
     recommend_profiles,
 )
+from aeon_sector_packs import list_sector_packs
 
 
 def _workspace_id() -> str:
@@ -49,6 +50,19 @@ def register_operating_profile_routes(app: Any) -> None:
             deployment_mode=request.args.get("deployment_mode"),
         )
         return jsonify({"ok": True, "profiles": profiles, "count": len(profiles), "version": 1})
+
+    @app.route("/sector-packs", methods=["GET"])
+    @require_auth
+    @require_workspace_role("VIEWER")
+    def sector_pack_catalog():
+        """Return the declarative sector packs (policies, model tags, task gates).
+
+        Read-only catalog so operators can review the inference policy and
+        approved model tags that apply to each sector before selecting an
+        operating profile.
+        """
+        packs = list_sector_packs()
+        return jsonify({"ok": True, "packs": packs, "count": len(packs), "version": 1})
 
     @app.route("/operating-profiles/recommend", methods=["GET"])
     @require_auth

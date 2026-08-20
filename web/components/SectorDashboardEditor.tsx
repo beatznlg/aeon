@@ -67,6 +67,31 @@ const SECTOR_TOOLS: Record<string, { path: string; label: string; icon: string; 
       { path: "support", label: "AI Support Desk", icon: "🎧", color: "#6366f1" },
       { path: "supply-chain", label: "Supply Chain", icon: "🔗", color: "#6366f1" },
     ],
+    telecom: [
+      { path: "network", label: "Network Health", icon: "📡", color: "#0ea5e9" },
+      { path: "capacity", label: "Capacity Planning", icon: "📊", color: "#0ea5e9" },
+      { path: "faults", label: "Fault Triage", icon: "🚨", color: "#0ea5e9" },
+    ],
+    agriculture: [
+      { path: "yield", label: "Yield Forecast", icon: "🌾", color: "#84cc16" },
+      { path: "irrigation", label: "Irrigation Schedule", icon: "💧", color: "#84cc16" },
+      { path: "pests", label: "Pest Risk", icon: "🐛", color: "#84cc16" },
+    ],
+    education: [
+      { path: "at-risk", label: "At-Risk Students", icon: "⚠️", color: "#6366f1" },
+      { path: "interventions", label: "Intervention Plans", icon: "📋", color: "#6366f1" },
+      { path: "outcomes", label: "Program Outcomes", icon: "📈", color: "#6366f1" },
+    ],
+    public_safety: [
+      { path: "incidents", label: "Incident Priority", icon: "🚨", color: "#dc2626" },
+      { path: "dispatch", label: "Resource Dispatch", icon: "🚓", color: "#dc2626" },
+      { path: "briefs", label: "Ops Briefs", icon: "📰", color: "#dc2626" },
+    ],
+    real_estate: [
+      { path: "valuations", label: "Property Valuations", icon: "🏠", color: "#b45309" },
+      { path: "market", label: "Market Trends", icon: "📈", color: "#b45309" },
+      { path: "comparables", label: "Comparables", icon: "🗂️", color: "#b45309" },
+    ],
   };
 
 // ─── ID field detection ──────────────────────────────────────────────────────
@@ -104,6 +129,17 @@ const ID_FIELD_CANDIDATES = [
   "medications",
   "symptoms",
   "indicator",
+  "element",
+  "node",
+  "field",
+  "zone",
+  "student_id",
+  "program",
+  "incident_id",
+  "unit_id",
+  "title",
+  "property",
+  "comparable_address",
 ];
 
 function detectIdField(records: Record<string, unknown>[]): string {
@@ -148,6 +184,21 @@ const DATA_KEY_CANDIDATES = [
   "documents",
   "tickets",
   "chains",
+  "network",
+  "capacity",
+  "faults",
+  "yield",
+  "irrigation",
+  "pests",
+  "students",
+  "plans",
+  "outcomes",
+  "incidents",
+  "dispatch",
+  "briefs",
+  "valuations",
+  "market",
+  "comparables",
 ];
 
 function detectDataKey(data: Record<string, unknown>): string {

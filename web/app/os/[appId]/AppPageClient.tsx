@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import { getAuthHeaders } from "@/lib/flask-auth";
 import type { DashboardData } from "../../../components/AeonOSDashboard";
 import {
   CyberSecurityDashboard,
@@ -34,6 +35,56 @@ import {
   StaggerItem,
   ScaleOnHover,
 } from "@/components/animations";
+
+interface SectorPack {
+  id: string;
+  version: string;
+  sector: string;
+  jurisdictions: string[];
+  risk_level: string;
+  inference_policy: {
+    require_grounding: boolean;
+    min_retrieval_score: number;
+    min_groundedness_score: number;
+    min_citation_coverage: number;
+    require_citations: boolean;
+    require_human_review: boolean;
+    risk_level: string;
+  };
+  allowed_task_types: string[];
+  blocked_task_types: string[];
+  approved_model_tags: string[];
+  notes: string[];
+}
+
+const RISK_COLORS: Record<string, string> = {
+  low: "#22c55e",
+  medium: "#eab308",
+  high: "#f97316",
+  critical: "#dc2626",
+};
+
+const SECTOR_APP_IDS = [
+  "cybersecurity",
+  "health",
+  "finance",
+  "retail",
+  "transport",
+  "manufacturing",
+  "tourism",
+  "utilities",
+  "cultural_heritage",
+  "sme",
+  "telecom",
+  "agriculture",
+  "education",
+  "public_safety",
+  "real_estate",
+];
+
+function label(value: string) {
+  return value.replaceAll("_", " ").replaceAll("-", " ").replace(/\b\w/g, (char) => char.toUpperCase());
+}
 
 /**
  * Inner component that reads assembled sector data from SectorDashboardProvider
@@ -130,7 +181,37 @@ export default function AppPageClient() {
   const { appId } = useParams<{ appId: string }>();
   const [app, setApp] = useState<any>(null);
   const [vitals, setVitals] = useState<any>(null);
+  const [pack, setPack] = useState<SectorPack | null>(null);
+  const [packError, setPackError] = useState<string | null>(null);
   const { data: dashboardData, loading: dashboardLoading } = useDashboard(appId || "");
+
+  // Load the sector pack policy that governs this module's sector (read-only).
+  useEffect(() => {
+    if (!appId) return;
+    let cancelled = false;
+    setPackError(null);
+    (async () => {
+      try {
+        const res = await fetch("/api/os/sector-packs", {
+          headers: getAuthHeaders(),
+          cache: "no-store",
+        });
+        const body = await res.json();
+        if (!res.ok || !body.ok) {
+          if (!cancelled) setPackError(body.backend_down ? "offline" : body.error || "Unable to load sector policy");
+          return;
+        }
+        const packs: SectorPack[] = body.packs || [];
+        const match = packs.find((p) => p.sector === appId) || packs.find((p) => p.sector === "general");
+        if (!cancelled) setPack(match || null);
+      } catch {
+        if (!cancelled) setPackError("offline");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [appId]);
 
   useEffect(() => {
     if (!appId) return;
@@ -182,20 +263,7 @@ export default function AppPageClient() {
       );
     }
 
-    const sectorAppIds = [
-      "cybersecurity",
-      "health",
-      "finance",
-      "retail",
-      "transport",
-      "manufacturing",
-      "tourism",
-      "utilities",
-      "cultural_heritage",
-      "sme",
-    ];
-
-    if (!sectorAppIds.includes(appId || "")) {
+    if (!SECTOR_APP_IDS.includes(appId || "")) {
       // Non-sector app — just use the unified dashboard data
       if (!dashboardData) return null;
       return renderSectorDashboard(appId, dashboardData);
@@ -283,19 +351,7 @@ export default function AppPageClient() {
         {renderDashboard()}
 
         {/* ── Inline Editor for sector apps ────────────── */}
-        {appId &&
-          [
-            "cybersecurity",
-            "health",
-            "finance",
-            "retail",
-            "transport",
-            "manufacturing",
-            "tourism",
-            "utilities",
-            "cultural_heritage",
-            "sme",
-          ].includes(appId) && <SectorDashboardEditor sectorId={appId} />}
+        {appId && SECTOR_APP_IDS.includes(appId) && <SectorDashboardEditor sectorId={appId} />}
 
         {/* ── Live Metrics Widget ──────────────────────── */}
         <FadeIn y={10} delay={0.15}>
@@ -307,6 +363,83 @@ export default function AppPageClient() {
             <ModuleChat appId={appId} appName={app?.name} />
 
             <aside className="os-app-sidebar">
+              {appId && SECTOR_APP_IDS.includes(appId) && packError && (
+                <div className="sector-policy-card" style={{ marginBottom: 18 }}>
+                  <div className="eyebrow">SECTOR POLICY</div>
+                  <p className="text-muted" style={{ fontSize: 13, margin: "6px 0 0" }}>
+                    {packError === "offline"
+                      ? "Control plane offline — policy unavailable. Reconnect the backend and refresh."
+                      : "Policy unavailable: " + packError}
+                  </p>
+                </div>
+              )}
+              {appId && SECTOR_APP_IDS.includes(appId) && pack && !packError && (
+                <div className="sector-policy-card" style={{ marginBottom: 18 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                    <span className="eyebrow" style={{ margin: 0 }}>SECTOR POLICY</span>
+                    <span
+                      className="badge"
+                      style={{
+                        color: RISK_COLORS[pack.risk_level] || "var(--aeon-primary)",
+                        borderColor: RISK_COLORS[pack.risk_level] || "var(--aeon-primary)",
+                      }}
+                    >
+                      {pack.risk_level.toUpperCase()} RISK
+                    </span>
+                  </div>
+                  <h4 style={{ margin: "12px 0 2px" }}>{pack.id}</h4>
+                  <div className="text-muted" style={{ fontSize: 12, marginBottom: 12 }}>
+                    v{pack.version} · {pack.jurisdictions.join(", ")}
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 12px", fontSize: 13 }}>
+                    <div>
+                      <span className="text-muted">Grounding</span>
+                      <div style={{ marginTop: 2 }}>{pack.inference_policy.require_grounding ? "Required" : "Off"}</div>
+                    </div>
+                    <div>
+                      <span className="text-muted">Citations</span>
+                      <div style={{ marginTop: 2 }}>{pack.inference_policy.require_citations ? "Required" : "Off"}</div>
+                    </div>
+                    <div>
+                      <span className="text-muted">Human review</span>
+                      <div style={{ marginTop: 2 }}>{pack.inference_policy.require_human_review ? "Required" : "Advisory"}</div>
+                    </div>
+                    <div>
+                      <span className="text-muted">Retrieval ≥</span>
+                      <div style={{ marginTop: 2 }}>{pack.inference_policy.min_retrieval_score.toFixed(2)}</div>
+                    </div>
+                  </div>
+                  <h4 style={{ margin: "14px 0 0" }}>Approved Model Tags</h4>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+                    {pack.approved_model_tags.length > 0 ? (
+                      pack.approved_model_tags.map((tag) => (
+                        <span className="badge" key={tag}>
+                          {tag}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-muted" style={{ fontSize: 12 }}>
+                        None
+                      </span>
+                    )}
+                  </div>
+                  {pack.blocked_task_types.length > 0 && (
+                    <>
+                      <h4 style={{ margin: "14px 0 0" }}>Blocked Tasks</h4>
+                      <ul className="os-goal-list" style={{ marginTop: 6 }}>
+                        {pack.blocked_task_types.map((task) => (
+                          <li key={task}>{label(task)}</li>
+                        ))}
+                      </ul>
+                    </>
+                  )}
+                  {pack.notes.length > 0 && (
+                    <p className="text-muted" style={{ fontSize: 12, marginTop: 12 }}>
+                      {pack.notes.join(" ")}
+                    </p>
+                  )}
+                </div>
+              )}
               <h4>Allowed Tools</h4>
               <StaggerContainer>
                 <ul className="os-tool-list">

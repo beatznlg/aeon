@@ -296,6 +296,86 @@ export const APPS: AeonApp[] = [
       { title: "Power AI chatbot for customer self-service", priority: 8 },
     ],
   },
+  {
+    id: "telecom",
+    name: "Telecom & Connectivity",
+    category: "Communications",
+    description:
+      "Network health scoring, capacity planning, and automated fault triage for telecom operators and ISPs.",
+    icon: "📡",
+    color: "#0ea5e9",
+    status: "active",
+    allowed_tools: ["network_health", "capacity_planner", "fault_triage", "fetch", "search", "math"],
+    default_goals: [
+      { title: "Monitor network element health and SLA compliance", priority: 10 },
+      { title: "Forecast capacity utilization and plan upgrades", priority: 9 },
+      { title: "Triage faults by severity and drive resolution", priority: 8 },
+    ],
+  },
+  {
+    id: "agriculture",
+    name: "Agriculture & Farming",
+    category: "AgriTech",
+    description:
+      "Yield forecasting, precision irrigation scheduling, and pest-risk scoring for modern farms and agribusiness.",
+    icon: "🌾",
+    color: "#84cc16",
+    status: "active",
+    allowed_tools: ["yield_forecaster", "irrigation_planner", "pest_risk_scorer", "fetch", "search", "math"],
+    default_goals: [
+      { title: "Forecast crop yields and flag underperforming fields", priority: 10 },
+      { title: "Optimize irrigation schedules against soil moisture", priority: 9 },
+      { title: "Score pest risk and recommend treatments", priority: 8 },
+    ],
+  },
+  {
+    id: "education",
+    name: "Education & Learning",
+    category: "EdTech",
+    description:
+      "At-risk student detection, intervention planning, and program outcome analytics for schools and districts.",
+    icon: "🎓",
+    color: "#6366f1",
+    status: "active",
+    allowed_tools: ["at_risk_detector", "intervention_planner", "outcome_analytics", "fetch", "search", "math"],
+    default_goals: [
+      { title: "Detect at-risk students from attendance and GPA signals", priority: 10 },
+      { title: "Build intervention plans and track their status", priority: 9 },
+      { title: "Measure program completion and learning outcomes", priority: 8 },
+    ],
+  },
+  {
+    id: "public_safety",
+    name: "Public Safety & Emergency",
+    category: "Government & Safety",
+    description:
+      "Incident priority scoring, resource dispatch optimization, and operational briefs for emergency services.",
+    icon: "🚔",
+    color: "#dc2626",
+    status: "active",
+    allowed_tools: ["incident_prioritizer", "dispatch_optimizer", "ops_briefing", "fetch", "search", "math"],
+    default_goals: [
+      { title: "Score incident priority to route responders first", priority: 10 },
+      { title: "Optimize unit dispatch and coverage gaps", priority: 9 },
+      { title: "Generate shift and event operational briefs", priority: 8 },
+    ],
+  },
+  {
+    id: "real_estate",
+    name: "Real Estate & Property",
+    category: "PropertyTech",
+    description:
+      "Property valuation scoring, market trend analytics, and comparable reports for brokers and investors.",
+    icon: "🏠",
+    color: "#b45309",
+    status: "active",
+    allowed_tools: ["valuation_scorer", "market_analytics", "comparable_reporter", "fetch", "search", "math"],
+    default_goals: [
+      { title: "Score property valuations with confidence ranges", priority: 10 },
+      { title: "Track regional market trends and price movements", priority: 9 },
+      { title: "Generate comparables reports for listings", priority: 8 },
+    ],
+  },
 ];
 
 export function getApp(id: string): AeonApp | undefined {

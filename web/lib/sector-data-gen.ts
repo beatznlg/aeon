@@ -948,6 +948,289 @@ function genDataMgmt(seed: string) {
 }
 
 // ════════════════════════════════════════════════════════════════
+// Telecom Generators
+// ════════════════════════════════════════════════════════════════
+
+function genNetworkHealth(seed: string) {
+  const elements = [
+    ["core_router_01", "core", "US-East"],
+    ["core_router_02", "core", "US-West"],
+    ["edge_switch_14", "edge", "US-East"],
+    ["edge_switch_22", "edge", "EU-Central"],
+    ["radio_tower_07", "radio", "US-West"],
+    ["fiber_ring_03", "transport", "EU-Central"],
+    ["backhaul_05", "transport", "APAC"],
+    ["small_cell_31", "radio", "APAC"],
+  ];
+  return elements.map(([element, type, region], i) => ({
+    id: "tel-" + (i + 1),
+    element,
+    type,
+    health_score: parseFloat((oscillate(96, 3, seed, "health" + i) + pseudoRandom(seed, i)).toFixed(1)),
+    uptime_pct: parseFloat(oscillate(97.5, 2, seed, "up" + i).toFixed(2)),
+    sla_status: pickRandom(["met", "met", "met", "at_risk", "breached"], seed, i + 8),
+    region,
+  }));
+}
+
+function genCapacity(seed: string) {
+  const nodes = ["backbone_01", "backbone_02", "metro_agg_11", "metro_agg_12", "edge_pop_03", "edge_pop_09"];
+  return nodes.map((node, i) => ({
+    id: "cap-" + (i + 1),
+    node,
+    current_utilization_pct: Math.round(oscillate(65, 25, seed, "cur" + i)),
+    forecast_utilization_pct: Math.round(oscillate(75, 28, seed, "for" + i)),
+    recommended_action: pickRandom(
+      ["no_action", "monitor", "add_capacity", "rebalance_traffic"],
+      seed,
+      i + 6
+    ),
+  }));
+}
+
+function genFaults(seed: string) {
+  const elements = ["core_router_01", "edge_switch_14", "radio_tower_07", "backhaul_05", "small_cell_31"];
+  const summaries = [
+    "Packet loss above 2% threshold",
+    "Latency spike on customer links",
+    "Power supply redundancy degraded",
+    "Optical signal attenuation on fiber",
+    "Handover failures on small cell",
+  ];
+  const count = 3 + Math.floor(pseudoRandom(seed, (Date.now() % 60000) / 20000) * 2);
+  return Array.from({ length: count }, (_, i) => ({
+    id: "fault-" + (i + 1),
+    element: elements[i % elements.length],
+    severity: pickRandom(["low", "medium", "high", "critical"], seed, i + 3),
+    status: pickRandom(["open", "triage", "fixing", "resolved"], seed, i + 5),
+    opened_at: new Date(Date.now() - i * 5400000).toISOString(),
+    summary: summaries[i % summaries.length],
+  }));
+}
+
+// ════════════════════════════════════════════════════════════════
+// Agriculture Generators
+// ════════════════════════════════════════════════════════════════
+
+function genYieldForecast(seed: string) {
+  const fields = [
+    ["field_alpha", "wheat"],
+    ["field_beta", "corn"],
+    ["field_gamma", "soybean"],
+    ["field_delta", "barley"],
+    ["field_epsilon", "corn"],
+  ];
+  return fields.map(([field, crop], i) => ({
+    id: "yld-" + (i + 1),
+    field,
+    crop,
+    forecast_tons: parseFloat(oscillate(300, 80, seed, "yf" + i).toFixed(1)),
+    previous_tons: parseFloat(oscillate(270, 70, seed, "yp" + i).toFixed(1)),
+    confidence: parseFloat((0.82 + pseudoRandom(seed, i + 4) * 0.14).toFixed(2)),
+  }));
+}
+
+function genIrrigation(seed: string) {
+  const zones = [
+    ["zone_north", "wheat"],
+    ["zone_south", "corn"],
+    ["zone_east", "soybean"],
+    ["zone_west", "barley"],
+  ];
+  return zones.map(([zone, crop], i) => ({
+    id: "irr-" + (i + 1),
+    zone,
+    crop,
+    schedule: pickRandom(["daily", "every_2_days", "weekly", "sensor_triggered"], seed, i + 7),
+    water_needed_mm: Math.round(oscillate(35, 20, seed, "wtr" + i)),
+    status: pickRandom(["optimal", "optimal", "low", "over_irrigated"], seed, i + 12),
+  }));
+}
+
+function genPestRisk(seed: string) {
+  const pests = [
+    ["field_alpha", "wheat", "aphid"],
+    ["field_beta", "corn", "corn_borer"],
+    ["field_gamma", "soybean", "armyworm"],
+    ["field_delta", "barley", "rust_fungus"],
+  ];
+  return pests.map(([field, crop, pest], i) => ({
+    id: "pst-" + (i + 1),
+    field,
+    crop,
+    pest,
+    risk_level: pickRandom(["low", "low", "moderate", "high"], seed, i + 9),
+    treatment: pickRandom(
+      ["none_required", "biological_control", "targeted_spray", "quarantine_zone"],
+      seed,
+      i + 14
+    ),
+  }));
+}
+
+// ════════════════════════════════════════════════════════════════
+// Education Generators
+// ════════════════════════════════════════════════════════════════
+
+function genAtRiskStudents(seed: string) {
+  const names = ["Ava Thompson", "Liam Rodriguez", "Maya Patel", "Noah Kim", "Zoe Nguyen", "Ethan Brooks"];
+  const count = 4 + Math.floor(pseudoRandom(seed, (Date.now() % 50000) / 15000) * 2);
+  return Array.from({ length: count }, (_, i) => ({
+    id: "stu-" + (i + 1),
+    student_id: "S-2026-" + (1000 + i),
+    name: names[i % names.length],
+    gpa: parseFloat((1.4 + pseudoRandom(seed, i + 3) * 2.6).toFixed(2)),
+    attendance_pct: Math.round(oscillate(80, 18, seed, "att" + i)),
+    risk_score: parseFloat((0.05 + pseudoRandom(seed, i + 8) * 0.9).toFixed(2)),
+    risk_level: pickRandom(["low", "low", "watch", "high"], seed, i + 12),
+  }));
+}
+
+function genInterventions(seed: string) {
+  const actionPool = ["tutoring", "counseling", "mentorship", "parent_meeting", "study_group"];
+  const count = 3 + Math.floor(pseudoRandom(seed, (Date.now() % 55000) / 18000) * 2);
+  return Array.from({ length: count }, (_, i) => ({
+    id: "plan-" + (i + 1),
+    student_id: "S-2026-" + (1000 + i),
+    plan: pickRandom(["Academic Support", "Attendance Recovery", "Social-Emotional Support"], seed, i + 4),
+    actions: [
+      actionPool[Math.floor(pseudoRandom(seed, i + 9) * actionPool.length)],
+      actionPool[Math.floor(pseudoRandom(seed, i + 15) * actionPool.length)],
+    ],
+    status: pickRandom(["draft", "active", "active", "completed"], seed, i + 18),
+    owner: pickRandom(["Advisor Ward", "Counselor Reed", "Dean Patel"], seed, i + 22),
+  }));
+}
+
+function genProgramOutcomes(seed: string) {
+  const programs = [
+    "STEM Accelerator",
+    "Literacy Boost",
+    "Math Recovery",
+    "College Readiness",
+    "Career Pathways",
+  ];
+  return programs.map((program, i) => ({
+    id: "out-" + (i + 1),
+    program,
+    completion_rate: parseFloat(oscillate(0.82, 0.12, seed, "cr" + i).toFixed(2)),
+    avg_score: parseFloat(oscillate(78, 12, seed, "as" + i).toFixed(1)),
+    trend: pickRandom(["improving", "stable", "declining"], seed, i + 10),
+  }));
+}
+
+// ════════════════════════════════════════════════════════════════
+// Public Safety Generators
+// ════════════════════════════════════════════════════════════════
+
+function genIncidentPriority(seed: string) {
+  const types = ["theft", "traffic_accident", "disturbance", "medical_emergency", "fire_report", "suspicious_activity"];
+  const locations = ["Downtown", "Riverside", "Northgate", "Southside", "Airport District"];
+  const count = 4 + Math.floor(pseudoRandom(seed, (Date.now() % 45000) / 10000) * 2);
+  return Array.from({ length: count }, (_, i) => ({
+    id: "inc-" + (i + 1),
+    incident_id: "INC-" + (2026000 + i),
+    type: types[i % types.length],
+    priority: pickRandom(["low", "medium", "high", "critical"], seed, i + 4),
+    status: pickRandom(["dispatched", "on_scene", "resolving", "closed"], seed, i + 8),
+    location: locations[i % locations.length],
+    reported_at: new Date(Date.now() - i * 2700000).toISOString(),
+  }));
+}
+
+function genDispatch(seed: string) {
+  const units = [
+    ["unit_101", "patrol_car"],
+    ["unit_102", "patrol_car"],
+    ["unit_207", "ambulance"],
+    ["unit_309", "fire_engine"],
+    ["unit_114", "motorcycle_unit"],
+  ];
+  return units.map(([unit_id, unit_type], i) => ({
+    id: "disp-" + (i + 1),
+    unit_id,
+    unit_type,
+    status: pickRandom(["available", "en_route", "on_scene", "returning"], seed, i + 5),
+    current_incident: pickRandom(["none", "INC-2026001", "INC-2026002", "INC-2026005"], seed, i + 10),
+    eta_minutes: Math.round(oscillate(12, 10, seed, "eta" + i)),
+  }));
+}
+
+function genOpsBriefs(seed: string) {
+  const briefs = [
+    ["Overnight Shift Summary", "Property crimes down 8%; one critical response in Riverside"],
+    ["Weekend Operations Review", "Traffic incidents up 12% near airport; added patrol coverage"],
+    ["Special Event Plan", "Concert attendance 40k — staged resource plan active"],
+  ];
+  const recommendationSets = [
+    ["Extend night patrol coverage", "Deploy traffic units pre-rush"],
+    ["Pre-position medics at venues", "Monitor hot spots"],
+    ["Review camera coverage gaps", "Add drone support"],
+  ];
+  return briefs.map(([title, highlights], i) => ({
+    id: "brf-" + (i + 1),
+    title,
+    period: pickRandom(["24h", "72h", "weekly"], seed, i + 3),
+    highlights,
+    recommendations: recommendationSets[i % recommendationSets.length],
+  }));
+}
+
+// ════════════════════════════════════════════════════════════════
+// Real Estate Generators
+// ════════════════════════════════════════════════════════════════
+
+function genValuations(seed: string) {
+  const properties = [
+    ["24 Maple Avenue", "single_family"],
+    ["88 Harbor Drive", "condo"],
+    ["1500 Oak Street", "multi_family"],
+    ["7 Birch Lane", "townhouse"],
+    ["330 Commerce Blvd", "commercial"],
+  ];
+  const locations = ["Midtown", "Westside", "East Village", "Lake District"];
+  return properties.map(([property, type], i) => {
+    const base = 300000 + pseudoRandom(seed, i + 5) * 1100000;
+    return {
+      id: "val-" + (i + 1),
+      property,
+      type,
+      valuation: Math.round(oscillate(base, base * 0.06, seed, "val" + i)),
+      estimate_low: Math.round(base * 0.93),
+      estimate_high: Math.round(base * 1.07),
+      confidence: parseFloat((0.84 + pseudoRandom(seed, i + 12) * 0.13).toFixed(2)),
+      location: locations[i % locations.length],
+    };
+  });
+}
+
+function genMarketTrends(seed: string) {
+  const regions = ["Midtown", "Westside", "East Village", "Lake District", "Airport Corridor"];
+  return regions.map((region, i) => ({
+    id: "mkt-" + (i + 1),
+    region,
+    median_price: Math.round(oscillate(600000, 250000, seed, "med" + i)),
+    price_change_pct: parseFloat(oscillate(2, 5, seed, "pc" + i).toFixed(1)),
+    inventory: Math.round(oscillate(90, 60, seed, "inv" + i)),
+    days_on_market: Math.round(oscillate(35, 22, seed, "dom" + i)),
+  }));
+}
+
+function genComparables(seed: string) {
+  const properties = ["24 Maple Avenue", "88 Harbor Drive", "1500 Oak Street"];
+  const addresses = ["26 Maple Avenue", "30 Maple Avenue", "19 Maple Avenue", "90 Harbor Drive", "1496 Oak Street"];
+  const count = 4 + Math.floor(pseudoRandom(seed, (Date.now() % 60000) / 15000) * 2);
+  return Array.from({ length: count }, (_, i) => ({
+    id: "cmp-" + (i + 1),
+    property: properties[i % properties.length],
+    comparable_address: addresses[i % addresses.length],
+    price: Math.round(300000 + pseudoRandom(seed, i + 8) * 1150000),
+    sqft: Math.round(1400 + pseudoRandom(seed, i + 16) * 3200),
+    delta_pct: parseFloat((pseudoRandom(seed, i + 20) * 17 - 8).toFixed(1)),
+  }));
+}
+
+// ════════════════════════════════════════════════════════════════
 // Master generator — returns data for any sector/tool combo
 // ════════════════════════════════════════════════════════════════
 
@@ -1018,6 +1301,31 @@ const SECTOR_TOOL_GENERATORS: Record<string, Record<string, SectorToolGenerator>
     legal: genLegal,
     accounting: genAccounting,
     "data-management": genDataMgmt,
+  },
+  telecom: {
+    network: genNetworkHealth,
+    capacity: genCapacity,
+    faults: genFaults,
+  },
+  agriculture: {
+    yield: genYieldForecast,
+    irrigation: genIrrigation,
+    pests: genPestRisk,
+  },
+  education: {
+    "at-risk": genAtRiskStudents,
+    interventions: genInterventions,
+    outcomes: genProgramOutcomes,
+  },
+  public_safety: {
+    incidents: genIncidentPriority,
+    dispatch: genDispatch,
+    briefs: genOpsBriefs,
+  },
+  real_estate: {
+    valuations: genValuations,
+    market: genMarketTrends,
+    comparables: genComparables,
   },
 };
 

@@ -32,7 +32,7 @@ def test_sector_catalog_exposes_registered_contract(client):
     assert response.status_code == 200
     data = response.get_json()
     assert data["ok"] is True
-    assert data["tool_count"] == 40
+    assert data["tool_count"] == 58
     assert data["aliases"]["cultural_heritage"] == "heritage"
 
     sectors = {sector["id"]: sector for sector in data["sectors"]}
@@ -47,10 +47,45 @@ def test_sector_catalog_exposes_registered_contract(client):
         "tourism",
         "transport",
         "utilities",
+        "telecom",
+        "agriculture",
+        "education",
+        "public_safety",
+        "real_estate",
+        "professional",
     }
     heritage_tools = {tool["id"] for tool in sectors["heritage"]["tools"]}
     assert heritage_tools == {"visitors", "sites", "exhibitions", "tours"}
     assert "cultural_heritage" in sectors["heritage"]["aliases"]
+
+
+def test_frontend_sector_registry_matches_backend():
+    """The frontend registry (web/lib/sector-registry.ts) and the backend
+    tenant sector catalog must stay in sync after canonicalizing aliases.
+
+    A sector added on one side without the other (or an alias drift) fails
+    this suite with a diff of the mismatched ids.
+    """
+    import re
+    from pathlib import Path
+
+    from aeon_sectors import SECTOR_ALIASES, list_sector_catalog
+
+    frontend_path = Path(__file__).resolve().parents[1] / "web" / "lib" / "sector-registry.ts"
+    text = frontend_path.read_text(encoding="utf-8")
+    frontend_ids = set(re.findall(r'^    id: "([^"]+)"', text, re.MULTILINE))
+    assert frontend_ids, "could not extract sector ids from web/lib/sector-registry.ts"
+
+    backend_ids = {sector["id"] for sector in list_sector_catalog()}
+    # Normalize frontend ids through the backend's canonical alias map
+    # (e.g. cultural_heritage -> heritage).
+    frontend_normalized = {SECTOR_ALIASES.get(sector_id, sector_id) for sector_id in frontend_ids}
+
+    assert frontend_normalized == backend_ids, (
+        "frontend/backend sector registries drifted — "
+        f"frontend-only: {sorted(frontend_normalized - backend_ids)}, "
+        f"backend-only: {sorted(backend_ids - frontend_normalized)}"
+    )
 
 
 def test_unknown_sector_tool_is_rejected_consistently(client):

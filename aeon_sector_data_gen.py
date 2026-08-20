@@ -677,6 +677,390 @@ def _gen_sme_supply_chain(rng: random.Random) -> list[dict[str, Any]]:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+#  Telecom Generators
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _gen_telecom_network(rng: random.Random) -> list[dict[str, Any]]:
+    elements = [
+        ("core_router_01", "core", 99.2, "US-East"),
+        ("core_router_02", "core", 98.9, "US-West"),
+        ("edge_switch_14", "edge", 97.5, "US-East"),
+        ("edge_switch_22", "edge", 96.8, "EU-Central"),
+        ("radio_tower_07", "radio", 95.4, "US-West"),
+        ("fiber_ring_03", "transport", 99.6, "EU-Central"),
+        ("backhaul_05", "transport", 94.7, "APAC"),
+        ("small_cell_31", "radio", 93.2, "APAC"),
+    ]
+    return [
+        {
+            "id": f"tel-{idx + 1}",
+            "element": element,
+            "type": etype,
+            "health_score": round(health + rng.uniform(-1.5, 1.5), 1),
+            "uptime_pct": round(health + rng.uniform(-0.4, 0.2), 2),
+            "sla_status": rng.choice(["met", "met", "met", "at_risk", "breached"]),
+            "region": region,
+        }
+        for idx, (element, etype, health, region) in enumerate(elements)
+    ]
+
+
+def _gen_telecom_capacity(rng: random.Random) -> list[dict[str, Any]]:
+    nodes = ["backbone_01", "backbone_02", "metro_agg_11", "metro_agg_12", "edge_pop_03", "edge_pop_09"]
+    return [
+        {
+            "id": f"cap-{idx + 1}",
+            "node": node,
+            "current_utilization_pct": rng.randint(35, 95),
+            "forecast_utilization_pct": rng.randint(45, 105),
+            "recommended_action": rng.choice(
+                ["no_action", "monitor", "add_capacity", "rebalance_traffic"]
+            ),
+        }
+        for idx, node in enumerate(nodes)
+    ]
+
+
+def _gen_telecom_faults(rng: random.Random) -> list[dict[str, Any]]:
+    elements = ["core_router_01", "edge_switch_14", "radio_tower_07", "backhaul_05", "small_cell_31"]
+    severities = ["low", "medium", "high", "critical"]
+    statuses = ["open", "triage", "fixing", "resolved"]
+    return [
+        {
+            "id": f"fault-{idx + 1}",
+            "element": elements[idx % len(elements)],
+            "severity": severities[idx % len(severities)],
+            "status": statuses[idx % len(statuses)],
+            "opened_at": _iso_now(-idx),
+            "summary": rng.choice(
+                [
+                    "Packet loss above 2% threshold",
+                    "Latency spike on customer links",
+                    "Power supply redundancy degraded",
+                    "Optical signal attenuation on fiber",
+                    "Handover failures on small cell",
+                ]
+            ),
+        }
+        for idx in range(rng.randint(3, 5))
+    ]
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  Agriculture Generators
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _gen_agriculture_yield(rng: random.Random) -> list[dict[str, Any]]:
+    fields = [
+        ("field_alpha", "wheat"),
+        ("field_beta", "corn"),
+        ("field_gamma", "soybean"),
+        ("field_delta", "barley"),
+        ("field_epsilon", "corn"),
+    ]
+    return [
+        {
+            "id": f"yld-{idx + 1}",
+            "field": field,
+            "crop": crop,
+            "forecast_tons": round(rng.uniform(180, 420), 1),
+            "previous_tons": round(rng.uniform(150, 380), 1),
+            "confidence": round(rng.uniform(0.72, 0.96), 2),
+        }
+        for idx, (field, crop) in enumerate(fields)
+    ]
+
+
+def _gen_agriculture_irrigation(rng: random.Random) -> list[dict[str, Any]]:
+    zones = [
+        ("zone_north", "wheat"),
+        ("zone_south", "corn"),
+        ("zone_east", "soybean"),
+        ("zone_west", "barley"),
+    ]
+    return [
+        {
+            "id": f"irr-{idx + 1}",
+            "zone": zone,
+            "crop": crop,
+            "schedule": rng.choice(["daily", "every_2_days", "weekly", "sensor_triggered"]),
+            "water_needed_mm": rng.randint(15, 60),
+            "status": rng.choice(["optimal", "optimal", "low", "over_irrigated"]),
+        }
+        for idx, (zone, crop) in enumerate(zones)
+    ]
+
+
+def _gen_agriculture_pests(rng: random.Random) -> list[dict[str, Any]]:
+    pests = [
+        ("field_alpha", "wheat", "aphid"),
+        ("field_beta", "corn", "corn_borer"),
+        ("field_gamma", "soybean", "armyworm"),
+        ("field_delta", "barley", "rust_fungus"),
+    ]
+    return [
+        {
+            "id": f"pst-{idx + 1}",
+            "field": field,
+            "crop": crop,
+            "pest": pest,
+            "risk_level": rng.choice(["low", "low", "moderate", "high"]),
+            "treatment": rng.choice(
+                ["none_required", "biological_control", "targeted_spray", "quarantine_zone"]
+            ),
+        }
+        for idx, (field, crop, pest) in enumerate(pests)
+    ]
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  Education Generators
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _gen_education_students(rng: random.Random) -> list[dict[str, Any]]:
+    names = [
+        "Ava Thompson",
+        "Liam Rodriguez",
+        "Maya Patel",
+        "Noah Kim",
+        "Zoe Nguyen",
+        "Ethan Brooks",
+    ]
+    return [
+        {
+            "id": f"stu-{idx + 1}",
+            "student_id": f"S-2026-{1000 + idx}",
+            "name": names[idx % len(names)],
+            "gpa": round(rng.uniform(1.4, 4.0), 2),
+            "attendance_pct": rng.randint(58, 100),
+            "risk_score": round(rng.uniform(0.05, 0.95), 2),
+            "risk_level": rng.choice(["low", "low", "watch", "high"]),
+        }
+        for idx in range(rng.randint(4, 6))
+    ]
+
+
+def _gen_education_plans(rng: random.Random) -> list[dict[str, Any]]:
+    actions = ["tutoring", "counseling", "mentorship", "parent_meeting", "study_group"]
+    return [
+        {
+            "id": f"plan-{idx + 1}",
+            "student_id": f"S-2026-{1000 + idx}",
+            "plan": rng.choice(["Academic Support", "Attendance Recovery", "Social-Emotional Support"]),
+            "actions": rng.sample(actions, k=rng.randint(2, 3)),
+            "status": rng.choice(["draft", "active", "active", "completed"]),
+            "owner": rng.choice(["Advisor Ward", "Counselor Reed", "Dean Patel"]),
+        }
+        for idx in range(rng.randint(3, 5))
+    ]
+
+
+def _gen_education_outcomes(rng: random.Random) -> list[dict[str, Any]]:
+    programs = [
+        "STEM Accelerator",
+        "Literacy Boost",
+        "Math Recovery",
+        "College Readiness",
+        "Career Pathways",
+    ]
+    return [
+        {
+            "id": f"out-{idx + 1}",
+            "program": program,
+            "completion_rate": round(rng.uniform(0.6, 0.97), 2),
+            "avg_score": round(rng.uniform(62, 94), 1),
+            "trend": rng.choice(["improving", "stable", "declining"]),
+        }
+        for idx, program in enumerate(programs)
+    ]
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  Public Safety Generators
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _gen_public_safety_incidents(rng: random.Random) -> list[dict[str, Any]]:
+    types = ["theft", "traffic_accident", "disturbance", "medical_emergency", "fire_report", "suspicious_activity"]
+    priorities = ["low", "medium", "high", "critical"]
+    statuses = ["dispatched", "on_scene", "resolving", "closed"]
+    locations = ["Downtown", "Riverside", "Northgate", "Southside", "Airport District"]
+    return [
+        {
+            "id": f"inc-{idx + 1}",
+            "incident_id": f"INC-{2026000 + idx}",
+            "type": types[idx % len(types)],
+            "priority": priorities[idx % len(priorities)],
+            "status": statuses[idx % len(statuses)],
+            "location": locations[idx % len(locations)],
+            "reported_at": _iso_now(-idx),
+        }
+        for idx in range(rng.randint(4, 6))
+    ]
+
+
+def _gen_public_safety_dispatch(rng: random.Random) -> list[dict[str, Any]]:
+    units = [
+        ("unit_101", "patrol_car"),
+        ("unit_102", "patrol_car"),
+        ("unit_207", "ambulance"),
+        ("unit_309", "fire_engine"),
+        ("unit_114", "motorcycle_unit"),
+    ]
+    return [
+        {
+            "id": f"disp-{idx + 1}",
+            "unit_id": unit_id,
+            "unit_type": unit_type,
+            "status": rng.choice(["available", "en_route", "on_scene", "returning"]),
+            "current_incident": rng.choice(["none", "INC-2026001", "INC-2026002", "INC-2026005"]),
+            "eta_minutes": rng.randint(2, 25),
+        }
+        for idx, (unit_id, unit_type) in enumerate(units)
+    ]
+
+
+def _gen_public_safety_briefs(rng: random.Random) -> list[dict[str, Any]]:
+    briefs = [
+        ("Overnight Shift Summary", "Property crimes down 8%; one critical response in Riverside"),
+        ("Weekend Operations Review", "Traffic incidents up 12% near airport; added patrol coverage"),
+        ("Special Event Plan", "Concert attendance 40k — staged resource plan active"),
+    ]
+    return [
+        {
+            "id": f"brf-{idx + 1}",
+            "title": title,
+            "period": rng.choice(["24h", "72h", "weekly"]),
+            "highlights": highlights,
+            "recommendations": rng.choice(
+                [
+                    ["Extend night patrol coverage", "Deploy traffic units pre-rush"],
+                    ["Pre-position medics at venues", "Monitor hot spots"],
+                    ["Review camera coverage gaps", "Add drone support"]
+                ]
+            ),
+        }
+        for idx, (title, highlights) in enumerate(briefs)
+    ]
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  Real Estate Generators
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _gen_real_estate_valuations(rng: random.Random) -> list[dict[str, Any]]:
+    properties = [
+        ("24 Maple Avenue", "single_family"),
+        ("88 Harbor Drive", "condo"),
+        ("1500 Oak Street", "multi_family"),
+        ("7 Birch Lane", "townhouse"),
+        ("330 Commerce Blvd", "commercial"),
+    ]
+    return [
+        {
+            "id": f"val-{idx + 1}",
+            "property": prop,
+            "type": ptype,
+            "valuation": rng.randint(285_000, 1_450_000),
+            "estimate_low": rng.randint(260_000, 1_300_000),
+            "estimate_high": rng.randint(310_000, 1_600_000),
+            "confidence": round(rng.uniform(0.82, 0.97), 2),
+            "location": rng.choice(["Midtown", "Westside", "East Village", "Lake District"]),
+        }
+        for idx, (prop, ptype) in enumerate(properties)
+    ]
+
+
+def _gen_real_estate_market(rng: random.Random) -> list[dict[str, Any]]:
+    regions = ["Midtown", "Westside", "East Village", "Lake District", "Airport Corridor"]
+    return [
+        {
+            "id": f"mkt-{idx + 1}",
+            "region": region,
+            "median_price": rng.randint(320_000, 980_000),
+            "price_change_pct": round(rng.uniform(-4.5, 8.5), 1),
+            "inventory": rng.randint(24, 210),
+            "days_on_market": rng.randint(9, 65),
+        }
+        for idx, region in enumerate(regions)
+    ]
+
+
+def _gen_real_estate_comparables(rng: random.Random) -> list[dict[str, Any]]:
+    properties = ["24 Maple Avenue", "88 Harbor Drive", "1500 Oak Street"]
+    addresses = ["26 Maple Avenue", "30 Maple Avenue", "19 Maple Avenue", "90 Harbor Drive", "1496 Oak Street"]
+    return [
+        {
+            "id": f"cmp-{idx + 1}",
+            "property": properties[idx % len(properties)],
+            "comparable_address": addresses[idx % len(addresses)],
+            "price": rng.randint(275_000, 1_500_000),
+            "sqft": rng.randint(1_200, 4_800),
+            "delta_pct": round(rng.uniform(-8, 9), 1),
+        }
+        for idx in range(rng.randint(4, 6))
+    ]
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  Professional Services Generators
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _gen_professional_legal(rng: random.Random) -> list[dict[str, Any]]:
+    docs = [
+        ("Service Agreement", "contract"),
+        ("NDA", "non-disclosure"),
+        ("Employment Contract", "employment"),
+        ("Lease Agreement", "lease"),
+        ("Partnership Agreement", "partnership"),
+    ]
+    obligations = ["Confidentiality", "Non-compete", "IP Assignment", "Indemnification", "Termination Notice"]
+    return [
+        {
+            "doc": doc,
+            "type": dtype,
+            "risk_score": rng.choice(["low", "low", "medium", "high"]),
+            "obligations": rng.sample(obligations, k=rng.randint(1, 3)),
+        }
+        for doc, dtype in docs
+    ]
+
+
+def _gen_professional_accounting(rng: random.Random) -> list[dict[str, Any]]:
+    vendors = ["Acme Corp", "TechSupply Inc", "DataServices LLC", "CloudHost Ltd", "ConsultPro Group"]
+    return [
+        {
+            "invoice_id": f"INV-{idx + 1000:04d}",
+            "vendor": vendor,
+            "amount": rng.randint(1500, 7500),
+            "anomalies_detected": rng.random() > 0.8,
+            "auto_approved": rng.random() > 0.3,
+        }
+        for idx, vendor in enumerate(vendors)
+    ]
+
+
+def _gen_professional_data_mgmt(rng: random.Random) -> list[dict[str, Any]]:
+    datasets = [
+        "Customer DB",
+        "Employee Records",
+        "Transaction Logs",
+        "Marketing Data",
+        "Analytics Cache",
+        "Support Tickets",
+    ]
+    return [
+        {
+            "dataset": dataset,
+            "pii_records_found": rng.randint(500, 2600),
+            "compliance": rng.choice(
+                ["GDPR-ready", "HIPAA-compliant", "PCI-DSS-ready", "needs_review", "compliant"]
+            ),
+        }
+        for dataset in datasets
+    ]
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 #  Registry
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -721,6 +1105,24 @@ _GENERATORS: dict[tuple[str, str], Any] = {
     ("sme", "documents"): _gen_sme_documents,
     ("sme", "support"): _gen_sme_support,
     ("sme", "supply-chain"): _gen_sme_supply_chain,
+    ("telecom", "network"): _gen_telecom_network,
+    ("telecom", "capacity"): _gen_telecom_capacity,
+    ("telecom", "faults"): _gen_telecom_faults,
+    ("agriculture", "yield"): _gen_agriculture_yield,
+    ("agriculture", "irrigation"): _gen_agriculture_irrigation,
+    ("agriculture", "pests"): _gen_agriculture_pests,
+    ("education", "at-risk"): _gen_education_students,
+    ("education", "interventions"): _gen_education_plans,
+    ("education", "outcomes"): _gen_education_outcomes,
+    ("public_safety", "incidents"): _gen_public_safety_incidents,
+    ("public_safety", "dispatch"): _gen_public_safety_dispatch,
+    ("public_safety", "briefs"): _gen_public_safety_briefs,
+    ("real_estate", "valuations"): _gen_real_estate_valuations,
+    ("real_estate", "market"): _gen_real_estate_market,
+    ("real_estate", "comparables"): _gen_real_estate_comparables,
+    ("professional", "legal"): _gen_professional_legal,
+    ("professional", "accounting"): _gen_professional_accounting,
+    ("professional", "data-management"): _gen_professional_data_mgmt,
 }
 
 
