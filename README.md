@@ -24,7 +24,7 @@ cd aeon
 # 2. Copy and configure environment
 #    Required: NEXTAUTH_SECRET (generate with: openssl rand -base64 32)
 #    Optional: LLM provider keys, Stripe keys, Supabase keys
-cp .env.example .env
+cp env.example .env
 # Edit .env with your values
 
 # 3. Launch everything
