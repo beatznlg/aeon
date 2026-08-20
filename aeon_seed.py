@@ -61,6 +61,20 @@ def _minutes_ago(minutes: int) -> datetime:
     return _now() - timedelta(minutes=minutes)
 
 
+def _as_utc(dt: datetime | None) -> datetime | None:
+    """Return *dt* normalized to UTC.
+
+    SQLite returns naive datetimes from the ORM; comparisons against the
+    tz-aware ``_minutes_ago`` values would otherwise raise. Naive values are
+    assumed to be UTC (they are, since the backend always writes UTC).
+    """
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
 def _find_or_create_anomaly(workspace_id: str, title: str, **kwargs: Any) -> Anomaly:
     db = get_db()
     with db.session() as s:
@@ -217,7 +231,8 @@ def seed_demo_workspace(workspace_id: str) -> dict[str, Any]:
 
     # Override created_at to stagger demo timeline
     for anomaly, minutes_ago in [(anomaly_1, 30), (anomaly_2, 15), (anomaly_3, 5)]:
-        if anomaly and anomaly.created_at and anomaly.created_at > _minutes_ago(minutes_ago - 1):
+        created_at = _as_utc(getattr(anomaly, "created_at", None)) if anomaly else None
+        if created_at and created_at > _minutes_ago(minutes_ago - 1):
             anomaly.created_at = _minutes_ago(minutes_ago)
             db = get_db()
             with db.session() as s:
@@ -350,7 +365,6 @@ def seed_demo_workspace(workspace_id: str) -> dict[str, Any]:
         key="s3://aeon-demo-backups/full-2026-08-17.bak",
         policy_id=backup_policy_1.id,
         status="completed",
-        storage_key="s3://aeon-demo-backups/full-2026-08-17.bak",
         metadata={"size_bytes": 104857600, "duration_s": 142},
     )
     _find_or_create_backup_job(
@@ -358,7 +372,6 @@ def seed_demo_workspace(workspace_id: str) -> dict[str, Any]:
         key="s3://aeon-demo-wal/archive-2026-08-17-0200.log",
         policy_id=backup_policy_2.id,
         status="failed",
-        storage_key="s3://aeon-demo-wal/archive-2026-08-17-0200.log",
         metadata={"error": "WAL archive timed out", "duration_s": 300},
     )
     created["backup_jobs"] = 2

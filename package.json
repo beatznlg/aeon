@@ -1,0 +1,12 @@
+{
+  "name": "aeon-os",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AEON OS monorepo root. The Next.js frontend lives in web/. This root package.json exists so Vercel projects whose Root Directory is set to the repo root can still install and build the frontend — projects configured with Root Directory = web/ are unaffected and use web/package.json.",
+  "scripts": {
+    "install": "npm --prefix web install",
+    "build": "npm --prefix web run build",
+    "start": "npm --prefix web run start",
+    "lint": "npm --prefix web run lint"
+  }
+}
