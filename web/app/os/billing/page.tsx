@@ -2,567 +2,402 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useSession } from "next-auth/react";
-import { getAuthHeaders } from "@/lib/flask-auth";
+import { useTheme } from "@/components/ThemeProvider";
+import { FadeIn, ScaleOnHover } from "@/components/animations";
+import PageHeader from "@/components/ui/PageHeader";
+import Card from "@/components/ui/Card";
+import Button from "@/components/ui/Button";
+import Badge from "@/components/ui/Badge";
+import LoadingState from "@/components/ui/LoadingState";
+import ErrorState from "@/components/ui/ErrorState";
+import { isWorkspaceAdmin } from "@/lib/theme-config";
 
-type BillingPlan = {
-  id: string;
-  name: string;
-  limits: Record<string, number>;
-  price_per_request: number;
-  price_per_1k_tokens: number;
-};
+interface SubscriptionInfo {
+  ok: boolean;
+  subscription_id?: string;
+  status?: string;
+  plan?: string;
+  current_period_end?: string;
+  cancel_at_period_end?: boolean;
+  simulated?: boolean;
+  error?: string;
+}
 
-type BillingStatus = {
-  workspace_id: string;
-  plan: { id: string; name: string; limits: Record<string, number> };
-  credits: number;
-  usage: { requests: number; tokens: number; workflows: number; integrations: number };
-  limits: Record<string, number>;
-  estimated_cost: number;
-  remaining_credits: number;
-  quota_usage_pct: Record<string, number>;
-};
-
-type UsageSummary = {
-  period_days: number;
-  total_events: number;
-  total_quantity: number;
-  total_cost: number;
-  by_action: Record<string, { quantity: number; cost: number; count: number }>;
-  by_day: Record<string, { quantity: number; cost: number; count: number }>;
-};
-
-type StripeConfig = {
+interface StripeConfig {
+  ok: boolean;
   available: boolean;
-  mode: string | null;
+  mode: "test" | "live" | null;
   prices_configured: boolean;
-};
+}
 
-type WebhookDelivery = {
-  event_id: string | null;
-  type: string;
-  status: "processed" | "duplicate" | "skipped" | "verification_failed";
-  detail: string;
-  workspace_id: string | null;
-  timestamp: number;
-};
-
-const WEBHOOK_STATUS_META: Record<WebhookDelivery["status"], { label: string; color: string }> = {
-  processed: { label: "Processed", color: "#22c55e" },
-  duplicate: { label: "Duplicate", color: "#f59e0b" },
-  skipped: { label: "Skipped", color: "#94a3b8" },
-  verification_failed: { label: "Failed", color: "#ef4444" },
-};
-
-const PLANS: {
+interface Plan {
   id: string;
   name: string;
-  icon: string;
-  color: string;
   price: string;
+  period: string;
+  description: string;
   features: string[];
-}[] = [
+  highlight?: boolean;
+  stripePlan: string;
+}
+
+const PLANS: Plan[] = [
   {
     id: "free",
     name: "Free",
-    icon: "🌱",
-    color: "#94a3b8",
-    price: "$0/mo",
+    price: "$0",
+    period: "forever",
+    description: "Get started with core AEON capabilities.",
     features: [
-      "1,000 requests/mo",
-      "100K tokens",
-      "10 workflows",
-      "5 integrations",
-      "Community support",
+      "1 workspace",
+      "3 AI models (stub provider)",
+      "Basic sector dashboards",
+      "Community plugins",
+      "Standard support",
     ],
+    stripePlan: "free",
   },
   {
     id: "team",
     name: "Team",
-    icon: "🚀",
-    color: "#6366f1",
-    price: "$49/mo",
+    price: "$49",
+    period: "/month",
+    description: "Full platform access for growing teams.",
     features: [
-      "50,000 requests/mo",
-      "5M tokens",
-      "500 workflows",
-      "50 integrations",
+      "Up to 10 workspaces",
+      "All AI providers (OpenAI, Anthropic, etc.)",
+      "All 16 industry sectors",
+      "Workflow builder & automations",
+      "Marketplace plugins",
+      "Knowledge bases & RAG",
       "Priority support",
-      "Team workspace",
     ],
+    highlight: true,
+    stripePlan: "team",
   },
   {
     id: "enterprise",
     name: "Enterprise",
-    icon: "🏢",
-    color: "#f59e0b",
-    price: "Custom",
+    price: "$199",
+    period: "/month",
+    description: "Advanced governance, compliance, and scale.",
     features: [
-      "1M+ requests/mo",
-      "100M+ tokens",
-      "Unlimited workflows",
-      "Unlimited integrations",
-      "Dedicated support",
-      "SLA guarantee",
-      "Custom deployment",
+      "Unlimited workspaces",
+      "All Team features",
+      "SSO / SCIM provisioning",
+      "SIEM integration",
+      "Disaster recovery & backup",
+      "Custom compliance policies",
+      "Audit export & retention",
+      "Dedicated support & SLA",
     ],
+    stripePlan: "enterprise",
   },
 ];
 
+const STATUS_COLORS: Record<string, string> = {
+  active: "bg-emerald-500/15 text-emerald-400",
+  trialing: "bg-blue-500/15 text-blue-400",
+  past_due: "bg-amber-500/15 text-amber-400",
+  canceled: "bg-red-500/15 text-red-400",
+  unpaid: "bg-red-500/15 text-red-400",
+  incomplete: "bg-gray-500/15 text-gray-400",
+};
+
 export default function BillingPage() {
   const { data: session } = useSession();
-  const workspaceId = ((session?.user as any)?.workspaceId as string) || "default";
-
-  const [billing, setBilling] = useState<BillingStatus | null>(null);
-  const [usage, setUsage] = useState<UsageSummary | null>(null);
+  const { config } = useTheme();
+  const [subscription, setSubscription] = useState<SubscriptionInfo | null>(null);
   const [stripeConfig, setStripeConfig] = useState<StripeConfig | null>(null);
-  const [stripeSubStatus, setStripeSubStatus] = useState<string>("");
-  const [deliveries, setDeliveries] = useState<WebhookDelivery[] | null>(null);
   const [loading, setLoading] = useState(true);
-  const [upgrading, setUpgrading] = useState<string | null>(null);
-  const [creditAmount, setCreditAmount] = useState("50");
-  const [addingCredits, setAddingCredits] = useState(false);
-  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
+  const [portalLoading, setPortalLoading] = useState(false);
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
+  const workspaceId = (session?.user as any)?.workspace_id || "";
+  const admin = isWorkspaceAdmin((session?.user as any)?.role);
+
+  const fetchData = useCallback(async () => {
     try {
-      const [billingRes, usageRes, stripeRes, stripeSubRes, deliveryRes] = await Promise.all([
-        fetch(`/api/os/observability/billing?workspace_id=${workspaceId}`, {
-          cache: "no-store",
-          headers: getAuthHeaders(),
-        }),
-        fetch(`/api/os/observability/usage?workspace_id=${workspaceId}`, {
-          cache: "no-store",
-          headers: getAuthHeaders(),
-        }),
-        fetch(`/api/stripe/config`, { cache: "no-store", headers: getAuthHeaders() }),
-        fetch(`/api/stripe/subscription/${workspaceId}`, {
-          cache: "no-store",
-          headers: getAuthHeaders(),
-        }),
-        fetch(`/api/stripe/webhook-deliveries?limit=50`, {
-          cache: "no-store",
-          headers: getAuthHeaders(),
-        }),
-      ]);
-      const billingData = await billingRes.json();
-      const usageData = await usageRes.json();
-      const stripeData = await stripeRes.json();
-      const stripeSubData = await stripeSubRes.json();
-      const deliveryData = await deliveryRes.json();
+      setLoading(true);
+      setError(null);
 
-      if (billingData.ok) setBilling(billingData.billing);
-      if (usageData.ok) setUsage(usageData.summary);
-      if (stripeData.ok) setStripeConfig(stripeData);
-      if (stripeSubData.ok) setStripeSubStatus(stripeSubData.status || "");
-      if (deliveryData.ok && Array.isArray(deliveryData.deliveries)) {
-        setDeliveries(deliveryData.deliveries);
-      }
-    } catch {
-      // silent fallback
+      const [subRes, configRes] = await Promise.all([
+        workspaceId
+          ? fetch(`/api/stripe/subscription/${workspaceId}`, {
+              headers: { Authorization: `Bearer ${(session?.user as any)?.token || ""}` },
+              cache: "no-store",
+            }).then((r) => r.json())
+          : Promise.resolve({ ok: false, error: "no workspace" }),
+        fetch("/api/stripe/config", {
+          headers: { Authorization: `Bearer ${(session?.user as any)?.token || ""}` },
+          cache: "no-store",
+        }).then((r) => r.json()),
+      ]);
+
+      setSubscription(subRes);
+      setStripeConfig(configRes);
+    } catch (e: any) {
+      setError(e?.message || String(e));
     } finally {
       setLoading(false);
     }
-  }, [workspaceId]);
+  }, [workspaceId, session]);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    fetchData();
+  }, [fetchData]);
 
-  const upgradeViaStripe = async (planId: string) => {
-    setUpgrading(planId);
-    setMessage(null);
+  const handleCheckout = async (planId: string) => {
+    if (planId === "free") return;
+    setCheckoutLoading(planId);
     try {
-      const res = await fetch(`/api/stripe/checkout`, {
+      const res = await fetch("/api/stripe/checkout", {
         method: "POST",
-        headers: getAuthHeaders(),
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${(session?.user as any)?.token || ""}`,
+        },
         body: JSON.stringify({
           workspace_id: workspaceId,
           plan_id: planId,
-          success_url: `${window.location.origin}/os/billing?upgrade=success`,
-          cancel_url: `${window.location.origin}/os/billing?upgrade=cancel`,
+          success_url: `${window.location.origin}/os/billing?upgraded=true`,
+          cancel_url: `${window.location.origin}/os/billing`,
         }),
       });
       const data = await res.json();
-
-      if (data.simulated) {
-        // Fallback: Stripe not configured — use simulated billing
-        const simRes = await fetch(`/api/os/observability/billing/${workspaceId}/plan`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ plan_id: planId }),
-        });
-        const simData = await simRes.json();
-        if (simData.ok) {
-          setBilling(simData.billing);
-          setMessage({ ok: true, text: `Upgraded to ${simData.billing.plan.name}! (simulated)` });
-        } else {
-          setMessage({ ok: false, text: simData.error || "Upgrade failed" });
-        }
-      } else if (data.ok && data.url) {
-        // Real Stripe checkout — redirect
+      if (data.url) {
         window.location.href = data.url;
+      } else if (data.simulated) {
+        // Simulated mode — refresh to show updated state
+        await fetchData();
       } else {
-        setMessage({ ok: false, text: data.error || "Checkout failed" });
+        setError(data.error || "Checkout failed");
       }
     } catch (e: any) {
-      setMessage({ ok: false, text: e?.message || "Network error" });
+      setError(e?.message || "Checkout failed");
     } finally {
-      setUpgrading(null);
+      setCheckoutLoading(null);
     }
   };
 
-  const openBillingPortal = async () => {
-    setMessage(null);
+  const handlePortal = async () => {
+    setPortalLoading(true);
     try {
-      const res = await fetch(`/api/stripe/portal`, {
+      const res = await fetch("/api/stripe/portal", {
         method: "POST",
-        headers: getAuthHeaders(),
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${(session?.user as any)?.token || ""}`,
+        },
         body: JSON.stringify({
           workspace_id: workspaceId,
           return_url: `${window.location.origin}/os/billing`,
         }),
       });
       const data = await res.json();
-      if (data.ok && data.url) {
+      if (data.url) {
         window.location.href = data.url;
       } else if (data.simulated) {
-        setMessage({
-          ok: true,
-          text: "Portal not available — Stripe not configured. Use simulated upgrade instead.",
-        });
+        // Simulated mode
+        await fetchData();
       } else {
-        setMessage({ ok: false, text: data.error || "Portal failed" });
+        setError(data.error || "Portal session failed");
       }
     } catch (e: any) {
-      setMessage({ ok: false, text: e?.message || "Network error" });
-    }
-  };
-
-  const addCredits = async () => {
-    const amount = parseFloat(creditAmount);
-    if (isNaN(amount) || amount <= 0) return;
-    setAddingCredits(true);
-    setMessage(null);
-    try {
-      const res = await fetch(`/api/os/observability/billing/${workspaceId}/credits`, {
-        method: "POST",
-        headers: getAuthHeaders(),
-        body: JSON.stringify({ amount }),
-      });
-      const data = await res.json();
-      if (data.ok) {
-        setBilling(data.billing);
-        setMessage({ ok: true, text: `$${amount} credits added!` });
-      } else {
-        setMessage({ ok: false, text: data.error || "Failed to add credits" });
-      }
-    } catch (e: any) {
-      setMessage({ ok: false, text: e?.message || "Network error" });
+      setError(e?.message || "Portal session failed");
     } finally {
-      setAddingCredits(false);
+      setPortalLoading(false);
     }
-  };
-
-  const currentPlanId = billing?.plan?.id || "free";
-  const stripeActive = stripeConfig?.available ?? false;
-  const stripeMode = stripeConfig?.mode ?? null;
-
-  const actionCounts = billing?.usage || { requests: 0, tokens: 0, workflows: 0, integrations: 0 };
-  const usageLabels: Record<string, string> = {
-    requests: "API Requests",
-    tokens: "Token Usage",
-    workflows: "Workflow Runs",
-    integrations: "Integration Calls",
   };
 
   if (loading) {
     return (
-      <div className="os-page">
-        <div style={{ padding: 40, textAlign: "center", color: "var(--fg-mute)" }}>
-          Loading billing data…
-        </div>
+      <div className="min-h-[60vh] flex items-center justify-center">
+        <LoadingState message="Loading billing..." />
       </div>
     );
   }
 
+  if (error && !subscription) {
+    return <ErrorState error={error} onRetry={fetchData} />;
+  }
+
+  const currentPlan = subscription?.plan || "free";
+  const subStatus = subscription?.status || "none";
+  const isActive = subStatus === "active" || subStatus === "trialing";
+  const isSimulated = subscription?.simulated || false;
+
   return (
-    <div className="os-page">
-      <header className="os-header">
-        <div>
-          <h1>💰 Billing & Plans</h1>
-          <p className="dashboard-subtitle">
-            Manage your subscription, payment method, and usage credits
-          </p>
-        </div>
-      </header>
+    <div className="space-y-8">
+      <PageHeader
+        title="Billing & Subscription"
+        subtitle="Manage your AEON OS plan and payment settings"
+        backHref="/os"
+      />
 
-      {message && (
-        <div className={`module-alert ${message.ok ? "" : "danger"}`} style={{ marginBottom: 20 }}>
-          {message.text}
-        </div>
+      {/* Stripe Configuration Warning */}
+      {stripeConfig && !stripeConfig.available && (
+        <FadeIn>
+          <Card className="border-amber-500/30 bg-amber-500/5">
+            <div className="flex items-start gap-3">
+              <span className="text-xl">⚠️</span>
+              <div>
+                <p className="font-medium text-amber-400">Stripe Not Configured</p>
+                <p className="mt-1 text-sm text-amber-400/70">
+                  Billing is running in simulated mode. Set <code className="rounded bg-amber-400/10 px-1.5 py-0.5 text-xs">STRIPE_API_KEY</code> and{" "}
+                  <code className="rounded bg-amber-400/10 px-1.5 py-0.5 text-xs">STRIPE_WEBHOOK_SECRET</code> to enable real payments.
+                </p>
+              </div>
+            </div>
+          </Card>
+        </FadeIn>
       )}
 
-      {/* ── Stripe Status Banner ── */}
-      {stripeActive && (
-        <div className="stripe-banner">
-          <span className="stripe-banner-icon">⚡</span>
-          <span>
-            Stripe {stripeMode === "test" ? "test mode" : "live"} is active.
-            {stripeSubStatus === "active"
-              ? " You have an active subscription."
-              : " Use checkout to subscribe."}
-          </span>
-          {stripeSubStatus === "active" && (
-            <button className="btn btn-sm stripe-portal-btn" onClick={openBillingPortal}>
-              Manage in Stripe →
-            </button>
-          )}
-        </div>
-      )}
-      {!stripeActive && (
-        <div className="stripe-banner simulated" style={{ marginBottom: 20 }}>
-          <span className="stripe-banner-icon">🔄</span>
-          <span>
-            Simulated billing active. Set <code>STRIPE_API_KEY</code> in your environment to enable
-            real payment processing.
-          </span>
-        </div>
-      )}
-
-      {/* ── Current Plan Status ── */}
-      <section className="billing-status-bar">
-        <div className="billing-status-item">
-          <span className="billing-status-label">Current Plan</span>
-          <span
-            className="billing-status-value"
-            style={{ color: PLANS.find((p) => p.id === currentPlanId)?.color }}
-          >
-            {PLANS.find((p) => p.id === currentPlanId)?.icon} {billing?.plan?.name || "Free"}
-          </span>
-        </div>
-        <div className="billing-status-item">
-          <span className="billing-status-label">Credits</span>
-          <span className="billing-status-value">${(billing?.credits ?? 0).toFixed(2)}</span>
-        </div>
-        <div className="billing-status-item">
-          <span className="billing-status-label">Est. Monthly Cost</span>
-          <span className="billing-status-value">${(billing?.estimated_cost ?? 0).toFixed(2)}</span>
-        </div>
-        <div className="billing-status-item">
-          <span className="billing-status-label">Remaining</span>
-          <span
-            className="billing-status-value"
-            style={{ color: (billing?.remaining_credits ?? 0) > 0 ? "#22c55e" : "#ef4444" }}
-          >
-            ${(billing?.remaining_credits ?? 0).toFixed(2)}
-          </span>
-        </div>
-        <div className="billing-status-item">
-          <span className="billing-status-label">Payment</span>
-          <span
-            className="billing-status-value"
-            style={{ fontSize: "0.8rem", color: stripeActive ? "#22c55e" : "#94a3b8" }}
-          >
-            {stripeActive ? "Stripe" : "Simulated"}
-          </span>
-        </div>
-      </section>
-
-      {/* ── Plan Comparison ── */}
-      <section className="billing-plans-section">
-        <h2 className="billing-section-title">Choose Your Plan</h2>
-        <div className="billing-plans">
-          {PLANS.map((plan) => {
-            const isCurrent = plan.id === currentPlanId;
-            return (
-              <div
-                key={plan.id}
-                className={`billing-plan-card ${isCurrent ? "current" : ""}`}
-                style={{ borderColor: isCurrent ? plan.color : "var(--border)" }}
-              >
-                {isCurrent && (
-                  <div className="billing-plan-badge" style={{ background: plan.color }}>
-                    CURRENT
-                  </div>
-                )}
-                <div className="billing-plan-icon" style={{ fontSize: "2.5rem" }}>
-                  {plan.icon}
+      {/* Current Subscription */}
+      {subscription?.ok && (
+        <FadeIn>
+          <Card title="Current Subscription">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="space-y-1">
+                <div className="flex items-center gap-3">
+                  <span className="text-lg font-semibold capitalize text-aeon-text-1">
+                    {currentPlan} Plan
+                  </span>
+                  {subStatus !== "none" && (
+                    <Badge className={STATUS_COLORS[subStatus] || "bg-gray-500/15 text-gray-400"}>
+                      {subStatus.replace(/_/g, " ")}
+                    </Badge>
+                  )}
+                  {isSimulated && (
+                    <Badge className="bg-purple-500/15 text-purple-400">Simulated</Badge>
+                  )}
                 </div>
-                <h3 className="billing-plan-name">{plan.name}</h3>
-                <div className="billing-plan-price">{plan.price}</div>
-                <ul className="billing-plan-features">
-                  {plan.features.map((f, i) => (
-                    <li key={i} className="billing-plan-feature">
-                      <span className="billing-plan-check">✓</span> {f}
-                    </li>
-                  ))}
-                </ul>
-                {isCurrent && stripeSubStatus === "active" ? (
-                  <button
-                    className="btn btn-secondary"
-                    onClick={openBillingPortal}
-                    style={{ width: "100%", marginTop: "auto" }}
-                  >
-                    Manage Subscription
-                  </button>
-                ) : (
-                  <button
-                    className={`btn ${isCurrent ? "btn-secondary" : "btn-primary"}`}
-                    onClick={() => upgradeViaStripe(plan.id)}
-                    disabled={isCurrent || upgrading === plan.id}
-                    style={{ width: "100%", marginTop: "auto" }}
-                  >
-                    {isCurrent
-                      ? "Current Plan"
-                      : upgrading === plan.id
-                        ? "Processing..."
-                        : plan.id === "free"
-                          ? "Downgrade"
-                          : "Subscribe"}
-                  </button>
+                {subscription.current_period_end && (
+                  <p className="text-sm text-aeon-text-2">
+                    {subscription.cancel_at_period_end
+                      ? `Cancels on ${new Date(subscription.current_period_end).toLocaleDateString()}`
+                      : `Renews on ${new Date(subscription.current_period_end).toLocaleDateString()}`}
+                  </p>
                 )}
               </div>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* ── Quota Usage ── */}
-      {billing?.quota_usage_pct && Object.keys(billing.quota_usage_pct).length > 0 && (
-        <section className="billing-section">
-          <h2 className="billing-section-title">Resource Usage</h2>
-          <div className="billing-quota-grid">
-            {Object.entries(billing.quota_usage_pct).map(([key, pct]) => {
-              const used = (actionCounts as any)[key] ?? 0;
-              const limit = billing.limits[key] ?? 1;
-              return (
-                <div key={key} className="billing-quota-card">
-                  <div className="billing-quota-header">
-                    <span className="billing-quota-label">{usageLabels[key] || key}</span>
-                    <span className="billing-quota-numbers">
-                      {used.toLocaleString()} / {limit.toLocaleString()}
-                    </span>
-                  </div>
-                  <div className="billing-quota-bar-bg">
-                    <div
-                      className="billing-quota-bar-fill"
-                      style={{
-                        width: `${Math.min(100, pct)}%`,
-                        background: pct > 90 ? "#ef4444" : pct > 70 ? "#f59e0b" : "#6366f1",
-                      }}
-                    />
-                  </div>
-                  <div className="billing-quota-pct">{pct.toFixed(1)}% used</div>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-      )}
-
-      {/* ── Add Credits ── */}
-      <section className="billing-section">
-        <h2 className="billing-section-title">Add Credits</h2>
-        <p style={{ color: "var(--fg-soft)", marginBottom: 16, fontSize: "0.85rem" }}>
-          {stripeActive
-            ? "Add credits to your account. Credits are deducted before overage billing."
-            : "Add simulated credits to cover usage costs."}
-        </p>
-        <div className="billing-credit-form">
-          <div className="billing-credit-presets">
-            {[10, 25, 50, 100, 500].map((amt) => (
-              <button
-                key={amt}
-                className={`btn btn-sm ${parseFloat(creditAmount) === amt ? "btn-primary" : ""}`}
-                onClick={() => setCreditAmount(String(amt))}
-              >
-                ${amt}
-              </button>
-            ))}
-          </div>
-          <div className="billing-credit-input-row">
-            <span style={{ color: "var(--fg-soft)", fontWeight: 600 }}>$</span>
-            <input
-              className="os-input"
-              type="number"
-              min={1}
-              step={1}
-              value={creditAmount}
-              onChange={(e) => setCreditAmount(e.target.value)}
-              style={{ width: 120, textAlign: "center" }}
-            />
-            <button className="btn btn-primary" onClick={addCredits} disabled={addingCredits}>
-              {addingCredits ? "Adding..." : "Add Credits"}
-            </button>
-          </div>
-        </div>
-      </section>
-
-      {/* ── Recent Activity ── */}
-      {usage && usage.total_events > 0 && (
-        <section className="billing-section">
-          <h2 className="billing-section-title">Recent Activity</h2>
-          <div className="billing-activity-list">
-            {Object.entries(usage.by_action || {})
-              .slice(0, 8)
-              .map(([action, data]) => (
-                <div key={action} className="billing-activity-item">
-                  <div className="billing-activity-info">
-                    <span className="billing-activity-action">{action}</span>
-                    <span className="billing-activity-count">{data.count} calls</span>
-                  </div>
-                  <div className="billing-activity-cost">${data.cost.toFixed(4)}</div>
-                </div>
-              ))}
-          </div>
-        </section>
-      )}
-
-      {/* ── Stripe Webhook Deliveries (admin) ── */}
-      {deliveries && deliveries.length > 0 && (
-        <section className="billing-section">
-          <h2 className="billing-section-title">Webhook Deliveries</h2>
-          <p style={{ color: "var(--fg-soft)", marginBottom: 12, fontSize: "0.85rem" }}>
-            Recent Stripe webhook events — processed, duplicate, skipped, or failed.
-          </p>
-          <div className="billing-webhook-table">
-            <div className="billing-webhook-row billing-webhook-head">
-              <span>Status</span>
-              <span>Event Type</span>
-              <span>Event ID</span>
-              <span>Workspace</span>
-              <span>Time</span>
+              {isActive && admin && (
+                <Button
+                  onClick={handlePortal}
+                  disabled={portalLoading}
+                  variant="secondary"
+                  className="shrink-0"
+                >
+                  {portalLoading ? "Opening portal..." : "Manage Subscription"}
+                </Button>
+              )}
             </div>
-            {deliveries.slice(0, 25).map((d, i) => {
-              const meta = WEBHOOK_STATUS_META[d.status] || WEBHOOK_STATUS_META.skipped;
-              const time = d.timestamp
-                ? new Date(d.timestamp * 1000).toLocaleString()
-                : "—";
+          </Card>
+        </FadeIn>
+      )}
+
+      {/* Plan Cards */}
+      <FadeIn>
+        <div className="space-y-4">
+          <h2 className="text-lg font-semibold text-aeon-text-1">
+            {currentPlan === "free" ? "Choose a Plan" : "Upgrade Your Plan"}
+          </h2>
+          <div className="grid gap-6 md:grid-cols-3">
+            {PLANS.map((plan) => {
+              const isCurrent = currentPlan === plan.id;
+              const isUpgrade = PLANS.findIndex((p) => p.id === plan.id) > PLANS.findIndex((p) => p.id === currentPlan);
+              const canAction = admin && !isCurrent && (plan.id === "free" ? false : isUpgrade || currentPlan === "free");
+
               return (
-                <div key={`${d.event_id || "none"}-${i}`} className="billing-webhook-row">
-                  <span
-                    style={{ color: meta.color, fontWeight: 600, textTransform: "capitalize" }}
+                <ScaleOnHover key={plan.id}>
+                  <Card
+                    className={`relative h-full ${
+                      plan.highlight
+                        ? "border-violet-500/40 ring-1 ring-violet-500/20"
+                        : ""
+                    } ${isCurrent ? "border-emerald-500/40 ring-1 ring-emerald-500/20" : ""}`}
                   >
-                    {meta.label}
-                  </span>
-                  <span style={{ color: "var(--fg-soft)", fontFamily: "monospace", fontSize: "0.8rem" }}>
-                    {d.type}
-                  </span>
-                  <span style={{ color: "var(--fg-mute)", fontFamily: "monospace", fontSize: "0.78rem" }}>
-                    {d.event_id ? `${d.event_id.slice(0, 12)}…` : "—"}
-                  </span>
-                  <span style={{ color: "var(--fg-mute)", fontSize: "0.8rem" }}>
-                    {d.workspace_id ? `${d.workspace_id.slice(0, 10)}…` : "—"}
-                  </span>
-                  <span style={{ color: "var(--fg-mute)", fontSize: "0.78rem" }}>{time}</span>
-                </div>
+                    {plan.highlight && !isCurrent && (
+                      <div className="absolute -top-3 left-1/2 -translate-x-1/2">
+                        <Badge className="bg-violet-500 text-white">Most Popular</Badge>
+                      </div>
+                    )}
+                    {isCurrent && (
+                      <div className="absolute -top-3 left-1/2 -translate-x-1/2">
+                        <Badge className="bg-emerald-500 text-white">Current Plan</Badge>
+                      </div>
+                    )}
+
+                    <div className="flex flex-col h-full">
+                      <div className="mb-4">
+                        <h3 className="text-xl font-bold text-aeon-text-1">{plan.name}</h3>
+                        <div className="mt-2 flex items-baseline gap-1">
+                          <span className="text-3xl font-bold text-aeon-text-1">{plan.price}</span>
+                          <span className="text-sm text-aeon-text-2">{plan.period}</span>
+                        </div>
+                        <p className="mt-2 text-sm text-aeon-text-2">{plan.description}</p>
+                      </div>
+
+                      <ul className="mb-6 flex-1 space-y-2">
+                        {plan.features.map((feature) => (
+                          <li key={feature} className="flex items-start gap-2 text-sm text-aeon-text-2">
+                            <span className="mt-0.5 text-emerald-400">✓</span>
+                            {feature}
+                          </li>
+                        ))}
+                      </ul>
+
+                      <Button
+                        onClick={() => handleCheckout(plan.stripePlan)}
+                        disabled={!canAction || checkoutLoading !== null}
+                        variant={plan.highlight && canAction ? "primary" : "secondary"}
+                        className="w-full"
+                      >
+                        {isCurrent
+                          ? "Current Plan"
+                          : checkoutLoading === plan.stripePlan
+                            ? "Redirecting..."
+                            : plan.id === "free"
+                              ? "Included"
+                              : "Upgrade"}
+                      </Button>
+                    </div>
+                  </Card>
+                </ScaleOnHover>
               );
             })}
           </div>
-        </section>
-      )}
+        </div>
+      </FadeIn>
+
+      {/* Billing Info */}
+      <FadeIn>
+        <Card title="Billing Information">
+          <div className="space-y-3 text-sm text-aeon-text-2">
+            <div className="flex items-start gap-2">
+              <span className="text-aeon-text-1">•</span>
+              <p>All plans include a 14-day free trial for Team and Enterprise features.</p>
+            </div>
+            <div className="flex items-start gap-2">
+              <span className="text-aeon-text-1">•</span>
+              <p>Payments are processed securely through Stripe. We never store your card details.</p>
+            </div>
+            <div className="flex items-start gap-2">
+              <span className="text-aeon-text-1">•</span>
+              <p>Cancel anytime — your plan remains active until the end of the billing period.</p>
+            </div>
+            <div className="flex items-start gap-2">
+              <span className="text-aeon-text-1">•</span>
+              <p>
+                Need a custom plan?{" "}
+                <a href="mailto:sales@aeonos.com" className="text-violet-400 hover:underline">
+                  Contact sales
+                </a>
+              </p>
+            </div>
+          </div>
+        </Card>
+      </FadeIn>
     </div>
   );
 }

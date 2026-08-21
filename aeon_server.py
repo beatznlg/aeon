@@ -2321,6 +2321,19 @@ def workspace_seed_demo(workspace_id: str):
 def ready():
     """Readiness probe: environment, loaded agents, and job queue."""
     env_report = validate_environment()
+    # Check Alembic migration status
+    migration_status = "unknown"
+    try:
+        from aeon_db import get_db as _ready_db
+        from sqlalchemy import text as _ready_text
+        _db = _ready_db()
+        with _db.session() as _s:
+            result = _s.execute(_ready_text("SELECT version_num FROM alembic_version LIMIT 1"))
+            row = result.first()
+            migration_status = row[0] if row else "no_migrations"
+    except Exception:
+        migration_status = "unavailable"
+
     readiness = {
         "ok": env_report["ok"],
         "backend": "aeon_python_kernel",
@@ -2329,6 +2342,7 @@ def ready():
         "agents_loaded": len(_agents),
         "queue_size": job_queue._pending,
         "queue_workers": job_queue.workers,
+        "migration_status": migration_status,
     }
     status = 200 if env_report["ok"] else 503
     return jsonify(readiness), status
