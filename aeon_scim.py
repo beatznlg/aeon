@@ -22,7 +22,7 @@ from typing import Any
 
 from flask import g, jsonify, request
 
-from aeon_db import Membership, ScimToken, User, get_db
+from aeon_db import Membership, ScimToken, User, add_audit_log, get_db
 
 logger = logging.getLogger("aeon_scim")
 
@@ -187,6 +187,17 @@ def scim_create_user(workspace_id: str, payload: dict[str, Any]) -> tuple[dict[s
             membership = Membership(workspace_id=str(workspace_id), user_id=str(user.id), role=role)
             s.add(membership)
         s.commit()
+        try:
+            add_audit_log(
+                action="SCIM_USER_CREATED",
+                module="scim",
+                user_id=str(user.id),
+                workspace_id=str(workspace_id),
+                email=email,
+                metadata={"role": role},
+            )
+        except Exception:  #nosec B110 - provisioning must not fail on audit
+            pass
         response = jsonify(_scim_user_response(user, str(workspace_id)))
         response.headers["Content-Type"] = SCIM_MIME
         return response, 201
@@ -279,6 +290,17 @@ def scim_patch_user(workspace_id: str, user_id: str, payload: dict[str, Any]) ->
                 s.delete(membership)
             s.commit()
             user.active = False  # type: ignore[attr-defined]
+            try:
+                add_audit_log(
+                    action="SCIM_USER_DEACTIVATED",
+                    module="scim",
+                    user_id=str(user.id),
+                    workspace_id=str(workspace_id),
+                    email=user.email,
+                    metadata={},
+                )
+            except Exception:  #nosec B110
+                pass
         response = jsonify(_scim_user_response(user, str(workspace_id)))
         response.headers["Content-Type"] = SCIM_MIME
         return response, 200

@@ -45,6 +45,8 @@ class StripeClient:
         self._stripe_dir.mkdir(parents=True, exist_ok=True)
         self._customers_file = self._stripe_dir / "customers.json"
         self._subscriptions_file = self._stripe_dir / "subscriptions.json"
+        self._events_file = self._stripe_dir / "processed_events.json"
+        self._deliveries_file = self._stripe_dir / "webhook_deliveries.json"
         self._stripe = None
         self._available = False
         self._init_stripe()
@@ -109,6 +111,76 @@ class StripeClient:
 
     def _save_json(self, path: Path, data: dict[str, Any]):
         path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+    # Max processed event IDs retained (oldest pruned first). Bounds the ledger
+    # so it cannot grow without limit while still covering Stripe retry windows.
+    _EVENT_LEDGER_LIMIT = 10000
+    _DELIVERY_LOG_LIMIT = 500
+
+    def _record_delivery(
+        self,
+        event_id: str | None,
+        event_type: str,
+        status: str,
+        detail: str = "",
+        workspace_id: str | None = None,
+    ) -> None:
+        """Append one webhook-delivery observation to the bounded queryable log.
+
+        ``status`` is one of: processed | duplicate | skipped | verification_failed.
+        Records carry no customer PII or secret material.
+        """
+        try:
+            log = self._load_json(self._deliveries_file)
+            if not isinstance(log, list):
+                log = []
+            log.append({
+                "event_id": event_id,
+                "type": event_type,
+                "status": status,
+                "detail": detail,
+                "workspace_id": workspace_id,
+                "timestamp": time.time(),
+            })
+            if len(log) > self._DELIVERY_LOG_LIMIT:
+                log = log[-self._DELIVERY_LOG_LIMIT:]
+            self._save_json(self._deliveries_file, log)
+        except Exception as exc:  # nosec B110 - a logging failure must not break webhooks
+            logger.warning("Failed to record webhook delivery: %s", exc)
+
+    def list_webhook_deliveries(self, limit: int = 100) -> list[dict[str, Any]]:
+        """Return recent webhook deliveries, newest first (for the admin view)."""
+        log = self._load_json(self._deliveries_file)
+        if not isinstance(log, list):
+            return []
+        log = sorted(log, key=lambda entry: entry.get("timestamp", 0), reverse=True)
+        return log[: max(1, min(limit, self._DELIVERY_LOG_LIMIT))]
+
+    @staticmethod
+    def _webhook_workspace_id(data: dict[str, Any]) -> str | None:
+        """Best-effort workspace context from an event's metadata (never PII)."""
+        try:
+            return (data.get("metadata") or {}).get("workspace_id") or None
+        except Exception:  # nosec B110
+            return None
+
+    def _is_event_processed(self, event_id: str) -> bool:
+        """Return True if the Stripe event was already processed (idempotency)."""
+        if not event_id:
+            return False
+        ledger = self._load_json(self._events_file)
+        return ledger.get(event_id) is not None
+
+    def _mark_event_processed(self, event_id: str) -> None:
+        """Record a processed Stripe event ID so a redelivery is no-op'd."""
+        if not event_id:
+            return
+        ledger = self._load_json(self._events_file)
+        ledger[event_id] = time.time()
+        if len(ledger) > self._EVENT_LEDGER_LIMIT:
+            for oldest in sorted(ledger, key=lambda k: ledger[k])[:-self._EVENT_LEDGER_LIMIT]:
+                ledger.pop(oldest, None)
+        self._save_json(self._events_file, ledger)
 
     def get_or_create_customer(self, workspace_id: str, email: str = "", name: str = "") -> str | None:
         """Return Stripe Customer ID for a workspace, creating one if needed."""
@@ -320,12 +392,31 @@ class StripeClient:
             )
         except Exception as e:
             logger.warning("Webhook signature verification failed: %s", e)
+            self._record_delivery(None, "unknown", "verification_failed", detail=str(e)[:160])
             return {"ok": False, "error": f"Webhook verification failed: {e}"}
 
         event_type = event.get("type", "unknown")
+        event_id = event.get("id") or ""
         data = event.get("data", {}).get("object", {})
+        workspace_id = self._webhook_workspace_id(data)
+
+        # Idempotency: Stripe can redeliver events (network retries, dashboard
+        # replay). If we already processed this exact event id, acknowledge it
+        # with 200 and skip the side effects instead of double-applying.
+        if event_id and self._is_event_processed(event_id):
+            logger.info("Ignoring duplicate Stripe event %s (%s)", event_id, event_type)
+            self._record_delivery(event_id, event_type, "duplicate", workspace_id=workspace_id)
+            return {"ok": True, "type": event_type, "handled": False, "duplicate": True}
 
         result = self._handle_event(event_type, data)
+        if result.get("handled"):
+            self._mark_event_processed(event_id)
+            self._record_delivery(event_id, event_type, "processed", workspace_id=workspace_id)
+        else:
+            self._record_delivery(
+                event_id, event_type, "skipped",
+                detail=str(result.get("reason") or "no handler"), workspace_id=workspace_id,
+            )
         return {"ok": True, "type": event_type, **result}
 
     def _handle_event(self, event_type: str, data: dict[str, Any]) -> dict[str, Any]:

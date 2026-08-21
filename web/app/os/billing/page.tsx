@@ -38,6 +38,22 @@ type StripeConfig = {
   prices_configured: boolean;
 };
 
+type WebhookDelivery = {
+  event_id: string | null;
+  type: string;
+  status: "processed" | "duplicate" | "skipped" | "verification_failed";
+  detail: string;
+  workspace_id: string | null;
+  timestamp: number;
+};
+
+const WEBHOOK_STATUS_META: Record<WebhookDelivery["status"], { label: string; color: string }> = {
+  processed: { label: "Processed", color: "#22c55e" },
+  duplicate: { label: "Duplicate", color: "#f59e0b" },
+  skipped: { label: "Skipped", color: "#94a3b8" },
+  verification_failed: { label: "Failed", color: "#ef4444" },
+};
+
 const PLANS: {
   id: string;
   name: string;
@@ -101,6 +117,7 @@ export default function BillingPage() {
   const [usage, setUsage] = useState<UsageSummary | null>(null);
   const [stripeConfig, setStripeConfig] = useState<StripeConfig | null>(null);
   const [stripeSubStatus, setStripeSubStatus] = useState<string>("");
+  const [deliveries, setDeliveries] = useState<WebhookDelivery[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [upgrading, setUpgrading] = useState<string | null>(null);
   const [creditAmount, setCreditAmount] = useState("50");
@@ -110,7 +127,7 @@ export default function BillingPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [billingRes, usageRes, stripeRes, stripeSubRes] = await Promise.all([
+      const [billingRes, usageRes, stripeRes, stripeSubRes, deliveryRes] = await Promise.all([
         fetch(`/api/os/observability/billing?workspace_id=${workspaceId}`, {
           cache: "no-store",
           headers: getAuthHeaders(),
@@ -124,16 +141,24 @@ export default function BillingPage() {
           cache: "no-store",
           headers: getAuthHeaders(),
         }),
+        fetch(`/api/stripe/webhook-deliveries?limit=50`, {
+          cache: "no-store",
+          headers: getAuthHeaders(),
+        }),
       ]);
       const billingData = await billingRes.json();
       const usageData = await usageRes.json();
       const stripeData = await stripeRes.json();
       const stripeSubData = await stripeSubRes.json();
+      const deliveryData = await deliveryRes.json();
 
       if (billingData.ok) setBilling(billingData.billing);
       if (usageData.ok) setUsage(usageData.summary);
       if (stripeData.ok) setStripeConfig(stripeData);
       if (stripeSubData.ok) setStripeSubStatus(stripeSubData.status || "");
+      if (deliveryData.ok && Array.isArray(deliveryData.deliveries)) {
+        setDeliveries(deliveryData.deliveries);
+      }
     } catch {
       // silent fallback
     } finally {
@@ -491,6 +516,50 @@ export default function BillingPage() {
                   <div className="billing-activity-cost">${data.cost.toFixed(4)}</div>
                 </div>
               ))}
+          </div>
+        </section>
+      )}
+
+      {/* ── Stripe Webhook Deliveries (admin) ── */}
+      {deliveries && deliveries.length > 0 && (
+        <section className="billing-section">
+          <h2 className="billing-section-title">Webhook Deliveries</h2>
+          <p style={{ color: "var(--fg-soft)", marginBottom: 12, fontSize: "0.85rem" }}>
+            Recent Stripe webhook events — processed, duplicate, skipped, or failed.
+          </p>
+          <div className="billing-webhook-table">
+            <div className="billing-webhook-row billing-webhook-head">
+              <span>Status</span>
+              <span>Event Type</span>
+              <span>Event ID</span>
+              <span>Workspace</span>
+              <span>Time</span>
+            </div>
+            {deliveries.slice(0, 25).map((d, i) => {
+              const meta = WEBHOOK_STATUS_META[d.status] || WEBHOOK_STATUS_META.skipped;
+              const time = d.timestamp
+                ? new Date(d.timestamp * 1000).toLocaleString()
+                : "—";
+              return (
+                <div key={`${d.event_id || "none"}-${i}`} className="billing-webhook-row">
+                  <span
+                    style={{ color: meta.color, fontWeight: 600, textTransform: "capitalize" }}
+                  >
+                    {meta.label}
+                  </span>
+                  <span style={{ color: "var(--fg-soft)", fontFamily: "monospace", fontSize: "0.8rem" }}>
+                    {d.type}
+                  </span>
+                  <span style={{ color: "var(--fg-mute)", fontFamily: "monospace", fontSize: "0.78rem" }}>
+                    {d.event_id ? `${d.event_id.slice(0, 12)}…` : "—"}
+                  </span>
+                  <span style={{ color: "var(--fg-mute)", fontSize: "0.8rem" }}>
+                    {d.workspace_id ? `${d.workspace_id.slice(0, 10)}…` : "—"}
+                  </span>
+                  <span style={{ color: "var(--fg-mute)", fontSize: "0.78rem" }}>{time}</span>
+                </div>
+              );
+            })}
           </div>
         </section>
       )}

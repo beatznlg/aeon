@@ -2,6 +2,49 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Stripe webhook delivery log (billing admin view) */
+.billing-webhook-table {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: 1px solid var(--border, #334155);
+  border-radius: 10px;
+  padding: 8px;
+  background: var(--bg, #0f172a);
+}
+
+.billing-webhook-row {
+  display: grid;
+  grid-template-columns: 110px 1.4fr 1fr 1fr 190px;
+  gap: 12px;
+  align-items: center;
+  padding: 9px 12px;
+  border-radius: 8px;
+}
+
+.billing-webhook-row:hover {
+  background: var(--bg-1, #1e293b);
+}
+
+.billing-webhook-head {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-mute, #64748b);
+  border-bottom: 1px solid var(--border, #334155);
+  border-radius: 6px;
+}
+
+@media (max-width: 720px) {
+  .billing-webhook-row {
+    grid-template-columns: 90px 1fr;
+  }
+  .billing-webhook-row > span:nth-child(n + 3) {
+    grid-column: 2;
+  }
+}
+
 /* ════════════════════════════════════════════════════════
    AEON OS — Global Design Tokens
    Override these variables to rebrand AEON for any company.

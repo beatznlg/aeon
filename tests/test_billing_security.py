@@ -108,3 +108,99 @@ def test_billing_and_usage_routes_reject_foreign_workspace(client):
         json={"workspace_id": other_workspace, "action": "chat"},
     )
     assert recorded.status_code == 403
+
+    batched = client.post(
+        "/usage",
+        headers=headers,
+        json=[
+            {"workspace_id": _own_workspace, "action": "chat"},
+            {"workspace_id": other_workspace, "action": "chat"},
+        ],
+    )
+    assert batched.status_code == 403
+
+
+_EVENT_CAPTURE = {}
+
+
+def _make_fake_stripe(event: dict):
+    _EVENT_CAPTURE["event"] = event
+
+    class FakeWebhook:
+        _event = event
+
+        @staticmethod
+        def construct_event(payload, sig_header, secret):
+            return _EVENT_CAPTURE["event"]
+
+    class FakeStripe:
+        Webhook = FakeWebhook
+
+    return FakeStripe()
+
+
+def test_webhook_duplicate_event_is_skipped(tmp_path, monkeypatch):
+    monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", "whsec_test")
+    stripe_module = _load_real_stripe_module()
+    stripe_client = stripe_module.StripeClient(tmp_path)
+    stripe_client._stripe = _make_fake_stripe(
+        {"id": "evt_test_123", "type": "invoice.paid", "data": {"object": {"id": "in_1"}}}
+    )
+    stripe_client._available = True
+
+    calls = {"n": 0}
+
+    def fake_handler(event_type, data):
+        calls["n"] += 1
+        return {"handled": True, "workspace_id": "ws-1", "plan_id": "team"}
+
+    stripe_client._handle_event = fake_handler
+
+    first = stripe_client.handle_webhook(b"{}", "t=1,v1=sig")
+    assert first["ok"] is True
+    assert first["handled"] is True
+    assert first.get("duplicate") is not True
+
+    second = stripe_client.handle_webhook(b"{}", "t=1,v1=sig")
+    assert second["ok"] is True
+    assert second.get("duplicate") is True
+    assert second["handled"] is False
+
+    # The side-effect handler ran exactly once across both deliveries.
+    assert calls["n"] == 1
+
+    # The queryable delivery log records a processed + a duplicate entry,
+    # newest first, with no secret material.
+    deliveries = stripe_client.list_webhook_deliveries()
+    assert [d["event_id"] for d in deliveries] == ["evt_test_123", "evt_test_123"]
+    assert [d["status"] for d in deliveries] == ["duplicate", "processed"]
+    assert all("sig" not in (d.get("detail") or "") for d in deliveries)
+
+
+def test_webhook_different_event_id_is_processed(tmp_path, monkeypatch):
+    monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", "whsec_test")
+    stripe_module = _load_real_stripe_module()
+    stripe_client = stripe_module.StripeClient(tmp_path)
+
+    stripe_client._stripe = _make_fake_stripe(
+        {"id": "evt_test_456", "type": "invoice.paid", "data": {"object": {"id": "in_2"}}}
+    )
+    stripe_client._available = True
+    calls = {"n": 0}
+
+    def fake_handler(event_type, data):
+        calls["n"] += 1
+        return {"handled": True, "workspace_id": "ws-1", "plan_id": "team"}
+
+    stripe_client._handle_event = fake_handler
+    first = stripe_client.handle_webhook(b"{}", "t=1,v1=sig")
+    assert first["ok"] is True and first["handled"] is True
+
+    # A different event id is a distinct, non-duplicate event.
+    stripe_client._stripe = _make_fake_stripe(
+        {"id": "evt_test_789", "type": "customer.subscription.deleted", "data": {"object": {}}}
+    )
+    second = stripe_client.handle_webhook(b"{}", "t=1,v1=sig")
+    assert second["ok"] is True
+    assert second.get("duplicate") is not True
+    assert calls["n"] == 2

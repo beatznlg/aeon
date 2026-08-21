@@ -384,7 +384,7 @@ def automation_metrics_workspace():
     service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
     if not supabase_url or not service_key:
         if not _metrics_local_fallback_enabled():
-            return jsonify({"ok": False, "error": "Supabase not configured"}), 503
+            return _error_response("Supabase not configured", "SUPABASE_NOT_CONFIGURED", 503)
         # Use local SQLite fallback for preview/dev environments.
         executions = list_automation_executions(str(workspace_id), since=since)
         source = "local"
@@ -410,7 +410,7 @@ def automation_metrics_workspace():
             source = "supabase"
         except Exception as e:
             logger.warning("Failed to fetch automation metrics from Supabase: %s", e)
-            return jsonify({"ok": False, "error": str(e)}), 500
+            return _error_response(str(e), "INTERNAL_ERROR", 500)
 
     metrics = _aggregate_automation_metrics(executions)
 
@@ -447,7 +447,7 @@ def automation_metrics_rule(rule_id: str):
     service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
     if not supabase_url or not service_key:
         if not _metrics_local_fallback_enabled():
-            return jsonify({"ok": False, "error": "Supabase not configured"}), 503
+            return _error_response("Supabase not configured", "SUPABASE_NOT_CONFIGURED", 503)
         # Use local SQLite fallback for preview/dev environments.
         all_executions = list_automation_executions(str(workspace_id), since=since)
         executions = [e for e in all_executions if e.get("rule_id") == rule_id]
@@ -475,7 +475,7 @@ def automation_metrics_rule(rule_id: str):
             source = "supabase"
         except Exception as e:
             logger.warning("Failed to fetch automation metrics from Supabase: %s", e)
-            return jsonify({"ok": False, "error": str(e)}), 500
+            return _error_response(str(e), "INTERNAL_ERROR", 500)
 
     metrics = _aggregate_automation_metrics(executions)
 
@@ -745,9 +745,23 @@ class RateLimiter:
         return request.remote_addr or "unknown"
 
 
-_rate_limit_max = int(os.environ.get("AEON_RATE_LIMIT", "60"))
+def _rate_limit_env(name: str, default: int) -> int:
+    try:
+        return max(1, int(os.environ.get(name, str(default))))
+    except (TypeError, ValueError):
+        return default
+
+
+_rate_limit_max = _rate_limit_env("AEON_RATE_LIMIT", 60)
 _rate_limit_window = int(os.environ.get("AEON_RATE_LIMIT_WINDOW_SECONDS", "60"))
 rate_limiter = RateLimiter(max_requests=_rate_limit_max, window_seconds=_rate_limit_window)
+# Per-identity limits are keyed by authenticated user/workspace instead of IP,
+# so a shared office NAT or proxy cannot throttle a whole tenant and a leaked
+# token cannot hammer one workspace.
+_user_rate_limit = _rate_limit_env("AEON_RATE_LIMIT_USER", 600)
+_workspace_rate_limit = _rate_limit_env("AEON_RATE_LIMIT_WORKSPACE", 1800)
+user_rate_limiter = RateLimiter(max_requests=_user_rate_limit, window_seconds=_rate_limit_window)
+workspace_rate_limiter = RateLimiter(max_requests=_workspace_rate_limit, window_seconds=_rate_limit_window)
 
 
 # ── Prometheus/OpenMetrics metrics ──────────────────────────────────────────
@@ -840,6 +854,17 @@ metrics_collector = MetricsCollector()
 
 
 # ── Request lifecycle hooks ──────────────────────────────────────────────────
+
+
+def _error_response(message: str, code: str, status: int = 400):
+    """Build a consistent error response with request ID and structured error code."""
+    request_id = getattr(g, "request_id", None)
+    body: dict[str, Any] = {"ok": False, "error": message, "code": code}
+    if request_id:
+        body["request_id"] = request_id
+    return jsonify(body), status
+
+
 _REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 
 
@@ -856,6 +881,33 @@ def _request_id_for_request() -> str:
     return f"aeon-{secrets.token_urlsafe(16)}"
 
 
+def _rate_limit_response(scope: str, identifier: str):
+    """Build a 429 response and record the throttled request as a security event."""
+    logger.warning("Rate limit exceeded (%s) for %s", scope, identifier)
+    response = jsonify({"ok": False, "error": "rate limit exceeded", "scope": scope})
+    response.status_code = 429
+    response.headers["Retry-After"] = str(max(1, _rate_limit_window))
+    try:
+        ctx = _governance_context()
+        get_governance().log_audit(
+            action="RATE_LIMIT_EXCEEDED",
+            module="security",
+            user_id=ctx.get("user_id"),
+            workspace_id=ctx.get("workspace_id"),
+            email=ctx.get("email"),
+            metadata={"scope": scope, "identifier_hash": _safe_identifier_fingerprint(identifier), "path": request.path},
+        )
+    except Exception as exc:  # pragma: no cover
+        logger.warning("Failed to audit rate-limit event: %s", exc)
+    return response
+
+
+def _safe_identifier_fingerprint(identifier: str) -> str:
+    """Return a short digest so audit records never store raw IPs/user IDs."""
+    import hashlib
+    return hashlib.sha256(str(identifier).encode("utf-8")).hexdigest()[:16]
+
+
 @app.before_request
 def _before_request():
     g.start_time = time.time()
@@ -865,8 +917,18 @@ def _before_request():
     if request.path in ("/health", "/ready", "/metrics"):
         return None
     if not rate_limiter.is_allowed(rate_limiter.key_for_request()):
-        logger.warning("Rate limit exceeded for %s", rate_limiter.key_for_request())
-        return jsonify({"ok": False, "error": "rate limit exceeded"}), 429
+        return _rate_limit_response("ip", rate_limiter.key_for_request())
+
+    # Authenticated identity limits. The auth context is resolved here only
+    # for throttling; the route decorators perform the full authorization.
+    identity = get_current_user_context()
+    if identity and _rate_limit_window > 0:
+        user_id = str(identity.get("user_id") or "").strip()
+        workspace_id = str(identity.get("workspace_id") or "").strip()
+        if user_id and not user_rate_limiter.is_allowed(f"user:{user_id}"):
+            return _rate_limit_response("user", user_id)
+        if workspace_id and not workspace_rate_limiter.is_allowed(f"workspace:{workspace_id}"):
+            return _rate_limit_response("workspace", workspace_id)
     logger.info("request_id=%s %s %s", g.request_id, request.method, request.path)
     return None
 
@@ -895,8 +957,12 @@ def _after_request(response):
 
 @app.errorhandler(Exception)
 def _handle_exception(e):
-    logger.exception("Unhandled exception: %s", e)
-    return jsonify({"ok": False, "error": "internal server error"}), 500
+    request_id = getattr(g, "request_id", None)
+    logger.exception("Unhandled exception request_id=%s: %s", request_id, e)
+    body = {"ok": False, "error": "internal server error", "code": "INTERNAL_ERROR"}
+    if request_id:
+        body["request_id"] = request_id
+    return jsonify(body), 500
 
 # ── Agent cache (one per app_id) ─────────────────────────────────────────────
 _agent_lock = threading.Lock()
@@ -960,18 +1026,34 @@ def get_agent(app_id: str) -> ReflectiveAgent:
 class JobQueue:
     """Background task queue backed by a ThreadPoolExecutor.
 
-    Uses a managed thread pool for concurrent async jobs and keeps an LRU of
-    completed results to prevent unbounded memory growth.
+    Uses a managed thread pool for concurrent async jobs, retries transient
+    failures with bounded exponential backoff, and keeps a bounded dead-letter
+    ledger of jobs that exhausted their retries. Completed results are kept in
+    a bounded store to prevent unbounded memory growth.
     """
 
-    def __init__(self, workers: int | None = None):
+    def __init__(self, workers: int | None = None, max_retries: int | None = None):
         self.workers = workers or int(os.environ.get("AEON_WORKER_THREADS", "5"))
+        self.max_retries = max_retries if max_retries is not None else int(os.environ.get("AEON_JOB_MAX_RETRIES", "2"))
         self._executor = ThreadPoolExecutor(max_workers=self.workers, thread_name_prefix="aeon_worker")
         self._results: dict[str, Any] = {}
+        self._dead_letter: list[dict[str, Any]] = []
+        self._dead_letter_limit = int(os.environ.get("AEON_JOB_DEAD_LETTER_LIMIT", "200"))
         self._lock = threading.Lock()
         self._pending = 0
 
-    def _run_job(self, job_id: str, app_id: str, action: str, payload: dict[str, Any]) -> None:
+    def _dispatch(self, fn) -> None:
+        """Submit a callable, tracking pending count. Used by initial submit and retries."""
+        with self._lock:
+            self._pending += 1
+        future = self._executor.submit(fn)
+        future.add_done_callback(self._dec_pending)
+
+    def _retry_delay(self, attempt: int) -> float:
+        """Exponential backoff with a cap (1s, 2s, 4s, ... capped at 30s)."""
+        return min(30.0, float(2 ** max(0, attempt - 1)))
+
+    def _run_job(self, job_id: str, app_id: str, action: str, payload: dict[str, Any], attempt: int = 1) -> None:
         try:
             agent = get_agent(app_id)
             if action == "act":
@@ -994,36 +1076,78 @@ class JobQueue:
             with self._lock:
                 self._results[job_id] = {
                     "status": "done",
+                    "attempts": attempt,
                     "finished_at": datetime.now(timezone.utc).isoformat(),
                     "result": result,
                 }
         except Exception as e:
-            with self._lock:
-                self._results[job_id] = {
-                    "status": "error",
-                    "finished_at": datetime.now(timezone.utc).isoformat(),
-                    "error": str(e),
-                }
+            if attempt < self.max_retries:
+                with self._lock:
+                    self._results[job_id] = {
+                        "status": "retrying",
+                        "attempts": attempt,
+                        "error": str(e),
+                        "next_retry_at": datetime.now(timezone.utc).isoformat(),
+                    }
+                delay = self._retry_delay(attempt + 1)
+                timer = threading.Timer(
+                    delay,
+                    lambda: self._dispatch(lambda: self._run_job(job_id, app_id, action, payload, attempt + 1)),
+                )
+                timer.daemon = True
+                timer.start()
+            else:
+                with self._lock:
+                    self._results[job_id] = {
+                        "status": "failed",
+                        "attempts": attempt,
+                        "finished_at": datetime.now(timezone.utc).isoformat(),
+                        "error": str(e),
+                    }
+                    self._dead_letter.append({
+                        "job_id": job_id,
+                        "app_id": app_id,
+                        "action": action,
+                        "attempts": attempt,
+                        "error": str(e),
+                        "failed_at": datetime.now(timezone.utc).isoformat(),
+                    })
+                    if len(self._dead_letter) > self._dead_letter_limit:
+                        self._dead_letter = self._dead_letter[-self._dead_letter_limit:]
 
     def submit(self, app_id: str, action: str, payload: dict[str, Any]) -> str:
         job_id = f"{app_id}-{action}-{int(time.time() * 1000)}-{id(payload)}"
         with self._lock:
             self._results[job_id] = {
                 "status": "queued",
+                "attempts": 0,
                 "submitted_at": datetime.now(timezone.utc).isoformat(),
             }
-            self._pending += 1
-        future = self._executor.submit(self._run_job, job_id, app_id, action, payload)
-        future.add_done_callback(lambda _f: self._dec_pending())
+        self._dispatch(lambda: self._run_job(job_id, app_id, action, payload, 1))
         return job_id
 
-    def _dec_pending(self) -> None:
+    def _dec_pending(self, _future=None) -> None:
         with self._lock:
             self._pending = max(0, self._pending - 1)
 
     def status(self, job_id: str) -> dict[str, Any] | None:
         with self._lock:
             return self._results.get(job_id)
+
+    def dead_letters(self, limit: int = 50) -> list[dict[str, Any]]:
+        """Return recent dead-lettered jobs (newest first) for ops visibility."""
+        with self._lock:
+            return list(reversed(self._dead_letter[-limit:]))
+
+    def summary(self) -> dict[str, Any]:
+        with self._lock:
+            return {
+                "pending": int(self._pending),
+                "workers": int(self.workers),
+                "max_retries": int(self.max_retries),
+                "tracked_jobs": len(self._results),
+                "dead_letters": len(self._dead_letter),
+            }
 
     def shutdown(self):
         self._executor.shutdown(wait=True)
@@ -1035,7 +1159,38 @@ job_queue = JobQueue(workers=2)
 # ── Flask routes ───────────────────────────────────────────────────────────
 @app.route("/health", methods=["GET"])
 def health():
-    return jsonify({"ok": True, "backend": "aeon_python_kernel"})
+    dependencies = {}
+    # Database connectivity
+    try:
+        from aeon_db import get_db as _health_db
+        from sqlalchemy import text as _sa_text
+        db = _health_db()
+        with db.session() as s:
+            s.execute(_sa_text("SELECT 1"))
+        dependencies["database"] = {"status": "ok"}
+    except Exception as exc:
+        dependencies["database"] = {"status": "error", "message": str(exc)[:200]}
+    # Governance subsystem
+    try:
+        get_governance().query_audit(limit=1)
+        dependencies["governance"] = {"status": "ok"}
+    except Exception as exc:
+        dependencies["governance"] = {"status": "error", "message": str(exc)[:200]}
+    # Stripe billing (non-critical)
+    try:
+        sc = get_stripe_client()
+        dependencies["stripe"] = {"status": "ok", "available": sc.available}
+    except Exception as exc:
+        dependencies["stripe"] = {"status": "degraded", "message": str(exc)[:200]}
+    healthy = all(d["status"] == "ok" or d.get("status") == "degraded" for d in dependencies.values())
+    db_ok = dependencies.get("database", {}).get("status") == "ok"
+    status_code = 200 if db_ok else 503
+    return jsonify({
+        "ok": db_ok,
+        "backend": "aeon_python_kernel",
+        "healthy": healthy,
+        "dependencies": dependencies,
+    }), status_code
 
 
 @app.route("/live", methods=["GET"])
@@ -1051,7 +1206,7 @@ def dashboard_stats():
     """Return aggregate counts for the current workspace dashboard."""
     workspace_id = g.user.get("workspace_id")
     if not workspace_id:
-        return jsonify({"ok": False, "error": "workspace not selected"}), 400
+        return _error_response("workspace not selected", "WORKSPACE_NOT_SELECTED", 400)
 
     anomalies = list_anomalies(str(workspace_id))
     incidents = list_incidents(str(workspace_id))
@@ -1131,7 +1286,9 @@ def _operations_worker_snapshot() -> dict[str, Any]:
         return {
             "pending": int(job_queue._pending),
             "workers": int(job_queue.workers),
+            "max_retries": int(job_queue.max_retries),
             "tracked_jobs": len(job_queue._results),
+            "dead_letters": len(job_queue._dead_letter),
             "status_counts": statuses,
         }
 
@@ -1143,12 +1300,12 @@ def operations_snapshot():
     """Return a tenant-scoped, count-only operations snapshot for the dashboard."""
     workspace_id = str(getattr(g, "workspace_id", None) or g.user.get("workspace_id") or "")
     if not workspace_id:
-        return jsonify({"ok": False, "error": "workspace not selected"}), 400
+        return _error_response("workspace not selected", "WORKSPACE_NOT_SELECTED", 400)
 
     app_id = request.args.get("app_id") or f"ws-{workspace_id}"
     expected_app_id = f"ws-{workspace_id}"
     if app_id != expected_app_id:
-        return jsonify({"ok": False, "error": "app_id must match the workspace agent"}), 403
+        return _error_response("app_id must match the workspace agent", "FORBIDDEN", 403)
 
     agent = get_agent(app_id)
     agent_snapshot = _operations_agent_snapshot(agent, app_id)
@@ -1199,6 +1356,50 @@ init_stripe(AEON_ROOT)
 
 
 # ── Auth routes ────────────────────────────────────────────────────────────
+def _audit_auth_event(
+    action: str,
+    user_id: str | None = None,
+    email: str | None = None,
+    workspace_id: str | None = None,
+    metadata: dict | None = None,
+) -> None:
+    """Write a security-relevant auth event to the tamper-evident audit log.
+
+    Best-effort by design: a logging failure must never break the auth flow.
+    """
+    try:
+        from aeon_db import add_audit_log as _add_audit_log
+
+        _add_audit_log(
+            action=action,
+            module="auth",
+            user_id=user_id,
+            workspace_id=workspace_id,
+            email=email,
+            metadata=metadata or {},
+        )
+    except Exception:  #nosec B110 - auditing must not block authentication
+        pass
+
+
+@app.route("/stripe/webhook-deliveries", methods=["GET"])
+@require_auth
+@require_workspace_role("ADMIN")
+def stripe_webhook_deliveries():
+    """Return a queryable log of recent Stripe webhook deliveries for admins.
+
+    Statuses: processed | duplicate | skipped | verification_failed. Records
+    carry no customer PII or secret material.
+    """
+    limit = min(500, max(1, request.args.get("limit", 100, type=int)))
+    try:
+        deliveries = get_stripe_client().list_webhook_deliveries(limit)
+        return jsonify({"ok": True, "deliveries": deliveries})
+    except Exception as e:
+        logger.warning("Failed to list Stripe webhook deliveries: %s", e)
+        return _error_response(str(e), "INTERNAL_ERROR", 500)
+
+
 @app.route("/auth/login", methods=["POST"])
 def auth_login():
     """Issue a short-lived JWT access token for a valid user."""
@@ -1211,17 +1412,20 @@ def auth_login():
     email = (data.get("email") or "").strip().lower()
     password = data.get("password", "")
     if not email or not password:
-        return jsonify({"ok": False, "error": "email and password required"}), 400
+        return _error_response("email and password required", "MISSING_CREDENTIALS", 400)
 
     # Fallback admin (dev/bootstrap)
     if _FallbackAdmin.matches(email, password):
         token = create_access_token(_FallbackAdmin.id, _FallbackAdmin.email, _FallbackAdmin.role, _FallbackAdmin.workspace_id)
+        _audit_auth_event("LOGIN_SUCCESS", user_id=_FallbackAdmin.id, email=_FallbackAdmin.email, workspace_id=_FallbackAdmin.workspace_id)
         return jsonify({"ok": True, "token": token, "user": {"id": _FallbackAdmin.id, "email": _FallbackAdmin.email, "role": _FallbackAdmin.role}})
 
     db = get_db()
     user = db.get_user_by_email(email)
     if not user or not check_password_hash(user.password, password):
-        return jsonify({"ok": False, "error": "invalid credentials"}), 401
+        # Audit the failed attempt (email only, never the supplied password).
+        _audit_auth_event("LOGIN_FAILED", email=email)
+        return _error_response("invalid credentials", "INVALID_CREDENTIALS", 401)
 
     # Pick the first workspace membership as the default workspace context.
     workspace_id = None
@@ -1232,6 +1436,7 @@ def auth_login():
     except Exception:  #nosec B110
         pass
     token = create_access_token(user.id, user.email, user.role, workspace_id)
+    _audit_auth_event("LOGIN_SUCCESS", user_id=str(user.id), email=user.email, workspace_id=workspace_id)
     return jsonify({
         "ok": True,
         "token": token,
@@ -1250,7 +1455,7 @@ def auth_me():
     db = get_db()
     user = db.get_user_by_id(user_id)
     if not user:
-        return jsonify({"ok": False, "error": "user not found"}), 404
+        return _error_response("user not found", "USER_NOT_FOUND", 404)
 
     workspace = None
     try:
@@ -1297,14 +1502,14 @@ def auth_register():
     name = (data.get("name") or "").strip() or email.split("@")[0]
 
     if not email or not password:
-        return jsonify({"ok": False, "error": "email and password required"}), 400
+        return _error_response("email and password required", "MISSING_CREDENTIALS", 400)
     if len(password) < 6:
-        return jsonify({"ok": False, "error": "password must be at least 6 characters"}), 400
+        return _error_response("password must be at least 6 characters", "WEAK_PASSWORD", 400)
 
     db = get_db()
     existing = db.get_user_by_email(email)
     if existing:
-        return jsonify({"ok": False, "error": "email already registered"}), 409
+        return _error_response("email already registered", "EMAIL_TAKEN", 409)
 
     try:
         user = User(
@@ -1358,6 +1563,12 @@ def auth_register():
             link="/os",
             workspace_id=workspace_id,
         )
+        _audit_auth_event(
+            "USER_REGISTERED",
+            user_id=str(user.id),
+            email=user.email,
+            workspace_id=workspace_id,
+        )
         return jsonify({
             "ok": True,
             "token": token,
@@ -1371,7 +1582,7 @@ def auth_register():
         }), 201
     except Exception as e:
         logger.exception("Registration failed: %s", e)
-        return jsonify({"ok": False, "error": f"registration failed: {e}"}), 500
+        return _error_response(f"registration failed: {e}", "REGISTRATION_FAILED", 500)
 
 
 @app.route("/auth/jwt/status", methods=["GET"])
@@ -1389,9 +1600,17 @@ def auth_jwt_status():
 def auth_jwt_rotate():
     """Rotate the primary JWT signing secret. Accepts an optional explicit secret."""
     from aeon_auth import rotate_jwt_secret
+    from aeon_auth import get_current_user_context
     data = request.get_json(silent=True) or {}
     new_secret = data.get("secret")
     result = rotate_jwt_secret(new_secret)
+    ctx = get_current_user_context() or {}
+    _audit_auth_event(
+        "JWT_ROTATED",
+        user_id=ctx.get("user_id"),
+        email=ctx.get("email"),
+        workspace_id=(ctx.get("workspace_id") or None),
+    )
     return jsonify({"ok": True, "rotation": result})
 
 
@@ -1409,7 +1628,7 @@ def audit_integrity():
         report = verify_audit_chain()
     except Exception as exc:
         logger.warning("Audit chain verification failed: %s", exc)
-        return jsonify({"ok": False, "error": "audit chain verification unavailable"}), 503
+        return _error_response("audit chain verification unavailable", "SUBSYSTEM_UNAVAILABLE", 503)
     status = 200 if report.get("ok") else 503
     return jsonify({"ok": bool(report.get("ok")), "audit_chain": report}), status
 
@@ -1484,9 +1703,9 @@ def sso_providers_index():
     config = data.get("config") or {}
     attribute_mapping = data.get("attribute_mapping") or {}
     if protocol not in ("saml", "oidc"):
-        return jsonify({"ok": False, "error": "protocol must be saml or oidc"}), 400
+        return _error_response("protocol must be saml or oidc", "VALIDATION_ERROR", 400)
     if not name:
-        return jsonify({"ok": False, "error": "name is required"}), 400
+        return _error_response("name is required", "MISSING_FIELD", 400)
 
     provider = _create_sso_provider(
         workspace_id=workspace_id,
@@ -1516,7 +1735,7 @@ def sso_provider_detail(provider_id: str):
     provider = _get_sso_provider(provider_id)
     if not provider or str(provider.workspace_id) != workspace_id:
         # Do not reveal whether a provider exists in another workspace.
-        return jsonify({"ok": False, "error": "provider not found"}), 404
+        return _error_response("provider not found", "NOT_FOUND", 404)
 
     if request.method == "GET":
         return jsonify({
@@ -1559,7 +1778,7 @@ def sso_oidc_login(provider_id: str):
     """Initiate an OIDC login by redirecting to the identity provider."""
     provider = _get_sso_provider(provider_id)
     if not provider or not provider.active or provider.protocol != "oidc":
-        return jsonify({"ok": False, "error": "OIDC provider not found"}), 404
+        return _error_response("OIDC provider not found", "NOT_FOUND", 404)
 
     state = secrets.token_urlsafe(32)
     nonce = secrets.token_urlsafe(32)
@@ -1575,23 +1794,23 @@ def sso_oidc_callback(provider_id: str):
     state = request.args.get("state")
     code = request.args.get("code")
     if not state or not code:
-        return jsonify({"ok": False, "error": "missing state or code"}), 400
+        return _error_response("missing state or code", "MISSING_FIELD", 400)
 
     cache = get_cache()
     stored = cache.get(f"oidc:state:{state}")
     if not stored or stored.get("provider_id") != provider_id:
-        return jsonify({"ok": False, "error": "invalid or expired state"}), 400
+        return _error_response("invalid or expired state", "TOKEN_INVALID", 400)
     cache.delete(f"oidc:state:{state}")
 
     provider = _get_sso_provider(provider_id)
     if not provider or not provider.active or provider.protocol != "oidc":
-        return jsonify({"ok": False, "error": "OIDC provider not found"}), 404
+        return _error_response("OIDC provider not found", "NOT_FOUND", 404)
 
     try:
         result = complete_oidc_login(provider, code, state, stored.get("nonce"))
     except Exception as e:  # noqa: BLE001
         logger.warning("OIDC callback failed: %s", e)
-        return jsonify({"ok": False, "error": str(e)}), 400
+        return _error_response(str(e), "VALIDATION_ERROR", 400)
     return jsonify(result)
 
 
@@ -1599,15 +1818,15 @@ def sso_oidc_callback(provider_id: str):
 def sso_saml_login(provider_id: str):
     """Initiate a SAML 2.0 login by redirecting to the identity provider."""
     if not saml_available():
-        return jsonify({"ok": False, "error": "SAML support is not installed"}), 501
+        return _error_response("SAML support is not installed", "SUBSYSTEM_UNAVAILABLE", 501)
     provider = _get_sso_provider(provider_id)
     if not provider or not provider.active or provider.protocol != "saml":
-        return jsonify({"ok": False, "error": "SAML provider not found"}), 404
+        return _error_response("SAML provider not found", "NOT_FOUND", 404)
     try:
         redirect_url = initiate_saml_login(provider)
     except Exception as e:  # noqa: BLE001
         logger.warning("SAML login initiation failed: %s", e)
-        return jsonify({"ok": False, "error": str(e)}), 400
+        return _error_response(str(e), "VALIDATION_ERROR", 400)
     return jsonify({"ok": True, "redirect_url": redirect_url})
 
 
@@ -1615,15 +1834,15 @@ def sso_saml_login(provider_id: str):
 def sso_saml_acs(provider_id: str):
     """SAML Assertion Consumer Service endpoint."""
     if not saml_available():
-        return jsonify({"ok": False, "error": "SAML support is not installed"}), 501
+        return _error_response("SAML support is not installed", "SUBSYSTEM_UNAVAILABLE", 501)
     provider = _get_sso_provider(provider_id)
     if not provider or not provider.active or provider.protocol != "saml":
-        return jsonify({"ok": False, "error": "SAML provider not found"}), 404
+        return _error_response("SAML provider not found", "NOT_FOUND", 404)
     try:
         result = complete_saml_login(provider, request.form.to_dict(flat=True))
     except Exception as e:  # noqa: BLE001
         logger.warning("SAML ACS failed: %s", e)
-        return jsonify({"ok": False, "error": str(e)}), 400
+        return _error_response(str(e), "VALIDATION_ERROR", 400)
     return jsonify(result)
 
 
@@ -1705,7 +1924,7 @@ def workspace_security_config(workspace_id: str):
             kms_key_id=data.get("kms_key_id"),
         )
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _error_response(str(e), "INTERNAL_ERROR", 500)
     return jsonify({
         "ok": True,
         "workspace_id": workspace_id,
@@ -1787,12 +2006,12 @@ def workspace_security_encrypt(workspace_id: str):
     data = request.json or {}
     payload = data.get("payload")
     if not isinstance(payload, dict):
-        return jsonify({"ok": False, "error": "payload must be an object"}), 400
+        return _error_response("payload must be an object", "INVALID_PAYLOAD", 400)
     cfg = get_workspace_security_config(workspace_id)
     try:
         encrypted, envelope = residency_manager.encrypt_envelope(payload, kms_key_id=cfg.kms_key_id if cfg else None)
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _error_response(str(e), "INTERNAL_ERROR", 500)
     return jsonify({
         "ok": True,
         "workspace_id": workspace_id,
@@ -1810,11 +2029,11 @@ def workspace_security_decrypt(workspace_id: str):
     encrypted_data = data.get("encrypted_data")
     envelope = data.get("envelope")
     if not isinstance(encrypted_data, str) or not isinstance(envelope, dict):
-        return jsonify({"ok": False, "error": "encrypted_data and envelope are required"}), 400
+        return _error_response("encrypted_data and envelope are required", "MISSING_FIELD", 400)
     try:
         decrypted = residency_manager.decrypt_envelope(encrypted_data, envelope)
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _error_response(str(e), "INTERNAL_ERROR", 500)
     return jsonify({
         "ok": True,
         "workspace_id": workspace_id,
@@ -1853,7 +2072,7 @@ def workspace_chat(workspace_id: str):
     data = request.json or {}
     query = (data.get("query") or "").strip()
     if not query:
-        return jsonify({"ok": False, "error": "missing query"}), 400
+        return _error_response("missing query", "MISSING_FIELD", 400)
     ctx = _governance_context()
 
     # Verify workspace access
@@ -1861,7 +2080,7 @@ def workspace_chat(workspace_id: str):
     db = get_db()
     membership = db.get_membership(workspace_id, user_id)
     if not membership:
-        return jsonify({"ok": False, "error": "workspace access denied"}), 403
+        return _error_response("workspace access denied", "WORKSPACE_ACCESS_DENIED", 403)
 
     try:
         # Request-local provider: never mutate process-global provider state so
@@ -1896,7 +2115,7 @@ def workspace_chat(workspace_id: str):
             email=ctx.get("email"),
             metadata=_secure_metadata({"error": str(e)}, ctx.get("workspace_id")),
         )
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _error_response(str(e), "INTERNAL_ERROR", 500)
 
 
 @app.route("/workspaces/<workspace_id>/history", methods=["GET"])
@@ -1911,7 +2130,7 @@ def workspace_history(workspace_id: str):
     db = get_db()
     membership = db.get_membership(workspace_id, user_id)
     if not membership:
-        return jsonify({"ok": False, "error": "workspace access denied"}), 403
+        return _error_response("workspace access denied", "WORKSPACE_ACCESS_DENIED", 403)
 
     limit = min(100, max(1, request.args.get("limit", 50, type=int)))
 
@@ -1947,7 +2166,7 @@ def workspace_history(workspace_id: str):
         context = agent.memory.recent_context(limit)
         return jsonify({"ok": True, "history": context, "source": "local"})
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _error_response(str(e), "INTERNAL_ERROR", 500)
 
 
 # ── Per-tenant Branding & Theme (Phase 48+) ─────────────────────────────────
@@ -2030,9 +2249,9 @@ def workspace_branding_update(workspace_id: str):
         validated = _validate_branding_payload(data)
         updated = update_workspace_theme_config(workspace_id, validated)
     except ValueError as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        return _error_response(str(exc), "VALIDATION_ERROR", 400)
     except Exception as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 500
+        return _error_response(str(exc), "INTERNAL_ERROR", 500)
     return jsonify({
         "ok": True,
         "workspace_id": workspace_id,
@@ -2050,10 +2269,10 @@ def workspace_seed_demo(workspace_id: str):
         result = seed_demo_workspace(workspace_id)
         return jsonify(result)
     except ValueError as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 404
+        return _error_response(str(exc), "NOT_FOUND", 404)
     except Exception as exc:
         logger.exception("Demo seed failed for workspace %s", workspace_id)
-        return jsonify({"ok": False, "error": str(exc)}), 500
+        return _error_response(str(exc), "INTERNAL_ERROR", 500)
 
 
 @app.route("/ready", methods=["GET"])
@@ -2159,7 +2378,7 @@ def chat():
     data = request.json or {}
     query = (data.get("query") or "").strip()
     if not query:
-        return jsonify({"ok": False, "error": "missing query"}), 400
+        return _error_response("missing query", "MISSING_FIELD", 400)
     ctx = _governance_context()
     try:
         # Request-local provider override; never mutate shared process state.
@@ -2181,6 +2400,24 @@ def chat():
             email=ctx.get("email"),
             metadata=_secure_metadata({"backend": result.get("backend", "unknown"), "provider_override": data.get("provider")}, ctx.get("workspace_id")),
         )
+        # AI Execution Ledger: record every LLM call for governance & cost tracking
+        try:
+            from aeon_ai_ledger import record_ai_execution
+            record_ai_execution(
+                workspace_id=str(ctx.get("workspace_id", "")),
+                user_id=str(ctx.get("user_id", "")),
+                provider=str(data.get("provider") or ""),
+                model=str(data.get("model") or ""),
+                query=query,
+                status="ok",
+                output_length=len(result.get("answer", "")),
+                backend=result.get("backend", "unknown"),
+                tokens_output=int(result.get("tokens_used", 0)),
+                tool_calls=int(result.get("tool_calls", 0)),
+                latency_ms=int(result.get("wall_s", 0) * 1000),
+            )
+        except Exception:
+            pass  # ledger must never break the request
         return jsonify({"ok": True, "data": result, "backend": result.get("backend", "unknown")})
     except Exception as e:
         get_governance_manager().log_audit(
@@ -2191,7 +2428,19 @@ def chat():
             email=ctx.get("email"),
             metadata=_secure_metadata({"error": str(e)}, ctx.get("workspace_id")),
         )
-        return jsonify({"ok": False, "error": str(e)}), 500
+        # Record failed execution in ledger
+        try:
+            from aeon_ai_ledger import record_ai_execution
+            record_ai_execution(
+                workspace_id=str(ctx.get("workspace_id", "")),
+                user_id=str(ctx.get("user_id", "")),
+                query=query,
+                status="failed",
+                error=str(e)[:500],
+            )
+        except Exception:
+            pass
+        return _error_response(str(e), "INTERNAL_ERROR", 500)
 
 
 @app.route("/apps/<app_id>/chat", methods=["POST"])
@@ -2201,7 +2450,7 @@ def app_chat(app_id: str):
     data = request.json or {}
     query = (data.get("query") or "").strip()
     if not query:
-        return jsonify({"ok": False, "error": "missing query"}), 400
+        return _error_response("missing query", "MISSING_FIELD", 400)
     ctx = _governance_context()
     try:
         agent = get_agent(app_id)
@@ -2226,6 +2475,24 @@ def app_chat(app_id: str):
             email=ctx.get("email"),
             metadata=_secure_metadata({"backend": result.get("backend", "unknown")}, ctx.get("workspace_id")),
         )
+        # AI Execution Ledger
+        try:
+            from aeon_ai_ledger import record_ai_execution
+            record_ai_execution(
+                workspace_id=str(ctx.get("workspace_id", "")),
+                user_id=str(ctx.get("user_id", "")),
+                provider=str(data.get("provider") or ""),
+                model=str(data.get("model") or ""),
+                query=query,
+                status="ok",
+                output_length=len(result.get("answer", "")),
+                backend=result.get("backend", "unknown"),
+                tokens_output=int(result.get("tokens_used", 0)),
+                tool_calls=int(result.get("tool_calls", 0)),
+                latency_ms=int(result.get("wall_s", 0) * 1000),
+            )
+        except Exception:
+            pass
         return jsonify({"ok": True, "data": result, "backend": result.get("backend", "unknown")})
     except Exception as e:
         get_governance_manager().log_audit(
@@ -2236,7 +2503,7 @@ def app_chat(app_id: str):
             email=ctx.get("email"),
             metadata=_secure_metadata({"error": str(e)}, ctx.get("workspace_id")),
         )
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _error_response(str(e), "INTERNAL_ERROR", 500)
 
 
 @app.route("/apps/<app_id>/tick", methods=["POST"])
@@ -2294,7 +2561,7 @@ def app_tick(app_id: str):
             email=ctx.get("email"),
             metadata={"error": str(e)},
         )
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _error_response(str(e), "INTERNAL_ERROR", 500)
 
 
 @app.route("/apps/<app_id>/reflect", methods=["POST"])
@@ -2307,7 +2574,7 @@ def app_reflect(app_id: str):
         metrics_collector.inc("aeon_agent_reflections_total", labels={"app_id": app_id})
         return jsonify({"ok": True, "data": result})
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _error_response(str(e), "INTERNAL_ERROR", 500)
 
 
 @app.route("/jobs/<job_id>", methods=["GET"])
@@ -2315,7 +2582,7 @@ def job_status(job_id: str):
     """Poll the status of an async job."""
     status = job_queue.status(job_id)
     if status is None:
-        return jsonify({"ok": False, "error": "job not found"}), 404
+        return _error_response("job not found", "NOT_FOUND", 404)
     return jsonify({"ok": True, "data": status})
 
 
@@ -2365,7 +2632,7 @@ def workflows_index():
         return jsonify({"ok": True, "workflows": os_inst.list_workflows()})
 
     if not _has_workspace_role(ctx, workspace_id, "OPERATOR"):
-        return jsonify({"ok": False, "error": "workspace operator required"}), 403
+        return _error_response("workspace operator required", "WORKSPACE_OPERATOR_REQUIRED", 403)
 
     data = request.json or {}
     workflow = aeon_workflows.WorkflowDefinition(
@@ -2389,15 +2656,15 @@ def workflow_detail(workflow_id: str):
     if request.method == "GET":
         wf = os_inst.get_workflow(workflow_id)
         if wf is None:
-            return jsonify({"ok": False, "error": "workflow not found"}), 404
+            return _error_response("workflow not found", "NOT_FOUND", 404)
         return jsonify({"ok": True, "workflow": wf.to_dict()})
 
     if not _has_workspace_role(ctx, workspace_id, "OPERATOR"):
-        return jsonify({"ok": False, "error": "workspace operator required"}), 403
+        return _error_response("workspace operator required", "WORKSPACE_OPERATOR_REQUIRED", 403)
     # DELETE
     if os_inst.delete_workflow(workflow_id):
         return jsonify({"ok": True})
-    return jsonify({"ok": False, "error": "workflow not found"}), 404
+    return _error_response("workflow not found", "NOT_FOUND", 404)
 
 
 @app.route("/workflows/<workflow_id>/run", methods=["POST"])
@@ -2467,7 +2734,7 @@ def workflow_run(workflow_id: str):
             email=ctx.get("email"),
             metadata={"workflow_id": workflow_id, "error": str(e)},
         )
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _error_response(str(e), "INTERNAL_ERROR", 500)
 
 
 # ── Swarm endpoints ────────────────────────────────────────────────────────
@@ -2481,7 +2748,7 @@ def swarm_run():
     roles = data.get("roles") or {}
     ctx = _governance_context()
     if not app_ids or not prompt:
-        return jsonify({"ok": False, "error": "app_ids and prompt required"}), 400
+        return _error_response("app_ids and prompt required", "MISSING_FIELD", 400)
     try:
         result = get_os().run_swarm(app_ids, prompt, roles=roles)
         metrics_collector.inc("aeon_swarm_runs_total", labels={"ok": str(result.get("ok", True))})
@@ -2541,7 +2808,7 @@ def swarm_run():
             email=ctx.get("email"),
             metadata={"app_ids": app_ids, "error": str(e)},
         )
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _error_response(str(e), "INTERNAL_ERROR", 500)
 
 
 @app.route("/swarm/<swarm_id>", methods=["GET"])
@@ -2553,7 +2820,7 @@ def swarm_status(swarm_id: str):
         status = get_os().swarm_manager.status(swarm_id)
         return jsonify(status)
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _error_response(str(e), "INTERNAL_ERROR", 500)
 
 
 @app.route("/swarm/<swarm_id>/messages", methods=["GET"])
@@ -2565,7 +2832,7 @@ def swarm_messages(swarm_id: str):
         messages = get_os().swarm_manager.messages(swarm_id)
         return jsonify({"ok": True, "swarm_id": swarm_id, "messages": messages})
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _error_response(str(e), "INTERNAL_ERROR", 500)
 
 
 # ── API Key Management endpoints ───────────────────────────────────────
@@ -2596,14 +2863,14 @@ def require_api_key(f):
     def decorated(*args, **kwargs):
         plaintext = _extract_api_key()
         if not plaintext:
-            return jsonify({"ok": False, "error": "missing API key"}), 401
+            return _error_response("missing API key", "API_KEY_MISSING", 401)
         mgr = get_api_key_manager()
         key = mgr.validate_key(plaintext)
         if not key:
-            return jsonify({"ok": False, "error": "invalid API key"}), 401
+            return _error_response("invalid API key", "API_KEY_INVALID", 401)
         # Check rate limit
         if not mgr.check_rate_limit(key.key_hash):
-            return jsonify({"ok": False, "error": "API key rate limit exceeded"}), 429
+            return _error_response("API key rate limit exceeded", "API_KEY_RATE_LIMITED", 429)
         g.api_key = key
         return f(*args, **kwargs)
     return decorated
@@ -2624,7 +2891,7 @@ def api_keys_index():
 
     # POST - create a new key (ADMIN only)
     if not _has_workspace_role(ctx, workspace_id, "ADMIN"):
-        return jsonify({"ok": False, "error": "workspace admin required"}), 403
+        return _error_response("workspace admin required", "WORKSPACE_ADMIN_REQUIRED", 403)
 
     data = request.json or {}
     name = data.get("name", "Unnamed Key")
@@ -2669,15 +2936,15 @@ def api_key_detail(key_id: str):
     if request.method == "GET":
         key = mgr.get_key_by_id(key_id)
         if not key or key.workspace_id != workspace_id:
-            return jsonify({"ok": False, "error": "key not found"}), 404
+            return _error_response("key not found", "KEY_NOT_FOUND", 404)
         return jsonify({"ok": True, "key": key.to_dict()})
 
     if request.method == "DELETE":
         if not _has_workspace_role(ctx, workspace_id, "ADMIN"):
-            return jsonify({"ok": False, "error": "workspace admin required"}), 403
+            return _error_response("workspace admin required", "WORKSPACE_ADMIN_REQUIRED", 403)
         key = mgr.get_key_by_id(key_id)
         if not key or key.workspace_id != workspace_id:
-            return jsonify({"ok": False, "error": "key not found"}), 404
+            return _error_response("key not found", "KEY_NOT_FOUND", 404)
             if mgr.revoke_key(key_id):
                 get_governance_manager().log_audit(
                     action="API_KEY_REVOKED",
@@ -2698,15 +2965,15 @@ def api_key_detail(key_id: str):
                     workspace_id=workspace_id,
                 )
                 return jsonify({"ok": True})
-        return jsonify({"ok": False, "error": "key not found"}), 404
+        return _error_response("key not found", "KEY_NOT_FOUND", 404)
 
     # PATCH - update key metadata (ADMIN only)
     if not _has_workspace_role(ctx, workspace_id, "ADMIN"):
-        return jsonify({"ok": False, "error": "workspace admin required"}), 403
+        return _error_response("workspace admin required", "WORKSPACE_ADMIN_REQUIRED", 403)
     data = request.json or {}
     key = mgr.get_key_by_id(key_id)
     if not key or key.workspace_id != workspace_id:
-        return jsonify({"ok": False, "error": "key not found"}), 404
+        return _error_response("key not found", "KEY_NOT_FOUND", 404)
     updated = mgr.update_key(
         key_id,
         name=data.get("name"),
@@ -2723,7 +2990,7 @@ def api_key_detail(key_id: str):
             metadata={"key_id": key_id, "changes": list(data.keys())},
         )
         return jsonify({"ok": True, "key": updated.to_dict()})
-    return jsonify({"ok": False, "error": "update failed"}), 500
+    return _error_response("update failed", "KEY_UPDATE_FAILED", 500)
 
 
 @app.route("/api-keys/<key_id>/rotate", methods=["POST"])
@@ -2737,11 +3004,11 @@ def api_key_rotate(key_id: str):
 
     old_key = mgr.get_key_by_id(key_id)
     if not old_key or old_key.workspace_id != workspace_id:
-        return jsonify({"ok": False, "error": "key not found"}), 404
+        return _error_response("key not found", "KEY_NOT_FOUND", 404)
 
     new_key, plaintext = mgr.rotate_key(key_id, user_id=ctx.get("user_id"))
     if not new_key:
-        return jsonify({"ok": False, "error": "rotation failed"}), 500
+        return _error_response("rotation failed", "KEY_ROTATION_FAILED", 500)
 
     get_governance_manager().log_audit(
         action="API_KEY_ROTATED",
@@ -2775,7 +3042,7 @@ def api_key_usage(key_id: str):
 
     key = mgr.get_key_by_id(key_id)
     if not key or key.workspace_id != workspace_id:
-        return jsonify({"ok": False, "error": "key not found"}), 404
+        return _error_response("key not found", "KEY_NOT_FOUND", 404)
 
     stats = mgr.get_usage_stats(key_id=key_id, days=days)
     return jsonify({"ok": True, "usage": stats})
@@ -2834,7 +3101,7 @@ def governance_audit():
     # Audit logs are workspace-admin or super-admin only
     workspace_id = request.args.get("workspace_id")
     if workspace_id and not _has_workspace_role(_governance_context(), workspace_id, "ADMIN"):
-        return jsonify({"ok": False, "error": "workspace admin required"}), 403
+        return _error_response("workspace admin required", "WORKSPACE_ADMIN_REQUIRED", 403)
     action = request.args.get("action")
     module = request.args.get("module")
     limit = min(1000, max(1, request.args.get("limit", 100, type=int)))
@@ -2854,7 +3121,7 @@ def governance_audit():
 def governance_compliance():
     workspace_id = (request.json or {}).get("workspace_id") or request.args.get("workspace_id")
     if workspace_id and not _has_workspace_role(_governance_context(), workspace_id, "ADMIN"):
-        return jsonify({"ok": False, "error": "workspace admin required"}), 403
+        return _error_response("workspace admin required", "WORKSPACE_ADMIN_REQUIRED", 403)
     if request.method == "GET":
         check_type = request.args.get("check_type", "pii_scan")
         workspace_id = request.args.get("workspace_id")
@@ -2873,7 +3140,7 @@ def governance_compliance():
 def governance_retention():
     workspace_id = (request.json or {}).get("workspace_id") or request.args.get("workspace_id")
     if workspace_id and not _has_workspace_role(_governance_context(), workspace_id, "ADMIN"):
-        return jsonify({"ok": False, "error": "workspace admin required"}), 403
+        return _error_response("workspace admin required", "WORKSPACE_ADMIN_REQUIRED", 403)
     if request.method == "GET":
         workspace_id = request.args.get("workspace_id")
         # RBAC already checked above if workspace_id was present
@@ -2884,7 +3151,7 @@ def governance_retention():
     retention_days = int(data.get("retention_days", 365))
     action = data.get("action", "archive")
     if not workspace_id:
-        return jsonify({"ok": False, "error": "workspace_id required"}), 400
+        return _error_response("workspace_id required", "MISSING_FIELD", 400)
     result = get_governance_manager().set_retention_policy(workspace_id, retention_days, action)
     return jsonify(result)
 
@@ -2911,7 +3178,7 @@ def integrations_index():
         return jsonify({"ok": True, "integrations": mgr.list_integrations(mask=True)})
 
     if not _has_workspace_role(ctx, workspace_id, "OPERATOR"):
-        return jsonify({"ok": False, "error": "workspace operator required"}), 403
+        return _error_response("workspace operator required", "WORKSPACE_OPERATOR_REQUIRED", 403)
 
     data = request.json or {}
     integration_id = data.get("id")
@@ -2929,15 +3196,15 @@ def integration_detail(integration_id: str):
     if request.method == "GET":
         cfg = mgr.get(integration_id)
         if cfg is None:
-            return jsonify({"ok": False, "error": "integration not found"}), 404
+            return _error_response("integration not found", "INTEGRATION_NOT_FOUND", 404)
         return jsonify({"ok": True, "integration": cfg.to_dict(mask=True)})
 
     # DELETE - requires OPERATOR or above in the workspace
     if not _has_workspace_role(ctx, workspace_id, "OPERATOR"):
-        return jsonify({"ok": False, "error": "workspace operator required"}), 403
+        return _error_response("workspace operator required", "WORKSPACE_OPERATOR_REQUIRED", 403)
     if mgr.delete(integration_id):
         return jsonify({"ok": True})
-    return jsonify({"ok": False, "error": "integration not found"}), 404
+    return _error_response("integration not found", "INTEGRATION_NOT_FOUND", 404)
 
 
 @app.route("/integrations/<integration_id>/run", methods=["POST"])
@@ -2980,7 +3247,7 @@ def integration_run(integration_id: str):
             workspace_id=ctx.get("workspace_id"),
             metadata={"integration_id": integration_id},
         )
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _error_response(str(e), "INTERNAL_ERROR", 500)
 
 
 @app.route("/proxy", methods=["POST"])
@@ -2990,7 +3257,7 @@ def proxy_request():
     integration_id = data.get("integration_id")
     ctx = _governance_context()
     if not integration_id:
-        return jsonify({"ok": False, "error": "integration_id required"}), 400
+        return _error_response("integration_id required", "INTEGRATION_ID_REQUIRED", 400)
     endpoint = data.get("endpoint", "")
     method = data.get("method", "GET")
     payload = data.get("payload")
@@ -3015,7 +3282,7 @@ def proxy_request():
             email=ctx.get("email"),
             metadata={"integration_id": integration_id, "error": str(e)},
         )
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _error_response(str(e), "INTERNAL_ERROR", 500)
 
 
 @app.route("/webhooks/receive/<integration_id>", methods=["POST"])
@@ -3041,7 +3308,7 @@ def webhook_receive(integration_id: str):
         metadata={"integration_id": integration_id, "verified": verified, "delivery_id": delivery.id},
     )
     if not verified:
-        return jsonify({"ok": False, "error": "unauthorized"}), 401
+        return _error_response("unauthorized", "UNAUTHORIZED", 401)
 
     return jsonify({"ok": True, "delivery_id": delivery.id})
 
@@ -3065,14 +3332,14 @@ def webhook_deliveries():
 def billing_set_plan(workspace_id: str):
     """Upgrade/downgrade a workspace plan."""
     if not _has_workspace_role(_governance_context(), workspace_id, "ADMIN"):
-        return jsonify({"ok": False, "error": "workspace admin required"}), 403
+        return _error_response("workspace admin required", "WORKSPACE_ADMIN_REQUIRED", 403)
     data = request.json or {}
     plan_id = data.get("plan_id", "free")
     credits = float(data.get("credits", 0))
 
     valid_plans = list(get_billing_calculator().plans.keys())
     if plan_id not in valid_plans:
-        return jsonify({"ok": False, "error": f"invalid plan '{plan_id}'. Valid: {valid_plans}"}), 400
+        return _error_response(f"invalid plan '{plan_id}'. Valid: {valid_plans}", "INVALID_PLAN", 400)
 
     ctx = _governance_context()
     try:
@@ -3096,7 +3363,7 @@ def billing_set_plan(workspace_id: str):
         )
         return jsonify({"ok": True, "billing": status})
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _error_response(str(e), "INTERNAL_ERROR", 500)
 
 
 @app.route("/billing/<workspace_id>/credits", methods=["POST"])
@@ -3104,11 +3371,11 @@ def billing_set_plan(workspace_id: str):
 def billing_add_credits(workspace_id: str):
     """Add credits to a workspace (simulated payment)."""
     if not _has_workspace_role(_governance_context(), workspace_id, "ADMIN"):
-        return jsonify({"ok": False, "error": "workspace admin required"}), 403
+        return _error_response("workspace admin required", "WORKSPACE_ADMIN_REQUIRED", 403)
     data = request.json or {}
     amount = float(data.get("amount", 0))
     if amount <= 0:
-        return jsonify({"ok": False, "error": "amount must be positive"}), 400
+        return _error_response("amount must be positive", "AMOUNT_MUST_BE_POSITIVE", 400)
 
     ctx = _governance_context()
     try:
@@ -3132,7 +3399,7 @@ def billing_add_credits(workspace_id: str):
         )
         return jsonify({"ok": True, "billing": status})
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _error_response(str(e), "INTERNAL_ERROR", 500)
 
 
 @app.route("/usage", methods=["POST"])
@@ -3198,7 +3465,7 @@ def stripe_checkout():
     if not workspace_id:
         workspace_id = ctx.get("workspace_id", "")
     if not workspace_id:
-        return jsonify({"ok": False, "error": "workspace_id required"}), 400
+        return _error_response("workspace_id required", "MISSING_FIELD", 400)
 
     try:
         client = get_stripe_client()
@@ -3219,7 +3486,7 @@ def stripe_checkout():
         )
         return jsonify(result)
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _error_response(str(e), "INTERNAL_ERROR", 500)
 
 
 @app.route("/stripe/portal", methods=["POST"])
@@ -3234,7 +3501,7 @@ def stripe_portal():
     if not workspace_id:
         workspace_id = ctx.get("workspace_id", "")
     if not workspace_id:
-        return jsonify({"ok": False, "error": "workspace_id required"}), 400
+        return _error_response("workspace_id required", "MISSING_FIELD", 400)
 
     try:
         client = get_stripe_client()
@@ -3252,7 +3519,7 @@ def stripe_portal():
         )
         return jsonify(result)
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _error_response(str(e), "INTERNAL_ERROR", 500)
 
 
 @app.route("/stripe/webhook", methods=["POST"])
@@ -3264,7 +3531,7 @@ def stripe_webhook_receive():
 
     if not client.available:
         logger.warning("Stripe webhook received but Stripe is not configured")
-        return jsonify({"ok": False, "error": "Stripe not configured"}), 503
+        return _error_response("Stripe not configured", "STRIPE_NOT_CONFIGURED", 503)
 
     result = client.handle_webhook(raw_body, signature)
     if not result.get("ok"):
@@ -3286,7 +3553,7 @@ def stripe_subscription_status(workspace_id: str):
         status = get_stripe_client().get_subscription_status(workspace_id)
         return jsonify({"ok": True, **status})
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _error_response(str(e), "INTERNAL_ERROR", 500)
 
 
 @app.route("/stripe/config", methods=["GET"])
@@ -3381,7 +3648,7 @@ def openapi_json():
             {"url": "http://localhost:5000", "description": "Local development server"},
         ]
         return jsonify(spec)
-    return jsonify({"ok": False, "error": "OpenAPI spec not found"}), 404
+    return _error_response("OpenAPI spec not found", "NOT_FOUND", 404)
 
 
 @app.route("/docs", methods=["GET"])
@@ -3405,7 +3672,7 @@ def llm_switch():
     data = request.json or {}
     provider_id = data.get("provider", "").strip().lower()
     if not provider_id:
-        return jsonify({"ok": False, "error": "provider required"}), 400
+        return _error_response("provider required", "PROVIDER_REQUIRED", 400)
     result = set_active_provider(provider_id)
     if not result.get("ok"):
         return jsonify(result), 400
@@ -3473,7 +3740,7 @@ def prompts_index():
 
     data = request.json or {}
     if not data.get("name"):
-        return jsonify({"ok": False, "error": "name is required"}), 400
+        return _error_response("name is required", "MISSING_FIELD", 400)
     prompt = reg.save_prompt(data)
     get_governance_manager().log_audit(
         action="PROMPT_CREATED",
@@ -3494,7 +3761,7 @@ def prompt_detail(prompt_id: str):
     if request.method == "GET":
         prompt = reg.get_prompt(prompt_id)
         if not prompt:
-            return jsonify({"ok": False, "error": "prompt not found"}), 404
+            return _error_response("prompt not found", "NOT_FOUND", 404)
         return jsonify({"ok": True, "prompt": prompt.to_dict()})
 
     if reg.delete_prompt(prompt_id):
@@ -3507,7 +3774,7 @@ def prompt_detail(prompt_id: str):
             metadata={"prompt_id": prompt_id},
         )
         return jsonify({"ok": True})
-    return jsonify({"ok": False, "error": "prompt not found"}), 404
+    return _error_response("prompt not found", "NOT_FOUND", 404)
 
 
 @app.route("/knowledge-bases", methods=["GET", "POST"])
@@ -3520,7 +3787,7 @@ def knowledge_bases_index():
 
     data = request.json or {}
     if not data.get("name"):
-        return jsonify({"ok": False, "error": "name is required"}), 400
+        return _error_response("name is required", "MISSING_FIELD", 400)
     kb = mgr.create_kb(data)
     get_governance_manager().log_audit(
         action="KB_CREATED",
@@ -3541,7 +3808,7 @@ def knowledge_base_detail(kb_id: str):
     if request.method == "GET":
         kb = mgr.get_kb(kb_id)
         if not kb:
-            return jsonify({"ok": False, "error": "knowledge base not found"}), 404
+            return _error_response("knowledge base not found", "KB_NOT_FOUND", 404)
         return jsonify({"ok": True, "knowledge_base": kb.to_dict()})
 
     if mgr.delete_kb(kb_id):
@@ -3554,7 +3821,7 @@ def knowledge_base_detail(kb_id: str):
             metadata={"kb_id": kb_id},
         )
         return jsonify({"ok": True})
-    return jsonify({"ok": False, "error": "knowledge base not found"}), 404
+    return _error_response("knowledge base not found", "KB_NOT_FOUND", 404)
 
 
 @app.route("/knowledge-bases/<kb_id>/documents", methods=["POST"])
@@ -3565,7 +3832,7 @@ def knowledge_base_upload(kb_id: str):
     doc_id = data.get("doc_id") or f"doc-{int(time.time() * 1000)}"
     ctx = _governance_context()
     if not text:
-        return jsonify({"ok": False, "error": "text is required"}), 400
+        return _error_response("text is required", "MISSING_FIELD", 400)
     try:
         result = get_kb_manager().add_document(kb_id, doc_id, text, metadata=data.get("metadata", {}))
         get_governance_manager().log_audit(
@@ -3578,9 +3845,9 @@ def knowledge_base_upload(kb_id: str):
         )
         return jsonify({"ok": True, **result})
     except ValueError as e:
-        return jsonify({"ok": False, "error": str(e)}), 404
+        return _error_response(str(e), "NOT_FOUND", 404)
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _error_response(str(e), "INTERNAL_ERROR", 500)
 
 
 @app.route("/knowledge-bases/<kb_id>/query", methods=["POST"])
@@ -3592,7 +3859,7 @@ def knowledge_base_query(kb_id: str):
     mode = data.get("mode", "hybrid")
     ctx = _governance_context()
     if not query:
-        return jsonify({"ok": False, "error": "query is required"}), 400
+        return _error_response("query is required", "MISSING_FIELD", 400)
     try:
         chunks = get_kb_manager().query(kb_id, query, top_k=top_k, mode=mode)
         get_governance_manager().log_audit(
@@ -3605,9 +3872,9 @@ def knowledge_base_query(kb_id: str):
         )
         return jsonify({"ok": True, "chunks": chunks, "mode": mode})
     except ValueError as e:
-        return jsonify({"ok": False, "error": str(e)}), 404
+        return _error_response(str(e), "NOT_FOUND", 404)
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _error_response(str(e), "INTERNAL_ERROR", 500)
 
 
 @app.route("/knowledge-bases/<kb_id>/stats", methods=["GET"])
@@ -3617,9 +3884,9 @@ def knowledge_base_stats(kb_id: str):
         stats = get_kb_manager().stats(kb_id)
         return jsonify({"ok": True, "stats": stats})
     except ValueError as e:
-        return jsonify({"ok": False, "error": str(e)}), 404
+        return _error_response(str(e), "NOT_FOUND", 404)
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _error_response(str(e), "INTERNAL_ERROR", 500)
 
 
 @app.route("/rag/chat", methods=["POST"])
@@ -3628,7 +3895,7 @@ def rag_chat():
     data = request.json or {}
     query = (data.get("query") or "").strip()
     if not query:
-        return jsonify({"ok": False, "error": "query is required"}), 400
+        return _error_response("query is required", "MISSING_FIELD", 400)
 
     kb_id = data.get("kb_id")
     prompt_id = data.get("prompt_id")
@@ -3662,7 +3929,7 @@ def rag_chat():
             email=ctx.get("email"),
             metadata={"kb_id": kb_id, "prompt_id": prompt_id, "error": str(e)},
         )
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _error_response(str(e), "INTERNAL_ERROR", 500)
 
 
 def _create_rule_snapshot(supabase_url: str, service_key: str, rule: dict, ctx: dict) -> dict | None:
@@ -3716,7 +3983,7 @@ def automations_index():
     supabase_url = os.environ.get("SUPABASE_URL")
     service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
     if not supabase_url or not service_key:
-        return jsonify({"ok": False, "error": "Supabase not configured"}), 503
+        return _error_response("Supabase not configured", "SUPABASE_NOT_CONFIGURED", 503)
 
     if request.method == "GET":
         try:
@@ -3736,7 +4003,7 @@ def automations_index():
             return jsonify({"ok": True, "rules": r.json()})
         except Exception as e:
             logger.warning("Failed to list automation rules: %s", e)
-            return jsonify({"ok": False, "error": str(e)}), 500
+            return _error_response(str(e), "INTERNAL_ERROR", 500)
 
     # POST
     data = request.json or {}
@@ -3747,7 +4014,7 @@ def automations_index():
     schedule_type = (data.get("schedule_type") or "event").strip()
     cron_expression = (data.get("cron_expression") or "").strip()
     if not name or not event_type:
-        return jsonify({"ok": False, "error": "name and event_type are required"}), 400
+        return _error_response("name and event_type are required", "MISSING_FIELD", 400)
 
     # Phase 26: support multi-step action chains via `actions` array.
     # Legacy single-action rules use `action_type`/`action_config`.
@@ -3755,26 +4022,26 @@ def automations_index():
         for idx, step in enumerate(actions):
             step_type = step.get("type") or step.get("action_type")
             if not step_type:
-                return jsonify({"ok": False, "error": f"actions[{idx}] missing type"}), 400
+                return _error_response(f"actions[{idx}] missing type", "INVALID_ACTION_TYPE", 400)
             if step_type not in {"webhook", "outbound_webhook", "swarm", "workflow", "delay", "wait_for_event", "set_variable", "get_variable", "delete_variable", "increment_variable", "call_rule", "transform", "parallel"}:
-                return jsonify({"ok": False, "error": f"actions[{idx}] type must be webhook, outbound_webhook, swarm, or workflow"}), 400
+                return _error_response(f"actions[{idx}] type must be webhook, outbound_webhook, swarm, or workflow", "INVALID_ACTION_TYPE", 400)
             run_if = step.get("run_if")
             if run_if is not None and not isinstance(run_if, dict):
-                return jsonify({"ok": False, "error": f"actions[{idx}] run_if must be a condition object or omitted"}), 400
+                return _error_response(f"actions[{idx}] run_if must be a condition object or omitted", "VALIDATION_ERROR", 400)
             loop_over = step.get("loop_over")
             if loop_over is not None and not isinstance(loop_over, str):
-                return jsonify({"ok": False, "error": f"actions[{idx}] loop_over must be a string path/template or omitted"}), 400
+                return _error_response(f"actions[{idx}] loop_over must be a string path/template or omitted", "VALIDATION_ERROR", 400)
             on_error = step.get("on_error")
             if on_error is not None:
                 if not isinstance(on_error, dict):
-                    return jsonify({"ok": False, "error": f"actions[{idx}] on_error must be an action object or omitted"}), 400
+                    return _error_response(f"actions[{idx}] on_error must be an action object or omitted", "VALIDATION_ERROR", 400)
                 if not (on_error.get("type") or on_error.get("action_type")):
-                    return jsonify({"ok": False, "error": f"actions[{idx}] on_error must have a type"}), 400
+                    return _error_response(f"actions[{idx}] on_error must have a type", "VALIDATION_ERROR", 400)
                 if (on_error.get("type") or on_error.get("action_type")) not in {"webhook", "outbound_webhook", "swarm", "workflow", "delay", "wait_for_event", "set_variable", "get_variable", "delete_variable", "increment_variable", "call_rule", "transform", "parallel"}:
-                    return jsonify({"ok": False, "error": f"actions[{idx}] on_error type must be webhook, outbound_webhook, swarm, or workflow"}), 400
+                    return _error_response(f"actions[{idx}] on_error type must be webhook, outbound_webhook, swarm, or workflow", "INVALID_ACTION_TYPE", 400)
             continue_on_error = step.get("continue_on_error")
             if continue_on_error is not None and not isinstance(continue_on_error, bool):
-                return jsonify({"ok": False, "error": f"actions[{idx}] continue_on_error must be a boolean or omitted"}), 400
+                return _error_response(f"actions[{idx}] continue_on_error must be a boolean or omitted", "VALIDATION_ERROR", 400)
         # Derive legacy action_type/action_config from the first step for compatibility.
         first_step = actions[0]
         action_type = first_step.get("type") or first_step.get("action_type")
@@ -3782,16 +4049,16 @@ def automations_index():
     elif action_type:
         action_config = data.get("action_config") or {}
         if action_type not in {"webhook", "outbound_webhook", "swarm", "workflow", "delay", "wait_for_event", "set_variable", "get_variable", "delete_variable", "increment_variable", "call_rule", "transform", "parallel"}:
-            return jsonify({"ok": False, "error": "action_type must be webhook, outbound_webhook, swarm, or workflow"}), 400
+            return _error_response("action_type must be webhook, outbound_webhook, swarm, or workflow", "INVALID_ACTION_TYPE", 400)
         # Build an actions array from the legacy single action.
         actions = [{"type": action_type, "config": action_config}]
     else:
-        return jsonify({"ok": False, "error": "Must provide actions array or legacy action_type"}), 400
+        return _error_response("Must provide actions array or legacy action_type", "MISSING_FIELD", 400)
 
     if schedule_type not in {"event", "cron"}:
-        return jsonify({"ok": False, "error": "schedule_type must be event or cron"}), 400
+        return _error_response("schedule_type must be event or cron", "VALIDATION_ERROR", 400)
     if schedule_type == "cron" and not cron_expression:
-        return jsonify({"ok": False, "error": "cron_expression is required for scheduled rules"}), 400
+        return _error_response("cron_expression is required for scheduled rules", "MISSING_FIELD", 400)
 
     cooldown_minutes = data.get("cooldown_minutes", 0)
     try:
@@ -3799,13 +4066,13 @@ def automations_index():
         if cooldown_minutes < 0:
             raise ValueError
     except (ValueError, TypeError):
-        return jsonify({"ok": False, "error": "cooldown_minutes must be a non-negative integer"}), 400
+        return _error_response("cooldown_minutes must be a non-negative integer", "VALIDATION_ERROR", 400)
 
     next_run_at = None
     if schedule_type == "cron":
         next_run_at = _compute_next_run(cron_expression)
         if next_run_at is None:
-            return jsonify({"ok": False, "error": "invalid cron_expression"}), 400
+            return _error_response("invalid cron_expression", "INVALID_CRON", 400)
 
     rule_payload = {
         "name": name,
@@ -3875,7 +4142,7 @@ def automations_index():
         return jsonify({"ok": True, "rule": created[0] if created else None}), 201
     except Exception as e:
         logger.warning("Failed to create automation rule: %s", e)
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _error_response(str(e), "INTERNAL_ERROR", 500)
 
 
 @app.route("/automations/<rule_id>", methods=["GET", "PATCH", "DELETE"])
@@ -3889,7 +4156,7 @@ def automation_detail(rule_id: str):
     supabase_url = os.environ.get("SUPABASE_URL")
     service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
     if not supabase_url or not service_key:
-        return jsonify({"ok": False, "error": "Supabase not configured"}), 503
+        return _error_response("Supabase not configured", "SUPABASE_NOT_CONFIGURED", 503)
 
     if request.method == "GET":
         r = requests.get(
@@ -3904,7 +4171,7 @@ def automation_detail(rule_id: str):
         r.raise_for_status()
         rows = r.json()
         if not rows:
-            return jsonify({"ok": False, "error": "rule not found"}), 404
+            return _error_response("rule not found", "RULE_NOT_FOUND", 404)
         return jsonify({"ok": True, "rule": rows[0]})
 
     if request.method == "DELETE":
@@ -3948,53 +4215,53 @@ def automation_detail(rule_id: str):
             if updates["cooldown_minutes"] < 0:
                 raise ValueError
         except (ValueError, TypeError):
-            return jsonify({"ok": False, "error": "cooldown_minutes must be a non-negative integer"}), 400
+            return _error_response("cooldown_minutes must be a non-negative integer", "VALIDATION_ERROR", 400)
 
     # Validate actions array when present (Phase 26 action chains)
     if "actions" in updates:
         actions = updates["actions"] or []
         if not isinstance(actions, list):
-            return jsonify({"ok": False, "error": "actions must be an array"}), 400
+            return _error_response("actions must be an array", "INVALID_PAYLOAD", 400)
         for idx, step in enumerate(actions):
             if not isinstance(step, dict):
-                return jsonify({"ok": False, "error": f"actions[{idx}] must be an object"}), 400
+                return _error_response(f"actions[{idx}] must be an object", "INVALID_PAYLOAD", 400)
             step_type = step.get("type") or step.get("action_type")
             if not step_type:
-                return jsonify({"ok": False, "error": f"actions[{idx}] missing type"}), 400
+                return _error_response(f"actions[{idx}] missing type", "INVALID_ACTION_TYPE", 400)
             if step_type not in {"webhook", "outbound_webhook", "swarm", "workflow", "delay", "wait_for_event", "set_variable", "get_variable", "delete_variable", "increment_variable", "call_rule", "transform", "parallel"}:
-                return jsonify({"ok": False, "error": f"actions[{idx}] type must be webhook, outbound_webhook, swarm, or workflow"}), 400
+                return _error_response(f"actions[{idx}] type must be webhook, outbound_webhook, swarm, or workflow", "INVALID_ACTION_TYPE", 400)
             run_if = step.get("run_if")
             if run_if is not None and not isinstance(run_if, dict):
-                return jsonify({"ok": False, "error": f"actions[{idx}] run_if must be a condition object or omitted"}), 400
+                return _error_response(f"actions[{idx}] run_if must be a condition object or omitted", "VALIDATION_ERROR", 400)
             loop_over = step.get("loop_over")
             if loop_over is not None and not isinstance(loop_over, str):
-                return jsonify({"ok": False, "error": f"actions[{idx}] loop_over must be a string path/template or omitted"}), 400
+                return _error_response(f"actions[{idx}] loop_over must be a string path/template or omitted", "VALIDATION_ERROR", 400)
             on_error = step.get("on_error")
             if on_error is not None:
                 if not isinstance(on_error, dict):
-                    return jsonify({"ok": False, "error": f"actions[{idx}] on_error must be an action object or omitted"}), 400
+                    return _error_response(f"actions[{idx}] on_error must be an action object or omitted", "VALIDATION_ERROR", 400)
                 if not (on_error.get("type") or on_error.get("action_type")):
-                    return jsonify({"ok": False, "error": f"actions[{idx}] on_error must have a type"}), 400
+                    return _error_response(f"actions[{idx}] on_error must have a type", "VALIDATION_ERROR", 400)
                 if (on_error.get("type") or on_error.get("action_type")) not in {"webhook", "outbound_webhook", "swarm", "workflow", "delay", "wait_for_event", "set_variable", "get_variable", "delete_variable", "increment_variable", "call_rule", "transform", "parallel"}:
-                    return jsonify({"ok": False, "error": f"actions[{idx}] on_error type must be webhook, outbound_webhook, swarm, or workflow"}), 400
+                    return _error_response(f"actions[{idx}] on_error type must be webhook, outbound_webhook, swarm, or workflow", "INVALID_ACTION_TYPE", 400)
             continue_on_error = step.get("continue_on_error")
             if continue_on_error is not None and not isinstance(continue_on_error, bool):
-                return jsonify({"ok": False, "error": f"actions[{idx}] continue_on_error must be a boolean or omitted"}), 400
+                return _error_response(f"actions[{idx}] continue_on_error must be a boolean or omitted", "VALIDATION_ERROR", 400)
 
     # Recompute next_run_at when switching to cron or changing the expression
     if ("schedule_type" in data or "cron_expression" in data) and updates.get("schedule_type") == "cron":
         cron_expr = data.get("cron_expression") or updates.get("cron_expression")
         if not cron_expr:
-            return jsonify({"ok": False, "error": "cron_expression is required for scheduled rules"}), 400
+            return _error_response("cron_expression is required for scheduled rules", "MISSING_FIELD", 400)
         next_run_at = _compute_next_run(cron_expr)
         if next_run_at is None:
-            return jsonify({"ok": False, "error": "invalid cron_expression"}), 400
+            return _error_response("invalid cron_expression", "INVALID_CRON", 400)
         updates["next_run_at"] = next_run_at.isoformat()
     elif "schedule_type" in data and updates.get("schedule_type") != "cron":
         updates["cron_expression"] = None
         updates["next_run_at"] = None
     if not updates:
-        return jsonify({"ok": False, "error": "no fields to update"}), 400
+        return _error_response("no fields to update", "VALIDATION_ERROR", 400)
 
     # Phase 41: enforce automation policies on the proposed rule.
     rule_payload = {
@@ -4044,7 +4311,7 @@ def automation_detail(rule_id: str):
     r.raise_for_status()
     rows = r.json()
     if not rows:
-        return jsonify({"ok": False, "error": "rule not found"}), 404
+        return _error_response("rule not found", "RULE_NOT_FOUND", 404)
     _log_automation_event("automation_updated", ctx, rule_id=rule_id, metadata={"rule_id": rule_id, "fields": list(updates.keys())})
     return jsonify({"ok": True, "rule": rows[0]})
 
@@ -4062,7 +4329,7 @@ def automation_run_now(rule_id: str):
     supabase_url = os.environ.get("SUPABASE_URL")
     service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
     if not supabase_url or not service_key:
-        return jsonify({"ok": False, "error": "Supabase not configured"}), 503
+        return _error_response("Supabase not configured", "SUPABASE_NOT_CONFIGURED", 503)
 
     try:
         r = requests.get(
@@ -4077,7 +4344,7 @@ def automation_run_now(rule_id: str):
         r.raise_for_status()
         rows = r.json() or []
         if not rows:
-            return jsonify({"ok": False, "error": "rule not found"}), 404
+            return _error_response("rule not found", "RULE_NOT_FOUND", 404)
         rule = rows[0]
 
         # Phase 41: enforce runtime automation policies.
@@ -4140,7 +4407,7 @@ def automation_run_now(rule_id: str):
         return jsonify({"ok": result.get("ok"), "dry_run": dry_run, "result": result})
     except Exception as e:
         logger.warning("Failed to run automation rule manually: %s", e)
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _error_response(str(e), "INTERNAL_ERROR", 500)
 
 
 @app.route("/automations/executions", methods=["GET"])
@@ -4154,7 +4421,7 @@ def automation_executions_list():
     supabase_url = os.environ.get("SUPABASE_URL")
     service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
     if not supabase_url or not service_key:
-        return jsonify({"ok": False, "error": "Supabase not configured"}), 503
+        return _error_response("Supabase not configured", "SUPABASE_NOT_CONFIGURED", 503)
 
     try:
         limit = min(100, max(1, request.args.get("limit", 50, type=int)))
@@ -4214,7 +4481,7 @@ def automation_executions_list():
         return jsonify({"ok": True, "executions": executions})
     except Exception as e:
         logger.warning("Failed to list automation executions: %s", e)
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _error_response(str(e), "INTERNAL_ERROR", 500)
 
 
 @app.route("/automations/executions/<execution_id>", methods=["GET"])
@@ -4228,7 +4495,7 @@ def automation_execution_detail(execution_id: str):
     supabase_url = os.environ.get("SUPABASE_URL")
     service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
     if not supabase_url or not service_key:
-        return jsonify({"ok": False, "error": "Supabase not configured"}), 503
+        return _error_response("Supabase not configured", "SUPABASE_NOT_CONFIGURED", 503)
 
     try:
         r = requests.get(
@@ -4247,7 +4514,7 @@ def automation_execution_detail(execution_id: str):
         r.raise_for_status()
         rows = r.json()
         if not rows:
-            return jsonify({"ok": False, "error": "execution not found"}), 404
+            return _error_response("execution not found", "EXECUTION_NOT_FOUND", 404)
 
         execution = rows[0]
 
@@ -4272,7 +4539,7 @@ def automation_execution_detail(execution_id: str):
         return jsonify({"ok": True, "execution": execution})
     except Exception as e:
         logger.warning("Failed to get automation execution: %s", e)
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _error_response(str(e), "INTERNAL_ERROR", 500)
 
 
 @app.route("/automations/<rule_id>/executions", methods=["GET"])
@@ -4286,7 +4553,7 @@ def automation_executions(rule_id: str):
     supabase_url = os.environ.get("SUPABASE_URL")
     service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
     if not supabase_url or not service_key:
-        return jsonify({"ok": False, "error": "Supabase not configured"}), 503
+        return _error_response("Supabase not configured", "SUPABASE_NOT_CONFIGURED", 503)
 
     try:
         r = requests.get(
@@ -4307,7 +4574,7 @@ def automation_executions(rule_id: str):
         return jsonify({"ok": True, "executions": r.json()})
     except Exception as e:
         logger.warning("Failed to list automation executions: %s", e)
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _error_response(str(e), "INTERNAL_ERROR", 500)
 
 
 
@@ -4351,11 +4618,11 @@ def automation_policies_index():
     effect = (data.get("effect") or "").strip()
     rules = data.get("rules") or {}
     if not name:
-        return jsonify({"ok": False, "error": "name is required"}), 400
+        return _error_response("name is required", "MISSING_FIELD", 400)
     if effect not in {PolicyEffect.BLOCK, PolicyEffect.REQUIRE_APPROVAL}:
-        return jsonify({"ok": False, "error": "effect must be 'block' or 'require_approval'"}), 400
+        return _error_response("effect must be 'block' or 'require_approval'", "INVALID_EFFECT", 400)
     if not isinstance(rules, dict):
-        return jsonify({"ok": False, "error": "rules must be an object"}), 400
+        return _error_response("rules must be an object", "INVALID_PAYLOAD", 400)
 
     policy = create_automation_policy(
         workspace_id=workspace_id,
@@ -4392,7 +4659,7 @@ def automation_policy_detail(policy_id: str):
 
     policy = get_automation_policy(policy_id, workspace_id=workspace_id)
     if not policy:
-        return jsonify({"ok": False, "error": "policy not found"}), 404
+        return _error_response("policy not found", "POLICY_NOT_FOUND", 404)
 
     if request.method == "GET":
         return jsonify({
@@ -4422,9 +4689,9 @@ def automation_policy_detail(policy_id: str):
     description = data.get("description")
     enabled = data.get("enabled")
     if effect is not None and effect not in {PolicyEffect.BLOCK, PolicyEffect.REQUIRE_APPROVAL}:
-        return jsonify({"ok": False, "error": "effect must be 'block' or 'require_approval'"}), 400
+        return _error_response("effect must be 'block' or 'require_approval'", "INVALID_EFFECT", 400)
     if rules is not None and not isinstance(rules, dict):
-        return jsonify({"ok": False, "error": "rules must be an object"}), 400
+        return _error_response("rules must be an object", "INVALID_PAYLOAD", 400)
 
     updated = update_automation_policy(
         policy,
@@ -4519,17 +4786,17 @@ def automation_budgets_index():
     rule_id = data.get("rule_id")
 
     if not name:
-        return jsonify({"ok": False, "error": "name is required"}), 400
+        return _error_response("name is required", "MISSING_FIELD", 400)
     if period not in {"hour", "day", "month", "total"}:
-        return jsonify({"ok": False, "error": "period must be hour, day, month, or total"}), 400
+        return _error_response("period must be hour, day, month, or total", "INVALID_PERIOD", 400)
     try:
         limit_value = int(limit_value)
         if limit_value < 0:
             raise ValueError
     except (TypeError, ValueError):
-        return jsonify({"ok": False, "error": "limit_value must be a non-negative integer"}), 400
+        return _error_response("limit_value must be a non-negative integer", "VALIDATION_ERROR", 400)
     if action not in {"block", "warn"}:
-        return jsonify({"ok": False, "error": "action must be 'block' or 'warn'"}), 400
+        return _error_response("action must be 'block' or 'warn'", "INVALID_EFFECT", 400)
 
     budget = create_automation_budget(
         workspace_id=workspace_id,
@@ -4605,7 +4872,7 @@ def automation_budget_detail(budget_id: str):
 
     budget = get_automation_budget(budget_id, workspace_id=workspace_id)
     if not budget:
-        return jsonify({"ok": False, "error": "budget not found"}), 404
+        return _error_response("budget not found", "BUDGET_NOT_FOUND", 404)
 
     if request.method == "GET":
         return jsonify({"ok": True, "budget": _serialize_budget(budget)})
@@ -4624,16 +4891,16 @@ def automation_budget_detail(budget_id: str):
     enabled = data.get("enabled")
 
     if period is not None and period not in {"hour", "day", "month", "total"}:
-        return jsonify({"ok": False, "error": "period must be hour, day, month, or total"}), 400
+        return _error_response("period must be hour, day, month, or total", "INVALID_PERIOD", 400)
     if limit_value is not None:
         try:
             limit_value = int(limit_value)
             if limit_value < 0:
                 raise ValueError
         except (TypeError, ValueError):
-            return jsonify({"ok": False, "error": "limit_value must be a non-negative integer"}), 400
+            return _error_response("limit_value must be a non-negative integer", "VALIDATION_ERROR", 400)
     if action is not None and action not in {"block", "warn"}:
-        return jsonify({"ok": False, "error": "action must be 'block' or 'warn'"}), 400
+        return _error_response("action must be 'block' or 'warn'", "INVALID_EFFECT", 400)
 
     updated = update_automation_budget(
         budget,
@@ -4664,7 +4931,7 @@ def automation_test_condition():
         return jsonify({"ok": True, "matches": matches})
     except Exception as e:
         logger.warning("Failed to evaluate condition: %s", e)
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _error_response(str(e), "INTERNAL_ERROR", 500)
 
 # ── Automation governance & audit logs (Phase 40) ────────────────────────────
 
@@ -4752,7 +5019,7 @@ def automations_export():
     supabase_url = os.environ.get("SUPABASE_URL")
     service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
     if not supabase_url or not service_key:
-        return jsonify({"ok": False, "error": "Supabase not configured"}), 503
+        return _error_response("Supabase not configured", "SUPABASE_NOT_CONFIGURED", 503)
 
     try:
         rule_id = request.args.get("rule_id")
@@ -4781,7 +5048,7 @@ def automations_export():
         })
     except Exception as e:
         logger.warning("Failed to export automation rules: %s", e)
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _error_response(str(e), "INTERNAL_ERROR", 500)
 
 
 @app.route("/automations/import", methods=["POST"])
@@ -4799,7 +5066,7 @@ def automations_import():
     supabase_url = os.environ.get("SUPABASE_URL")
     service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
     if not supabase_url or not service_key:
-        return jsonify({"ok": False, "error": "Supabase not configured"}), 503
+        return _error_response("Supabase not configured", "SUPABASE_NOT_CONFIGURED", 503)
 
     data = request.json or {}
     if isinstance(data, dict) and "rules" in data:
@@ -4809,10 +5076,10 @@ def automations_import():
     elif isinstance(data, dict):
         raw_rules = [data]
     else:
-        return jsonify({"ok": False, "error": "import body must be a rule object, a list of rules, or {rules: [...]}"}), 400
+        return _error_response("import body must be a rule object, a list of rules, or {rules: [...]}", "INVALID_PAYLOAD", 400)
 
     if not raw_rules:
-        return jsonify({"ok": False, "error": "no rules to import"}), 400
+        return _error_response("no rules to import", "VALIDATION_ERROR", 400)
 
     created: list[dict] = []
     errors: list[dict] = []
@@ -5007,7 +5274,7 @@ def automation_snapshots(rule_id: str):
     supabase_url = os.environ.get("SUPABASE_URL")
     service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
     if not supabase_url or not service_key:
-        return jsonify({"ok": False, "error": "Supabase not configured"}), 503
+        return _error_response("Supabase not configured", "SUPABASE_NOT_CONFIGURED", 503)
 
     # Verify the rule exists and belongs to the workspace
     try:
@@ -5023,16 +5290,16 @@ def automation_snapshots(rule_id: str):
         r.raise_for_status()
         rows = r.json()
         if not rows:
-            return jsonify({"ok": False, "error": "rule not found"}), 404
+            return _error_response("rule not found", "RULE_NOT_FOUND", 404)
         rule = rows[0]
     except Exception as e:
         logger.warning("Failed to fetch automation rule for snapshots: %s", e)
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _error_response(str(e), "INTERNAL_ERROR", 500)
 
     if request.method == "POST":
         snapshot = _create_rule_snapshot(supabase_url, service_key, rule, ctx)
         if snapshot is None:
-            return jsonify({"ok": False, "error": "failed to create snapshot"}), 500
+            return _error_response("failed to create snapshot", "INTERNAL_ERROR", 500)
         _log_automation_event("automation_snapshot_created", ctx, rule_id=rule_id, metadata={"rule_id": rule_id, "snapshot_id": snapshot.get("id")})
         return jsonify({"ok": True, "snapshot": snapshot}), 201
 
@@ -5056,7 +5323,7 @@ def automation_snapshots(rule_id: str):
         return jsonify({"ok": True, "snapshots": r.json()})
     except Exception as e:
         logger.warning("Failed to list automation rule snapshots: %s", e)
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _error_response(str(e), "INTERNAL_ERROR", 500)
 
 
 @app.route("/automations/<rule_id>/rollback/<snapshot_id>", methods=["POST"])
@@ -5074,7 +5341,7 @@ def automation_rollback(rule_id: str, snapshot_id: str):
     supabase_url = os.environ.get("SUPABASE_URL")
     service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
     if not supabase_url or not service_key:
-        return jsonify({"ok": False, "error": "Supabase not configured"}), 503
+        return _error_response("Supabase not configured", "SUPABASE_NOT_CONFIGURED", 503)
 
     # Fetch the current rule
     try:
@@ -5090,11 +5357,11 @@ def automation_rollback(rule_id: str, snapshot_id: str):
         r.raise_for_status()
         rows = r.json()
         if not rows:
-            return jsonify({"ok": False, "error": "rule not found"}), 404
+            return _error_response("rule not found", "RULE_NOT_FOUND", 404)
         rule = rows[0]
     except Exception as e:
         logger.warning("Failed to fetch automation rule for rollback: %s", e)
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _error_response(str(e), "INTERNAL_ERROR", 500)
 
     # Fetch the snapshot
     try:
@@ -5114,11 +5381,11 @@ def automation_rollback(rule_id: str, snapshot_id: str):
         r.raise_for_status()
         snapshots = r.json()
         if not snapshots:
-            return jsonify({"ok": False, "error": "snapshot not found"}), 404
+            return _error_response("snapshot not found", "SNAPSHOT_NOT_FOUND", 404)
         snapshot = snapshots[0]
     except Exception as e:
         logger.warning("Failed to fetch automation rule snapshot: %s", e)
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _error_response(str(e), "INTERNAL_ERROR", 500)
 
     # Snapshot current state before rolling back
     _create_rule_snapshot(supabase_url, service_key, rule, ctx)
@@ -5166,12 +5433,12 @@ def automation_rollback(rule_id: str, snapshot_id: str):
         r.raise_for_status()
         rows = r.json()
         if not rows:
-            return jsonify({"ok": False, "error": "rule not found"}), 404
+            return _error_response("rule not found", "RULE_NOT_FOUND", 404)
         _log_automation_event("automation_rollback", ctx, rule_id=rule_id, metadata={"rule_id": rule_id, "snapshot_id": snapshot_id})
         return jsonify({"ok": True, "rule": rows[0]})
     except Exception as e:
         logger.warning("Failed to rollback automation rule: %s", e)
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _error_response(str(e), "INTERNAL_ERROR", 500)
 
 def _generate_inbound_token() -> str:
     import secrets
@@ -5189,7 +5456,7 @@ def inbound_webhooks_index():
     supabase_url = os.environ.get("SUPABASE_URL")
     service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
     if not supabase_url or not service_key:
-        return jsonify({"ok": False, "error": "Supabase not configured"}), 503
+        return _error_response("Supabase not configured", "SUPABASE_NOT_CONFIGURED", 503)
 
     if request.method == "GET":
         try:
@@ -5209,7 +5476,7 @@ def inbound_webhooks_index():
             return jsonify({"ok": True, "webhooks": r.json()})
         except Exception as e:
             logger.warning("Failed to list inbound webhooks: %s", e)
-            return jsonify({"ok": False, "error": str(e)}), 500
+            return _error_response(str(e), "INTERNAL_ERROR", 500)
 
     # POST
     data = request.json or {}
@@ -5236,7 +5503,7 @@ def inbound_webhooks_index():
         return jsonify({"ok": True, "webhook": created[0] if created else None}), 201
     except Exception as e:
         logger.warning("Failed to create inbound webhook: %s", e)
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _error_response(str(e), "INTERNAL_ERROR", 500)
 
 
 @app.route("/inbound-webhooks/<webhook_id>", methods=["DELETE"])
@@ -5250,7 +5517,7 @@ def inbound_webhook_detail(webhook_id: str):
     supabase_url = os.environ.get("SUPABASE_URL")
     service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
     if not supabase_url or not service_key:
-        return jsonify({"ok": False, "error": "Supabase not configured"}), 503
+        return _error_response("Supabase not configured", "SUPABASE_NOT_CONFIGURED", 503)
 
     try:
         r = requests.delete(
@@ -5266,7 +5533,7 @@ def inbound_webhook_detail(webhook_id: str):
         return jsonify({"ok": True})
     except Exception as e:
         logger.warning("Failed to delete inbound webhook: %s", e)
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _error_response(str(e), "INTERNAL_ERROR", 500)
 # ---- Approval endpoints (Phase 19: HITL) ---------------------------------
 @app.route("/approvals", methods=["GET", "POST"])
 @require_auth
@@ -5279,7 +5546,7 @@ def approvals_index():
     supabase_url = os.environ.get("SUPABASE_URL")
     service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
     if not supabase_url or not service_key:
-        return jsonify({"ok": False, "error": "Supabase not configured"}), 503
+        return _error_response("Supabase not configured", "SUPABASE_NOT_CONFIGURED", 503)
 
     if request.method == "GET":
         status = request.args.get("status", "pending")
@@ -5302,7 +5569,7 @@ def approvals_index():
             return jsonify({"ok": True, "approvals": r.json()})
         except Exception as e:
             logger.warning("Failed to list approval requests: %s", e)
-            return jsonify({"ok": False, "error": str(e)}), 500
+            return _error_response(str(e), "INTERNAL_ERROR", 500)
 
     # POST - manual creation of an approval request
     data = request.json or {}
@@ -5334,7 +5601,7 @@ def approvals_index():
         return jsonify({"ok": True, "approval": created[0] if created else None}), 201
     except Exception as e:
         logger.warning("Failed to create approval request: %s", e)
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _error_response(str(e), "INTERNAL_ERROR", 500)
 
 
 @app.route("/approvals/<approval_id>", methods=["GET"])
@@ -5348,7 +5615,7 @@ def approval_detail(approval_id: str):
     supabase_url = os.environ.get("SUPABASE_URL")
     service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
     if not supabase_url or not service_key:
-        return jsonify({"ok": False, "error": "Supabase not configured"}), 503
+        return _error_response("Supabase not configured", "SUPABASE_NOT_CONFIGURED", 503)
 
     try:
         r = requests.get(
@@ -5366,11 +5633,11 @@ def approval_detail(approval_id: str):
         r.raise_for_status()
         rows = r.json() or []
         if not rows:
-            return jsonify({"ok": False, "error": "approval not found"}), 404
+            return _error_response("approval not found", "APPROVAL_NOT_FOUND", 404)
         return jsonify({"ok": True, "approval": rows[0]})
     except Exception as e:
         logger.warning("Failed to get approval request: %s", e)
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _error_response(str(e), "INTERNAL_ERROR", 500)
 
 
 @app.route("/approvals/<approval_id>/resolve", methods=["POST"])
@@ -5385,7 +5652,7 @@ def approval_resolve(approval_id: str):
     resolver_user_id = ctx.get("user_id")
 
     if not decision:
-        return jsonify({"ok": False, "error": "decision is required"}), 400
+        return _error_response("decision is required", "MISSING_FIELD", 400)
 
     result = resolve_approval(
         approval_id,
@@ -5407,7 +5674,7 @@ def inbound_webhook(token: str):
     supabase_url = os.environ.get("SUPABASE_URL")
     service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
     if not supabase_url or not service_key:
-        return jsonify({"ok": False, "error": "Supabase not configured"}), 503
+        return _error_response("Supabase not configured", "SUPABASE_NOT_CONFIGURED", 503)
 
     try:
         import requests
@@ -5424,7 +5691,7 @@ def inbound_webhook(token: str):
         r.raise_for_status()
         rows = r.json() or []
         if not rows:
-            return jsonify({"ok": False, "error": "unknown webhook token"}), 404
+            return _error_response("unknown webhook token", "NOT_FOUND", 404)
         hook = rows[0]
 
         body = request.get_json(silent=True) or {}
@@ -5445,7 +5712,7 @@ def inbound_webhook(token: str):
         return jsonify({"ok": True, "message": "event accepted"}), 202
     except Exception as e:
         logger.warning("Inbound webhook failed for token %s: %s", token, e)
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _error_response(str(e), "INTERNAL_ERROR", 500)
 
 
 # ── Slack interactive approvals (Phase 21) ──────────────────────────────────
@@ -5473,34 +5740,34 @@ def slack_interactions():
     raw_body = request.get_data()
 
     if not _verify_slack_signature(raw_body, timestamp, signature):
-        return jsonify({"ok": False, "error": "invalid slack signature"}), 403
+        return _error_response("invalid slack signature", "UNAUTHORIZED", 403)
 
     encoded = request.form.get("payload", "")
     if not encoded:
-        return jsonify({"ok": False, "error": "missing payload"}), 400
+        return _error_response("missing payload", "MISSING_FIELD", 400)
 
     try:
         payload = json.loads(encoded)
     except Exception as e:
         logger.warning("Failed to parse Slack payload: %s", e)
-        return jsonify({"ok": False, "error": "invalid payload"}), 400
+        return _error_response("invalid payload", "INVALID_PAYLOAD", 400)
 
     action = payload.get("actions", [{}])[0]
     action_value = action.get("value")
     if not action_value:
-        return jsonify({"ok": False, "error": "no action value"}), 400
+        return _error_response("no action value", "MISSING_FIELD", 400)
 
     try:
         value = json.loads(action_value)
     except Exception as e:
         logger.warning("Failed to parse Slack action value: %s", e)
-        return jsonify({"ok": False, "error": "invalid action value"}), 400
+        return _error_response("invalid action value", "INVALID_PAYLOAD", 400)
 
     approval_id = value.get("approval_id")
     decision = value.get("decision")
     workspace_id = value.get("workspace_id")
     if not approval_id or not decision or not workspace_id:
-        return jsonify({"ok": False, "error": "missing approval_id, decision, or workspace_id"}), 400
+        return _error_response("missing approval_id, decision, or workspace_id", "MISSING_FIELD", 400)
 
     slack_user = (payload.get("user") or {}).get("id") or "slack"
     result = resolve_approval(
@@ -5517,7 +5784,45 @@ def slack_interactions():
         "ok": True,
         "text": f"Approval {decision}.",
     }), 200
-# ── Graceful shutdown ────────────────────────────────────────────────────────
+# ── AI Execution Ledger endpoints (Phase 4) ──────────────────────────────────
+@app.route("/ai/ledger/summary", methods=["GET"])
+@require_auth
+@require_workspace_role("VIEWER")
+def ai_ledger_summary():
+    """Return aggregate AI usage stats for the current workspace."""
+    from aeon_ai_ledger import get_ai_ledger
+    workspace_id = str(getattr(g, "workspace_id", None) or g.user.get("workspace_id") or "")
+    if not workspace_id:
+        return _error_response("workspace not selected", "WORKSPACE_NOT_SELECTED", 400)
+    days = min(365, max(1, request.args.get("days", 30, type=int)))
+    summary = get_ai_ledger().summary(workspace_id=workspace_id, days=days)
+    return jsonify(summary)
+
+
+@app.route("/ai/ledger/executions", methods=["GET"])
+@require_auth
+@require_workspace_role("VIEWER")
+def ai_ledger_executions():
+    """Query AI execution records for the current workspace."""
+    from aeon_ai_ledger import get_ai_ledger
+    workspace_id = str(getattr(g, "workspace_id", None) or g.user.get("workspace_id") or "")
+    if not workspace_id:
+        return _error_response("workspace not selected", "WORKSPACE_NOT_SELECTED", 400)
+    sector = request.args.get("sector")
+    provider = request.args.get("provider")
+    status = request.args.get("status")
+    limit = min(500, max(1, request.args.get("limit", 100, type=int)))
+    records = get_ai_ledger().query(
+        workspace_id=workspace_id,
+        sector=sector,
+        provider=provider,
+        status=status,
+        limit=limit,
+    )
+    return jsonify({"ok": True, "executions": records, "total": len(records)})
+
+
+# ── Graceful shutdown# ── Graceful shutdown ────────────────────────────────────────────────────────
 def _shutdown():
     logger.info("Shutting down AEON kernel...")
     try:
@@ -5528,6 +5833,11 @@ def _shutdown():
         get_governance().shutdown()
     except Exception as e:
         logger.warning("Governance shutdown error: %s", e)
+    try:
+        from aeon_ai_ledger import get_ai_ledger
+        get_ai_ledger().shutdown()
+    except Exception as e:
+        logger.warning("AI ledger shutdown error: %s", e)
 
 
 import atexit

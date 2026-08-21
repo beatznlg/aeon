@@ -18,7 +18,7 @@ from typing import Any
 
 from flask import g, jsonify, request
 
-from aeon_auth import require_auth, require_workspace_role
+from aeon_auth import require_auth, require_permission
 from aeon_marketplace import MarketplaceManager
 from aeon_marketplace import get_marketplace_manager as _get_shared_manager
 
@@ -55,7 +55,7 @@ def register_marketplace_routes(app) -> None:  # type: ignore[no-untyped-def]
 
     @app.route("/marketplace/plugins", methods=["GET"])
     @require_auth
-    @require_workspace_role("VIEWER")
+    @require_permission("plugins.read")
     def marketplace_plugins():
         """Return the plugin catalog enriched with the workspace's install state."""
         mgr = get_marketplace_manager()
@@ -65,14 +65,14 @@ def register_marketplace_routes(app) -> None:  # type: ignore[no-untyped-def]
 
     @app.route("/marketplace/installed", methods=["GET"])
     @require_auth
-    @require_workspace_role("VIEWER")
+    @require_permission("plugins.read")
     def marketplace_installed():
         """Return the plugins installed in the caller's workspace."""
         return jsonify({"ok": True, "installed": get_marketplace_manager().list_installed(g.workspace_id)})
 
     @app.route("/marketplace/agent-tools", methods=["GET"])
     @require_auth
-    @require_workspace_role("VIEWER")
+    @require_permission("plugins.read")
     def marketplace_agent_tools():
         """Return the plugin tools an agent may call in the caller's workspace.
 
@@ -84,7 +84,7 @@ def register_marketplace_routes(app) -> None:  # type: ignore[no-untyped-def]
 
     @app.route("/marketplace/plugins/<plugin_id>", methods=["GET"])
     @require_auth
-    @require_workspace_role("VIEWER")
+    @require_permission("plugins.read")
     def marketplace_plugin_detail(plugin_id: str):
         """Return a single plugin manifest."""
         manifest = get_marketplace_manager().get_plugin(plugin_id)
@@ -94,7 +94,7 @@ def register_marketplace_routes(app) -> None:  # type: ignore[no-untyped-def]
 
     @app.route("/marketplace/plugins/<plugin_id>/install", methods=["POST"])
     @require_auth
-    @require_workspace_role("OPERATOR")
+    @require_permission("plugins.manage")
     def marketplace_plugin_install(plugin_id: str):
         """Install a plugin into the caller's workspace."""
         data = request.json or {}
@@ -106,7 +106,7 @@ def register_marketplace_routes(app) -> None:  # type: ignore[no-untyped-def]
 
     @app.route("/marketplace/plugins/<plugin_id>/uninstall", methods=["POST"])
     @require_auth
-    @require_workspace_role("OPERATOR")
+    @require_permission("plugins.manage")
     def marketplace_plugin_uninstall(plugin_id: str):
         """Uninstall a plugin from the caller's workspace."""
         result = get_marketplace_manager().uninstall(g.workspace_id, plugin_id)
@@ -117,7 +117,7 @@ def register_marketplace_routes(app) -> None:  # type: ignore[no-untyped-def]
 
     @app.route("/marketplace/plugins/<plugin_id>/enable", methods=["POST"])
     @require_auth
-    @require_workspace_role("OPERATOR")
+    @require_permission("plugins.manage")
     def marketplace_plugin_enable(plugin_id: str):
         """Enable an installed plugin."""
         result = get_marketplace_manager().set_enabled(g.workspace_id, plugin_id, True)
@@ -128,7 +128,7 @@ def register_marketplace_routes(app) -> None:  # type: ignore[no-untyped-def]
 
     @app.route("/marketplace/plugins/<plugin_id>/disable", methods=["POST"])
     @require_auth
-    @require_workspace_role("OPERATOR")
+    @require_permission("plugins.manage")
     def marketplace_plugin_disable(plugin_id: str):
         """Disable an installed plugin."""
         result = get_marketplace_manager().set_enabled(g.workspace_id, plugin_id, False)
@@ -139,7 +139,7 @@ def register_marketplace_routes(app) -> None:  # type: ignore[no-untyped-def]
 
     @app.route("/marketplace/plugins/<plugin_id>/config", methods=["POST"])
     @require_auth
-    @require_workspace_role("OPERATOR")
+    @require_permission("plugins.manage")
     def marketplace_plugin_config(plugin_id: str):
         """Update an installed plugin's configuration (validated against its schema)."""
         data = request.json or {}
@@ -151,7 +151,7 @@ def register_marketplace_routes(app) -> None:  # type: ignore[no-untyped-def]
 
     @app.route("/marketplace/plugins/<plugin_id>/run", methods=["POST"])
     @require_auth
-    @require_workspace_role("OPERATOR")
+    @require_permission("plugins.manage")
     def marketplace_plugin_run(plugin_id: str):
         """Invoke a plugin entry point for the caller's workspace."""
         data = request.json or {}

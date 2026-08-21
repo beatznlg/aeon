@@ -75,10 +75,39 @@ REFRESH_TOKEN_TTL_DAYS = int(os.environ.get("AEON_REFRESH_TOKEN_TTL_DAYS", "30")
 # === Role helpers ============================================================
 
 ROLE_HIERARCHY = {
+    # OWNER is the public/API name for a tenant-wide administrator. Keep
+    # SUPER_ADMIN for existing tokens and platform operators.
+    "OWNER": 4,
     "SUPER_ADMIN": 4,
     "ADMIN": 3,
     "OPERATOR": 2,
     "VIEWER": 1,
+}
+
+# Named permissions are the stable authorization API. Routes may continue to
+# use ``require_workspace_role`` during migration, but all checks flow through
+# the same workspace membership boundary below.
+PERMISSION_MINIMUM_ROLES = {
+    "workspace.read": "VIEWER",
+    "sector.read": "VIEWER",
+    "sector.write": "OPERATOR",
+    "automation.read": "VIEWER",
+    "automation.write": "OPERATOR",
+    "automation.execute": "OPERATOR",
+    "plugins.read": "VIEWER",
+    "plugins.manage": "OPERATOR",
+    "integrations.read": "VIEWER",
+    "integrations.write": "OPERATOR",
+    "billing.read": "VIEWER",
+    "billing.manage": "ADMIN",
+    "admin.users": "ADMIN",
+    "admin.sectors": "ADMIN",
+    "admin.plugins": "ADMIN",
+    "security.read": "VIEWER",
+    "security.manage": "ADMIN",
+    "audit.read": "ADMIN",
+    "compliance.manage": "ADMIN",
+    "api_keys.manage": "ADMIN",
 }
 
 
@@ -86,26 +115,38 @@ def has_role(user_role: str | None, required: str) -> bool:
     """Return True if user_role is at least required in the hierarchy."""
     if not user_role:
         return False
-    return ROLE_HIERARCHY.get(user_role.upper(), 0) >= ROLE_HIERARCHY.get(required.upper(), 0)
+    normalized = str(user_role).upper()
+    required_normalized = str(required).upper()
+    return ROLE_HIERARCHY.get(normalized, 0) >= ROLE_HIERARCHY.get(required_normalized, 0)
+
+
+def has_permission(user_role: str | None, permission: str) -> bool:
+    """Return whether a role satisfies a named permission."""
+    required_role = PERMISSION_MINIMUM_ROLES.get(str(permission).strip().lower())
+    return bool(required_role and has_role(user_role, required_role))
+
+
+def _get_workspace_membership(user_id: str | None, workspace_id: str | None):
+    """Load one membership record, failing closed when the DB is unavailable."""
+    if not user_id or not workspace_id:
+        return None
+    try:
+        from aeon_db import get_db
+        return get_db().get_membership(str(workspace_id), str(user_id))
+    except Exception:  #nosec B110
+        return None
 
 
 def can_access_workspace(user_id: str | None, workspace_id: str | None) -> bool:
     """Return whether a user is a member of a workspace.
 
-    Development may use header-only identities, but production-like requests
-    never gain access merely because the membership database is unavailable.
+    Production-like requests fail closed if membership cannot be loaded. The
+    development fallback remains available only for this legacy helper; HTTP
+    workspace decorators below always use the shared membership boundary.
     """
-    if not user_id or not workspace_id:
-        return False
-    try:
-        from aeon_db import get_db
-        db = get_db()
-        membership = db.get_membership(workspace_id, user_id)
-        if membership:
-            return True
-    except Exception:  #nosec B110
-        return _dev_mode()
-    return _dev_mode()
+    if _get_workspace_membership(user_id, workspace_id):
+        return True
+    return bool(_dev_mode() and user_id and workspace_id)
 
 
 # === Fallback admin (development only) =======================================
@@ -268,6 +309,62 @@ def get_current_user_context() -> dict[str, Any] | None:
 
 # === Flask decorators =========================================================
 
+def _requested_workspace_id(kwargs: dict[str, Any] | None = None) -> str | None:
+    """Resolve a workspace ID from route, query, body, then authenticated context."""
+    kwargs = kwargs or {}
+    route_workspace = kwargs.get("workspace_id")
+    if route_workspace is None and request.view_args:
+        route_workspace = request.view_args.get("workspace_id")
+    if route_workspace:
+        return str(route_workspace).strip()
+    query_workspace = request.args.get("workspace_id")
+    if query_workspace:
+        return str(query_workspace).strip()
+    payload = request.get_json(silent=True) or {}
+    if isinstance(payload, dict) and payload.get("workspace_id"):
+        return str(payload["workspace_id"]).strip()
+    return str(getattr(g, "user", {}).get("workspace_id") or "").strip() or None
+
+
+def _authorize_workspace(
+    ctx: dict[str, Any],
+    workspace_id: str | None,
+    *,
+    required_role: str | None = None,
+    permission: str | None = None,
+):
+    """Authorize one workspace and return ``(error_response, membership)``.
+
+    Every workspace-scoped decorator uses this function. It intentionally does
+    not trust a workspace ID from a JWT or request body without checking the
+    database membership for that user.
+    """
+    workspace_id = str(workspace_id or "").strip()
+    if not workspace_id:
+        return (jsonify({"ok": False, "error": "workspace_id required"}), 400), None
+
+    is_platform_admin = has_role(ctx.get("role"), "SUPER_ADMIN")
+    membership = _get_workspace_membership(ctx.get("user_id"), workspace_id)
+    service_auth = ctx.get("auth_method") == "api_token"
+    if not is_platform_admin and not membership and not service_auth:
+        return (jsonify({"ok": False, "error": "workspace access denied"}), 403), None
+
+    effective_role = getattr(membership, "role", None) or ctx.get("role")
+    if required_role and not is_platform_admin and not service_auth and not has_role(effective_role, required_role):
+        return (jsonify({"ok": False, "error": f"workspace role {required_role} required"}), 403), membership
+    if permission and not is_platform_admin and not service_auth and not has_permission(effective_role, permission):
+        return (jsonify({"ok": False, "error": f"permission {permission} required"}), 403), membership
+    return None, membership
+
+
+def _set_workspace_context(ctx: dict[str, Any], workspace_id: str, membership: Any = None) -> None:
+    """Publish the authenticated workspace context for route handlers."""
+    g.user = ctx
+    g.workspace_id = str(workspace_id)
+    if membership is not None:
+        g.membership = membership
+
+
 def _authorize_sensitive_workspace_request(ctx: dict[str, Any]):
     """Enforce tenant scope for legacy auth-protected billing/usage routes.
 
@@ -289,26 +386,23 @@ def _authorize_sensitive_workspace_request(ctx: dict[str, Any]):
         payload = request.get_json(silent=True) or {}
         if isinstance(payload, dict):
             workspace_id = payload.get("workspace_id")
+        elif path == "/usage" and isinstance(payload, list):
+            # A batched usage request must not smuggle events for another
+            # workspace under an otherwise valid user's token.
+            requested = {
+                str(item.get("workspace_id")).strip()
+                for item in payload
+                if isinstance(item, dict) and item.get("workspace_id")
+            }
+            if len(requested) > 1 or (requested and str(ctx.get("workspace_id")) not in requested):
+                return jsonify({"ok": False, "error": "workspace access denied"}), 403
 
-    workspace_id = str(workspace_id or ctx.get("workspace_id") or "").strip()
-    if not workspace_id:
-        return jsonify({"ok": False, "error": "workspace_id required"}), 400
-    is_super_admin = has_role(ctx.get("role"), "SUPER_ADMIN")
-    membership = None
-    try:
-        from aeon_db import get_db
-        membership = get_db().get_membership(workspace_id, ctx.get("user_id"))
-    except Exception:
-        membership = None
-    service_auth = ctx.get("auth_method") == "api_token"
-    if not is_super_admin and not membership and not service_auth:
-        return jsonify({"ok": False, "error": "workspace access denied"}), 403
+    required_role = "ADMIN" if path in {"/stripe/checkout", "/stripe/portal"} else None
+    error, membership = _authorize_workspace(ctx, workspace_id, required_role=required_role)
+    if error is not None:
+        return error
 
-    if path in {"/stripe/checkout", "/stripe/portal"}:
-        if not is_super_admin and not service_auth and not has_role(getattr(membership, "role", None), "ADMIN"):
-            return jsonify({"ok": False, "error": "workspace admin required"}), 403
-
-    g.workspace_id = workspace_id
+    _set_workspace_context(ctx, workspace_id, membership)
     return None
 
 
@@ -328,7 +422,12 @@ def require_auth(func: Callable) -> Callable:
 
 
 def require_role(role: str):
-    """Decorator factory that requires at least the given role."""
+    """Decorator factory for a platform-level role check.
+
+    Prefer ``require_permission`` for workspace routes. This decorator remains
+    for legacy platform-admin endpoints and does not accept a caller-supplied
+    workspace as proof of authorization.
+    """
     def decorator(func: Callable) -> Callable:
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -343,63 +442,50 @@ def require_role(role: str):
     return decorator
 
 
-def require_workspace_access(func: Callable) -> Callable:
-    """Decorator ensuring the authenticated user can access the requested workspace."""
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        ctx = get_current_user_context()
-        if not ctx:
-            return jsonify({"ok": False, "error": "unauthorized"}), 401
-        workspace_id = kwargs.get("workspace_id") or request.view_args.get("workspace_id") if request.view_args else None
-        workspace_id = workspace_id or request.args.get("workspace_id") or ctx.get("workspace_id")
-        if workspace_id and not can_access_workspace(ctx.get("user_id"), workspace_id):
-            return jsonify({"ok": False, "error": "workspace access denied"}), 403
-        g.user = ctx
-        g.workspace_id = workspace_id
-        return func(*args, **kwargs)
-    return wrapper
-
-
-def require_workspace_role(role: str):
-    """Decorator factory that requires the user to have at least `role` in the current workspace.
-
-    The decorated function must receive a `workspace_id` as a route argument or query param.
-    """
+def require_workspace_context(*, role: str | None = None, permission: str | None = None):
+    """Decorator factory for the canonical auth → workspace → permission flow."""
     def decorator(func: Callable) -> Callable:
         @wraps(func)
         def wrapper(*args, **kwargs):
             ctx = get_current_user_context()
             if not ctx:
                 return jsonify({"ok": False, "error": "unauthorized"}), 401
-
-            workspace_id = (
-                kwargs.get("workspace_id")
-                or (request.view_args.get("workspace_id") if request.view_args else None)
-                or request.args.get("workspace_id")
-                or ctx.get("workspace_id")
+            workspace_id = _requested_workspace_id(kwargs)
+            error, membership = _authorize_workspace(
+                ctx,
+                workspace_id,
+                required_role=role,
+                permission=permission,
             )
-            if not workspace_id:
-                return jsonify({"ok": False, "error": "workspace_id required"}), 400
-
-            # SUPER_ADMIN bypasses workspace role checks
-            if has_role(ctx.get("role"), "SUPER_ADMIN"):
-                g.user = ctx
-                g.workspace_id = workspace_id
-                return func(*args, **kwargs)
-
-            try:
-                from aeon_db import get_db
-                db = get_db()
-                membership = db.get_membership(workspace_id, ctx.get("user_id"))
-                if not membership:
-                    return jsonify({"ok": False, "error": "workspace access denied"}), 403
-                if not has_role(membership.role, role):
-                    return jsonify({"ok": False, "error": f"workspace role {role} required"}), 403
-                g.user = ctx
-                g.workspace_id = workspace_id
-                g.membership = membership
-                return func(*args, **kwargs)
-            except Exception:
-                return jsonify({"ok": False, "error": "workspace access denied"}), 403
+            if error is not None:
+                return error
+            _set_workspace_context(ctx, str(workspace_id), membership)
+            return func(*args, **kwargs)
         return wrapper
     return decorator
+
+
+def require_permission(permission: str):
+    """Require a named workspace permission, e.g. ``billing.manage``."""
+    return require_workspace_context(permission=permission)
+
+
+def require_workspace_access(func: Callable) -> Callable:
+    """Decorator ensuring the authenticated user can access the requested workspace."""
+    return require_workspace_context()(func)
+
+
+def require_workspace_role(role: str):
+    """Compatibility wrapper that uses the canonical workspace boundary.
+
+    Existing routes keep their role-based declaration while also exercising a
+    named permission. New routes should declare ``require_permission``
+    directly so the business capability is explicit at the call site.
+    """
+    legacy_permission = {
+        "VIEWER": "workspace.read",
+        "OPERATOR": "automation.execute",
+        "ADMIN": "admin.users",
+        "SUPER_ADMIN": "admin.users",
+    }.get(str(role).upper())
+    return require_workspace_context(role=role, permission=legacy_permission)

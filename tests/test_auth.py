@@ -4,8 +4,10 @@ import json
 from types import SimpleNamespace
 
 import pytest
+from flask import Flask
 
-from aeon_auth import can_access_workspace
+import aeon_auth
+from aeon_auth import can_access_workspace, has_permission, require_permission
 
 
 def test_register_creates_user_and_returns_token(client):
@@ -144,3 +146,111 @@ def test_protected_route_accepts_valid_token(client):
     data = json.loads(resp2.data)
     assert data["ok"] is True
     assert "workspaces" in data
+
+
+def test_named_permission_matrix_is_explicit():
+    assert has_permission("VIEWER", "workspace.read") is True
+    assert has_permission("VIEWER", "billing.manage") is False
+    assert has_permission("OPERATOR", "automation.execute") is True
+    assert has_permission("ADMIN", "billing.manage") is True
+    assert has_permission("OWNER", "audit.read") is True
+    assert has_permission("ADMIN", "unknown.permission") is False
+
+
+def test_named_permission_decorator_enforces_membership_and_role(client):
+    registration = client.post(
+        "/auth/register",
+        json={"email": "permission-owner@test.local", "password": "secure123", "name": "Permission Owner"},
+    )
+    token = registration.get_json()["token"]
+    own_workspace = registration.get_json()["user"]["workspace_id"]
+    other = client.post(
+        "/auth/register",
+        json={"email": "permission-other@test.local", "password": "secure123", "name": "Permission Other"},
+    )
+    other_workspace = other.get_json()["user"]["workspace_id"]
+
+    protected = Flask("permission-regression")
+
+    @protected.get("/secure/<workspace_id>")
+    @require_permission("billing.manage")
+    def secure_workspace(workspace_id):
+        return {"ok": True, "workspace_id": workspace_id}
+
+    with protected.test_client() as permission_client:
+        headers = {"Authorization": f"Bearer {token}"}
+        assert permission_client.get(f"/secure/{own_workspace}", headers=headers).status_code == 200
+        assert permission_client.get(f"/secure/{other_workspace}", headers=headers).status_code == 403
+
+    from aeon_db import get_db
+
+    db = get_db()
+    with db.session() as session:
+        membership = db.get_membership(own_workspace, registration.get_json()["user"]["id"])
+        assert membership is not None
+        membership.role = "VIEWER"
+        session.merge(membership)
+        session.commit()
+
+    with protected.test_client() as permission_client:
+        denied = permission_client.get(f"/secure/{own_workspace}", headers={"Authorization": f"Bearer {token}"})
+        assert denied.status_code == 403
+
+
+def test_malformed_and_expired_tokens_are_rejected(client, monkeypatch):
+    assert client.get("/workspaces", headers={"Authorization": "Bearer malformed"}).status_code == 401
+
+    monkeypatch.setattr(aeon_auth, "ACCESS_TOKEN_TTL", -1)
+    registration = client.post(
+        "/auth/register",
+        json={"email": "expired-token@test.local", "password": "secure123", "name": "Expired"},
+    )
+    assert registration.status_code == 201
+    expired = registration.get_json()["token"]
+    assert client.get("/workspaces", headers={"Authorization": f"Bearer {expired}"}).status_code == 401
+
+
+def test_per_user_rate_limit_is_enforced_and_isolated(client, monkeypatch):
+    import aeon_server
+    from aeon_server import RateLimiter
+
+    monkeypatch.setenv("AEON_RATE_LIMIT_WINDOW_SECONDS", "60")
+    monkeypatch.setattr(aeon_server, "_rate_limit_window", 60)
+    monkeypatch.setattr(
+        aeon_server,
+        "user_rate_limiter",
+        RateLimiter(max_requests=3, window_seconds=60),
+    )
+    monkeypatch.setattr(
+        aeon_server,
+        "workspace_rate_limiter",
+        RateLimiter(max_requests=10000, window_seconds=60),
+    )
+
+    first = client.post(
+        "/auth/register",
+        json={"email": "rate-user-a@test.local", "password": "secure123", "name": "Rate A"},
+    )
+    assert first.status_code == 201
+    token_a = first.get_json()["token"]
+    headers_a = {"Authorization": f"Bearer {token_a}"}
+
+    # Registration is an anonymous flow and does not consume the per-user
+    # budget, so the three allowed requests are the /workspaces calls. The
+    # fourth must be throttled before the route handler runs.
+    assert client.get("/workspaces", headers=headers_a).status_code == 200
+    assert client.get("/workspaces", headers=headers_a).status_code == 200
+    assert client.get("/workspaces", headers=headers_a).status_code == 200
+    throttled = client.get("/workspaces", headers=headers_a)
+    assert throttled.status_code == 429
+    assert throttled.get_json()["scope"] == "user"
+    assert throttled.headers.get("Retry-After") is not None
+
+    # A different authenticated identity is not throttled by user A's bucket.
+    second = client.post(
+        "/auth/register",
+        json={"email": "rate-user-b@test.local", "password": "secure123", "name": "Rate B"},
+    )
+    assert second.status_code == 201
+    headers_b = {"Authorization": f"Bearer {second.get_json()['token']}"}
+    assert client.get("/workspaces", headers=headers_b).status_code == 200
