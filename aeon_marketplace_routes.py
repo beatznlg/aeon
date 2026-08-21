@@ -21,6 +21,7 @@ from flask import g, jsonify, request
 from aeon_auth import require_auth, require_permission
 from aeon_marketplace import MarketplaceManager
 from aeon_marketplace import get_marketplace_manager as _get_shared_manager
+from aeon_events import emit as _emit_event, PLUGIN_INSTALLED, PLUGIN_REMOVED
 
 
 def get_marketplace_manager() -> MarketplaceManager:
@@ -102,6 +103,10 @@ def register_marketplace_routes(app) -> None:  # type: ignore[no-untyped-def]
         if not result["ok"]:
             return jsonify(result), 400
         _log_audit("PLUGIN_INSTALLED", g.workspace_id, plugin_id, {"version": result["install"]["version"]})
+        try:
+            _emit_event(PLUGIN_INSTALLED, tenant_id="", workspace_id=g.workspace_id, payload={"plugin_id": plugin_id, "version": result["install"].get("version", "unknown")})
+        except Exception:
+            pass
         return jsonify(result), 201
 
     @app.route("/marketplace/plugins/<plugin_id>/uninstall", methods=["POST"])
@@ -113,6 +118,10 @@ def register_marketplace_routes(app) -> None:  # type: ignore[no-untyped-def]
         if not result["ok"]:
             return jsonify(result), 404
         _log_audit("PLUGIN_UNINSTALLED", g.workspace_id, plugin_id)
+        try:
+            _emit_event(PLUGIN_REMOVED, tenant_id="", workspace_id=g.workspace_id, payload={"plugin_id": plugin_id})
+        except Exception:
+            pass
         return jsonify(result)
 
     @app.route("/marketplace/plugins/<plugin_id>/enable", methods=["POST"])

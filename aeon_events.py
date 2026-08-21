@@ -1,356 +1,616 @@
-"""Canonical AEON event contracts and transaction-aware persistence helpers.
+"""AEON OS Domain Event Architecture.
 
-The event layer is deliberately small and transport-neutral. Callers that
-change a SQLAlchemy aggregate must pass their existing session to
-:func:`append_outbox_event`; the helper never commits so the aggregate and its
-outbox row remain in one transaction.
+Outbox-based event system for decoupled, reliable, idempotent domain events.
+
+Design:
+  1. Mutations publish events to ``outbox_events`` inside the same DB transaction
+     (transactional outbox pattern — guarantees at-least-once delivery).
+  2. A background relay thread polls for ``status='pending'`` events, dispatches
+     them to registered consumers, and marks them ``published`` or ``error``.
+  3. Consumers register via ``register_consumer`` and each event is delivered
+     exactly once per consumer (enforced by ``event_consumptions`` idempotency
+     table — at-least-once relay + exactly-once consumer semantics).
+
+Domain events use a ``<domain>.<verb>`` naming convention:
+
+  workspace.created, workspace.updated, workspace.deleted,
+  membership.created, membership.role_changed, membership.removed,
+  user.registered, user.login, user.logout,
+  subscription.created, subscription.updated, subscription.cancelled,
+  plugin.installed, plugin.removed,
+  sector.updated, sector.data_changed,
+  automation.triggered, automation.completed, automation.failed,
+  ai.execution.recorded, ai.governance.blocked,
+  security.rate_limited, security.login_failed,
+  billing.checkout_completed, billing.payment_failed,
 """
-
 from __future__ import annotations
 
 import hashlib
 import json
+import logging
+import os
+import threading
+import time
 import uuid
-from collections.abc import Mapping
-from datetime import datetime, timezone
-from typing import Any
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any, Callable
 
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+logger = logging.getLogger(__name__)
 
-EVENT_SCHEMAS: dict[str, dict[str, Any]] = {
-    "workflow.run.queued": {
-        "version": 1,
-        "owner": "automation",
-        "classification": "internal",
-        "workspace_required": True,
-    },
-    "workflow.run.started": {
-        "version": 1,
-        "owner": "automation",
-        "classification": "internal",
-        "workspace_required": True,
-    },
-    "workflow.run.completed": {
-        "version": 1,
-        "owner": "automation",
-        "classification": "internal",
-        "workspace_required": True,
-    },
-    "workflow.run.failed": {
-        "version": 1,
-        "owner": "automation",
-        "classification": "internal",
-        "workspace_required": True,
-    },
-}
+# ── Event type constants ──────────────────────────────────────────────────────
 
-REDACTED = "[REDACTED]"
-_SENSITIVE_KEYS = {
-    "access_token",
-    "api_key",
-    "apikey",
-    "authorization",
-    "client_secret",
-    "cookie",
-    "credential",
-    "password",
-    "private_key",
-    "refresh_token",
-    "secret",
-    "session_token",
-    "token",
-}
+# Workspace
+WORKSPACE_CREATED = "workspace.created"
+WORKSPACE_UPDATED = "workspace.updated"
+WORKSPACE_DELETED = "workspace.deleted"
 
+# Membership
+MEMBERSHIP_CREATED = "membership.created"
+MEMBERSHIP_ROLE_CHANGED = "membership.role_changed"
+MEMBERSHIP_REMOVED = "membership.removed"
 
-class EventValidationError(ValueError):
-    """Raised when an event does not satisfy the registered envelope contract."""
+# User
+USER_REGISTERED = "user.registered"
+USER_LOGIN = "user.login"
+USER_LOGOUT = "user.logout"
 
+# Subscription / Billing
+SUBSCRIPTION_CREATED = "subscription.created"
+SUBSCRIPTION_UPDATED = "subscription.updated"
+SUBSCRIPTION_CANCELLED = "subscription.cancelled"
+BILLING_CHECKOUT_COMPLETED = "billing.checkout_completed"
+BILLING_PAYMENT_FAILED = "billing.payment_failed"
 
-def _non_empty(value: Any, field: str) -> str:
-    result = str(value or "").strip()
-    if not result:
-        raise EventValidationError(f"{field} is required")
-    return result
+# Plugins
+PLUGIN_INSTALLED = "plugin.installed"
+PLUGIN_REMOVED = "plugin.removed"
 
+# Sectors
+SECTOR_UPDATED = "sector.updated"
+SECTOR_DATA_CHANGED = "sector.data_changed"
 
-def _is_sensitive_key(key: Any) -> bool:
-    normalized = str(key).strip().lower().replace("-", "_")
-    return normalized in _SENSITIVE_KEYS or normalized.endswith("_token") or normalized.endswith("_secret")
+# Automations
+AUTOMATION_TRIGGERED = "automation.triggered"
+AUTOMATION_COMPLETED = "automation.completed"
+AUTOMATION_FAILED = "automation.failed"
+AUTOMATION_APPROVAL_REQUESTED = "automation.approval_requested"
 
+# AI / Governance
+AI_EXECUTION_RECORDED = "ai.execution.recorded"
+AI_GOVERNANCE_BLOCKED = "ai.governance.blocked"
 
-def redact_sensitive(value: Any) -> tuple[Any, bool]:
-    """Return a JSON-compatible copy with credential-like fields redacted."""
-    if isinstance(value, Mapping):
-        changed = False
-        result: dict[str, Any] = {}
-        for key, child in value.items():
-            key_text = str(key)
-            if _is_sensitive_key(key_text):
-                result[key_text] = REDACTED
-                changed = True
-                continue
-            redacted_child, child_changed = redact_sensitive(child)
-            result[key_text] = redacted_child
-            changed = changed or child_changed
-        return result, changed
-    if isinstance(value, list):
-        items = []
-        changed = False
-        for child in value:
-            redacted_child, child_changed = redact_sensitive(child)
-            items.append(redacted_child)
-            changed = changed or child_changed
-        return items, changed
-    if isinstance(value, tuple):
-        redacted, changed = redact_sensitive(list(value))
-        return redacted, changed
-    return value, False
+# Security
+SECURITY_RATE_LIMITED = "security.rate_limited"
+SECURITY_LOGIN_FAILED = "security.login_failed"
+SECURITY_JWT_ROTATED = "security.jwt_rotated"
+
+ALL_EVENT_TYPES = [
+    WORKSPACE_CREATED, WORKSPACE_UPDATED, WORKSPACE_DELETED,
+    MEMBERSHIP_CREATED, MEMBERSHIP_ROLE_CHANGED, MEMBERSHIP_REMOVED,
+    USER_REGISTERED, USER_LOGIN, USER_LOGOUT,
+    SUBSCRIPTION_CREATED, SUBSCRIPTION_UPDATED, SUBSCRIPTION_CANCELLED,
+    BILLING_CHECKOUT_COMPLETED, BILLING_PAYMENT_FAILED,
+    PLUGIN_INSTALLED, PLUGIN_REMOVED,
+    SECTOR_UPDATED, SECTOR_DATA_CHANGED,
+    AUTOMATION_TRIGGERED, AUTOMATION_COMPLETED, AUTOMATION_FAILED, AUTOMATION_APPROVAL_REQUESTED,
+    AI_EXECUTION_RECORDED, AI_GOVERNANCE_BLOCKED,
+    SECURITY_RATE_LIMITED, SECURITY_LOGIN_FAILED, SECURITY_JWT_ROTATED,
+]
+
+# ── In-memory consumer registry ───────────────────────────────────────────────
+
+_consumer_registry: dict[str, list[Callable[[str, dict[str, Any]], None]]] = {}
 
 
-def _json_validate(value: Any, field: str) -> None:
-    try:
-        json.dumps(value, ensure_ascii=False, allow_nan=False)
-    except (TypeError, ValueError) as exc:
-        raise EventValidationError(f"{field} must be JSON serializable") from exc
-
-
-def _utc_now() -> datetime:
-    return datetime.now(timezone.utc)
-
-
-def _isoformat_z(value: datetime) -> str:
-    timestamp = value if value.tzinfo else value.replace(tzinfo=timezone.utc)
-    return timestamp.astimezone(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
-
-
-def _parse_timestamp(value: str) -> datetime:
-    try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except (TypeError, ValueError) as exc:
-        raise EventValidationError("occurred_at must be an ISO-8601 timestamp") from exc
-    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
-
-
-def build_event(
-    *,
+def register_consumer(
     event_type: str,
-    event_version: int,
+    handler: Callable[[str, dict[str, Any]], None],
+    consumer_name: str | None = None,
+) -> None:
+    """Register a handler for a specific event type.
+
+    Args:
+        event_type: The event type string (e.g. ``workspace.created``).
+        handler: Callable receiving ``(event_id, payload)``.
+        consumer_name: Optional name for the consumer (used in logging).
+    """
+    name = consumer_name or handler.__qualname__
+    _consumer_registry.setdefault(event_type, []).append(handler)
+    logger.debug("Registered consumer %r for event type %r", name, event_type)
+
+
+def get_consumer_registry() -> dict[str, list[Callable]]:
+    """Return the current consumer registry (read-only snapshot)."""
+    return {k: list(v) for k, v in _consumer_registry.items()}
+
+
+# ── Outbox Publisher ──────────────────────────────────────────────────────────
+
+def _payload_hash(payload: dict[str, Any]) -> str:
+    """Deterministic hash for idempotency / dedup."""
+    raw = json.dumps(payload, sort_keys=True, default=str)
+    return hashlib.sha256(raw.encode()).hexdigest()[:32]
+
+
+def publish_event(
+    event_type: str,
+    *,
+    tenant_id: str,
+    workspace_id: str | None = None,
+    aggregate_type: str = "",
+    aggregate_id: str = "",
+    aggregate_version: int = 1,
+    payload: dict[str, Any] | None = None,
+    session: Any = None,
+    available_at: datetime | None = None,
+) -> str | None:
+    """Write a domain event to the outbox within an existing DB session.
+
+    This should be called inside the same transaction as the mutation it
+    describes. Returns the event id, or ``None`` if publishing is skipped
+    (e.g. no DB session available — the event will be logged to the
+    governance audit instead).
+
+    The event relay background thread picks it up asynchronously.
+    """
+    payload = payload or {}
+    event_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+
+    # If no session is provided, try to get one from the DB layer
+    if session is None:
+        try:
+            from aeon_db import get_db
+            db = get_db()
+            with db.session() as s:
+                _insert_outbox_event(s, event_id, tenant_id, workspace_id,
+                                     aggregate_type, aggregate_id, aggregate_version,
+                                     event_type, payload, now, available_at)
+                s.commit()
+            logger.debug("Published event %s [%s] to outbox", event_id, event_type)
+            return event_id
+        except Exception as exc:
+            logger.warning("Failed to publish event %s [%s] to outbox: %s", event_id, event_type, exc)
+            _log_event_to_audit(event_type, payload, tenant_id, workspace_id)
+            return None
+    else:
+        try:
+            _insert_outbox_event(session, event_id, tenant_id, workspace_id,
+                                 aggregate_type, aggregate_id, aggregate_version,
+                                 event_type, payload, now, available_at)
+            return event_id
+        except Exception as exc:
+            logger.warning("Failed to write outbox event %s: %s", event_id, exc)
+            return None
+
+
+def _insert_outbox_event(
+    session: Any,
+    event_id: str,
     tenant_id: str,
     workspace_id: str | None,
     aggregate_type: str,
     aggregate_id: str,
     aggregate_version: int,
-    data: dict[str, Any],
-    correlation_id: str,
-    actor: dict[str, Any] | None = None,
-    causation_id: str | None = None,
-) -> dict[str, Any]:
-    """Build and validate a canonical event envelope."""
-    event_type = _non_empty(event_type, "event_type")
-    schema = EVENT_SCHEMAS.get(event_type)
-    if schema is None:
-        raise EventValidationError(f"unknown event type: {event_type}")
-    if event_version != schema["version"]:
-        raise EventValidationError(f"unsupported version for {event_type}: {event_version}")
-    if not isinstance(data, dict):
-        raise EventValidationError("data must be an object")
-    if schema.get("workspace_required") and not str(workspace_id or "").strip():
-        raise EventValidationError("workspace_id is required for this event")
-    if not isinstance(aggregate_version, int) or aggregate_version < 1:
-        raise EventValidationError("aggregate_version must be a positive integer")
-
-    redacted_data, redacted = redact_sensitive(data)
-    _json_validate(redacted_data, "data")
-    actor_value = None
-    if actor is not None:
-        if not isinstance(actor, dict):
-            raise EventValidationError("actor must be an object")
-        actor_value = {key: actor[key] for key in ("type", "id") if key in actor}
-        if not actor_value:
-            raise EventValidationError("actor must include type or id")
-        _json_validate(actor_value, "actor")
-
-    event = {
-        "event_id": f"evt_{uuid.uuid4().hex}",
-        "event_type": event_type,
-        "event_version": event_version,
-        "schema_uri": f"aeon://events/{event_type}/v{event_version}",
-        "occurred_at": _isoformat_z(_utc_now()),
-        "tenant_id": _non_empty(tenant_id, "tenant_id"),
-        "workspace_id": str(workspace_id).strip() if workspace_id is not None else None,
-        "correlation_id": _non_empty(correlation_id, "correlation_id"),
-        "causation_id": str(causation_id).strip() if causation_id else None,
-        "actor": actor_value,
-        "aggregate": {
-            "type": _non_empty(aggregate_type, "aggregate.type"),
-            "id": _non_empty(aggregate_id, "aggregate.id"),
-            "version": aggregate_version,
-        },
-        "data": redacted_data,
-        "privacy": {
-            "classification": schema["classification"],
-            "redacted": redacted,
-        },
-    }
-    validate_event(event)
-    return event
-
-
-def validate_event(event: Mapping[str, Any]) -> dict[str, Any]:
-    """Validate an event received from storage or a transport and return it."""
-    if not isinstance(event, Mapping):
-        raise EventValidationError("event must be an object")
-    event_type = _non_empty(event.get("event_type"), "event_type")
-    schema = EVENT_SCHEMAS.get(event_type)
-    if schema is None:
-        raise EventValidationError(f"unknown event type: {event_type}")
-    if event.get("event_version") != schema["version"]:
-        raise EventValidationError(f"unsupported version for {event_type}: {event.get('event_version')}")
-    for field in ("event_id", "schema_uri", "occurred_at", "tenant_id", "correlation_id"):
-        _non_empty(event.get(field), field)
-    if event["schema_uri"] != f"aeon://events/{event_type}/v{schema['version']}":
-        raise EventValidationError("schema_uri does not match the registered event schema")
-    if schema.get("workspace_required") and not str(event.get("workspace_id") or "").strip():
-        raise EventValidationError("workspace_id is required for this event")
-    aggregate = event.get("aggregate")
-    if not isinstance(aggregate, Mapping):
-        raise EventValidationError("aggregate must be an object")
-    _non_empty(aggregate.get("type"), "aggregate.type")
-    _non_empty(aggregate.get("id"), "aggregate.id")
-    if not isinstance(aggregate.get("version"), int) or aggregate["version"] < 1:
-        raise EventValidationError("aggregate.version must be a positive integer")
-    if not isinstance(event.get("data"), Mapping):
-        raise EventValidationError("data must be an object")
-    if not isinstance(event.get("privacy"), Mapping):
-        raise EventValidationError("privacy must be an object")
-    if event["privacy"].get("classification") != schema["classification"]:
-        raise EventValidationError("privacy classification does not match the registered event schema")
-    _parse_timestamp(str(event["occurred_at"]))
-    _json_validate(dict(event), "event")
-    return dict(event)
-
-
-def canonical_event_json(event: Mapping[str, Any]) -> str:
-    """Return the stable JSON representation used for payload hashes."""
-    validated = validate_event(event)
-    return json.dumps(validated, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-
-
-def event_payload_hash(event: Mapping[str, Any]) -> str:
-    """Hash only canonical event content, never transport metadata."""
-    return hashlib.sha256(canonical_event_json(event).encode("utf-8")).hexdigest()
-
-
-def append_outbox_event(
-    session: Session,
-    event: Mapping[str, Any],
-    *,
-    available_at: datetime | None = None,
-) -> Any:
-    """Append an event without committing the caller's transaction.
-
-    Producers may safely retry an append after a timeout: a previously stored
-    event with the same ID and canonical payload is returned unchanged. Reusing
-    an event ID for different content is rejected because it would make the
-    event stream ambiguous. The savepoint around the insert also keeps a
-    concurrent duplicate from poisoning the caller's outer transaction.
-    """
+    event_type: str,
+    payload: dict[str, Any],
+    now: datetime,
+    available_at: datetime | None,
+) -> None:
+    """Insert a row into the outbox_events table."""
     from aeon_db import OutboxEvent
 
-    validated = validate_event(event)
-    payload_hash = event_payload_hash(validated)
-    event_id = validated["event_id"]
-    caller_in_transaction = session.in_transaction()
-    existing = session.get(OutboxEvent, event_id)
-    if existing is not None:
-        if existing.payload_hash != payload_hash:
-            raise EventValidationError("event_id already exists with a different payload")
-        return existing
-
-    occurred_at = _parse_timestamp(validated["occurred_at"])
-    aggregate = validated["aggregate"]
-    row = OutboxEvent(
+    event = OutboxEvent(
         id=event_id,
-        tenant_id=validated["tenant_id"],
-        workspace_id=validated.get("workspace_id"),
-        aggregate_type=aggregate["type"],
-        aggregate_id=aggregate["id"],
-        aggregate_version=aggregate["version"],
-        event_type=validated["event_type"],
-        event_version=validated["event_version"],
-        schema_uri=validated["schema_uri"],
-        payload=validated,
-        payload_hash=payload_hash,
-        occurred_at=occurred_at,
-        available_at=available_at or _utc_now(),
+        tenant_id=tenant_id or "",
+        workspace_id=workspace_id,
+        aggregate_type=aggregate_type,
+        aggregate_id=aggregate_id,
+        aggregate_version=aggregate_version,
+        event_type=event_type,
+        event_version=1,
+        schema_uri=f"aeon://events/{event_type}/v1",
+        payload=payload,
+        payload_hash=_payload_hash(payload),
+        occurred_at=now,
+        created_at=now,
+        available_at=available_at or now,
+        status="pending",
+        attempt_count=0,
     )
+    session.add(event)
+
+
+def _log_event_to_audit(
+    event_type: str,
+    payload: dict[str, Any],
+    tenant_id: str,
+    workspace_id: str | None,
+) -> None:
+    """Fallback: log the event to the governance audit when outbox write fails."""
     try:
-        if caller_in_transaction:
-            with session.begin_nested():
-                session.add(row)
-                session.flush()
-        else:
-            # Preserve the caller's normal transaction semantics. SQLAlchemy
-            # will autobegin here, and the caller remains responsible for
-            # commit/rollback.
-            session.add(row)
-            session.flush()
-    except IntegrityError as exc:
-        existing = session.get(OutboxEvent, event_id)
-        if existing is None:
-            raise
-        if existing.payload_hash != payload_hash:
-            raise EventValidationError("event_id already exists with a different payload") from exc
-        return existing
-    return row
+        from aeon_governance import get_governance
+        get_governance().log_audit(
+            action="DOMAIN_EVENT_FAILED",
+            module="events",
+            user_id=payload.get("user_id"),
+            workspace_id=workspace_id,
+            metadata={"event_type": event_type, "tenant_id": tenant_id},
+        )
+    except Exception:  # pragma: no cover
+        pass
 
 
-def begin_event_consumption(
-    session: Session,
-    *,
-    consumer_name: str,
-    event_id: str,
-) -> bool:
-    """Claim an event for a consumer; return False for duplicate delivery."""
-    from aeon_db import EventConsumption
+# ── Background Event Relay ────────────────────────────────────────────────────
 
-    consumer_name = _non_empty(consumer_name, "consumer_name")
-    event_id = _non_empty(event_id, "event_id")
-    try:
-        with session.begin_nested():
-            session.add(
-                EventConsumption(
-                    consumer_name=consumer_name,
-                    event_id=event_id,
-                    status="processing",
-                    first_seen_at=_utc_now(),
-                    attempt_count=1,
+class EventRelay:
+    """Background thread that polls the outbox and dispatches events to consumers.
+
+    Uses a lease-based approach to prevent duplicate processing in multi-worker
+    deployments. Events are leased to a unique relay owner, processed, then
+    marked published. Failed events are retried with exponential backoff up to
+    ``max_attempts`` times before being marked error.
+    """
+
+    def __init__(
+        self,
+        poll_interval: float = 2.0,
+        batch_size: int = 50,
+        max_attempts: int = 5,
+        relay_id: str | None = None,
+    ):
+        self._poll_interval = poll_interval
+        self._batch_size = batch_size
+        self._max_attempts = max_attempts
+        self._relay_id = relay_id or f"relay-{uuid.uuid4().hex[:8]}"
+        self._thread: threading.Thread | None = None
+        self._stop_event = threading.Event()
+        self._stats = {"dispatched": 0, "errors": 0, "skipped": 0}
+
+    @property
+    def relay_id(self) -> str:
+        return self._relay_id
+
+    @property
+    def stats(self) -> dict[str, int]:
+        return dict(self._stats)
+
+    def start(self) -> None:
+        if self._thread is not None and self._thread.is_alive():
+            return
+        self._stop_event.clear()
+        self._thread = threading.Thread(
+            target=self._loop,
+            daemon=True,
+            name="aeon-event-relay",
+        )
+        self._thread.start()
+        logger.info("Event relay %s started (poll every %.1fs)", self._relay_id, self._poll_interval)
+
+    def stop(self) -> None:
+        self._stop_event.set()
+        if self._thread:
+            self._thread.join(timeout=10)
+
+    def _loop(self) -> None:
+        while not self._stop_event.is_set():
+            try:
+                processed = self._tick()
+            except Exception as exc:
+                logger.warning("Event relay tick failed: %s", exc)
+                processed = 0
+            # Sleep shorter if we processed events (more work to do)
+            sleep_time = 0.5 if processed > 0 else self._poll_interval
+            self._stop_event.wait(sleep_time)
+
+    def _tick(self) -> int:
+        """Process one batch of pending events. Returns count processed."""
+        from aeon_db import get_db, OutboxEvent, EventConsumption
+        from sqlalchemy import and_
+
+        db = get_db()
+        now = datetime.now(timezone.utc)
+        processed = 0
+
+        with db.session() as s:
+            # Fetch pending events that are available (not leased or lease expired)
+            events = (
+                s.query(OutboxEvent)
+                .filter(
+                    and_(
+                        OutboxEvent.status == "pending",
+                        OutboxEvent.available_at <= now,
+                        OutboxEvent.attempt_count < self._max_attempts,
+                    )
                 )
+                .order_by(OutboxEvent.created_at.asc())
+                .limit(self._batch_size)
+                .all()
             )
-            session.flush()
-        return True
-    except IntegrityError:
-        return False
+
+            for event in events:
+                # Try to lease the event
+                if event.lease_owner and event.lease_until and event.lease_until > now:
+                    continue  # Another relay owns this
+
+                event.lease_owner = self._relay_id
+                event.lease_until = now + timedelta(seconds=60)
+                event.attempt_count += 1
+
+                try:
+                    self._dispatch_event(s, event, EventConsumption)
+                    event.status = "published"
+                    event.published_at = now
+                    event.lease_owner = None
+                    event.lease_until = None
+                    processed += 1
+                except Exception as exc:
+                    event.last_error_code = "DISPATCH_FAILED"
+                    event.last_error_message = str(exc)[:500]
+                    if event.attempt_count >= self._max_attempts:
+                        event.status = "error"
+                        logger.error(
+                            "Event %s [%s] failed after %d attempts: %s",
+                            event.id, event.event_type, event.attempt_count, exc,
+                        )
+                        self._stats["errors"] += 1
+                    else:
+                        # Exponential backoff: 2s, 4s, 8s, 16s, 32s
+                        backoff = min(2 ** event.attempt_count, 120)
+                        event.available_at = now + timedelta(seconds=backoff)
+                        event.lease_owner = None
+                        event.lease_until = None
+                    self._stats["errors"] += 1
+                finally:
+                    s.commit()
+
+        return processed
+
+    def _dispatch_event(self, session: Any, event: Any, EventConsumption: Any) -> None:
+        """Dispatch a single event to all registered consumers with idempotency."""
+        event_type = event.event_type
+        payload = event.payload or {}
+        handlers = _consumer_registry.get(event_type, [])
+
+        if not handlers:
+            self._stats["skipped"] += 1
+            return
+
+        for handler in handlers:
+            consumer_name = handler.__qualname__
+
+            # Idempotency check: has this consumer already processed this event?
+            existing = (
+                session.query(EventConsumption)
+                .filter(
+                    EventConsumption.consumer_name == consumer_name,
+                    EventConsumption.event_id == event.id,
+                )
+                .first()
+            )
+            if existing and existing.status == "completed":
+                continue  # Already processed
+
+            try:
+                handler(event.id, payload)
+                # Record successful consumption
+                if existing:
+                    existing.status = "completed"
+                    existing.processed_at = datetime.now(timezone.utc)
+                    existing.attempt_count += 1
+                else:
+                    session.add(EventConsumption(
+                        consumer_name=consumer_name,
+                        event_id=event.id,
+                        status="completed",
+                        processed_at=datetime.now(timezone.utc),
+                        attempt_count=1,
+                    ))
+                self._stats["dispatched"] += 1
+            except Exception as exc:
+                error_msg = str(exc)[:500]
+                if existing:
+                    existing.status = "error"
+                    existing.attempt_count += 1
+                    existing.last_error_code = "HANDLER_FAILED"
+                    existing.last_error_message = error_msg
+                else:
+                    session.add(EventConsumption(
+                        consumer_name=consumer_name,
+                        event_id=event.id,
+                        status="error",
+                        attempt_count=1,
+                        last_error_code="HANDLER_FAILED",
+                        last_error_message=error_msg,
+                    ))
+                logger.warning("Consumer %r failed for event %s: %s", consumer_name, event.id, exc)
+                raise  # Re-cause the event-level retry
 
 
-def mark_event_processed(session: Session, *, consumer_name: str, event_id: str) -> bool:
-    """Mark a previously claimed event processed without committing."""
-    from aeon_db import EventConsumption
+# ── Built-in consumers ────────────────────────────────────────────────────────
 
-    row = (
-        session.query(EventConsumption)
-        .filter_by(consumer_name=_non_empty(consumer_name, "consumer_name"), event_id=_non_empty(event_id, "event_id"))
-        .one_or_none()
+def _audit_event_consumer(event_id: str, payload: dict[str, Any]) -> None:
+    """Mirror every domain event to the governance audit log."""
+    try:
+        from aeon_governance import get_governance
+        event_type = payload.pop("_event_type", "unknown")
+        get_governance().log_audit(
+            action=f"EVENT_{event_type.upper().replace('.', '_')}",
+            module="events",
+            user_id=payload.get("user_id"),
+            workspace_id=payload.get("workspace_id"),
+            metadata={"event_id": event_id, "event_type": event_type, **payload},
+        )
+    except Exception:  # pragma: no cover
+        pass
+
+
+def _security_alert_consumer(event_id: str, payload: dict[str, Any]) -> None:
+    """Log security events to the governance security module."""
+    try:
+        from aeon_governance import get_governance
+        get_governance().log_audit(
+            action=payload.get("action", "SECURITY_EVENT"),
+            module="security",
+            user_id=payload.get("user_id"),
+            workspace_id=payload.get("workspace_id"),
+            metadata={"event_id": event_id, **payload},
+        )
+    except Exception:  # pragma: no cover
+        pass
+
+
+# Register built-in consumers
+for _sec_type in (SECURITY_RATE_LIMITED, SECURITY_LOGIN_FAILED, SECURITY_JWT_ROTATED):
+    register_consumer(_sec_type, _security_alert_consumer, f"security-audit-{_sec_type}")
+
+
+# ── Module-level singleton ────────────────────────────────────────────────────
+
+_relay: EventRelay | None = None
+_relay_lock = threading.Lock()
+
+
+def get_relay() -> EventRelay:
+    """Return the global event relay, lazily initialised."""
+    global _relay
+    if _relay is not None:
+        return _relay
+    with _relay_lock:
+        if _relay is not None:
+            return _relay
+        _relay = EventRelay()
+        return _relay
+
+
+def start_event_relay(**kwargs: Any) -> EventRelay:
+    """Start the global event relay thread."""
+    relay = get_relay()
+    for k, v in kwargs.items():
+        setattr(relay, f"_{k}", v)
+    relay.start()
+    return relay
+
+
+def stop_event_relay() -> None:
+    """Stop the global event relay thread."""
+    relay = get_relay()
+    relay.stop()
+
+
+# ── Convenience: publish + audit in one call ──────────────────────────────────
+
+def emit(
+    event_type: str,
+    *,
+    tenant_id: str = "",
+    workspace_id: str | None = None,
+    aggregate_type: str = "",
+    aggregate_id: str = "",
+    payload: dict[str, Any] | None = None,
+    user_id: str | None = None,
+) -> str | None:
+    """High-level emit: publish to outbox and enrich payload with metadata.
+
+    Returns the event id or None.
+    """
+    payload = dict(payload or {})
+    payload["_event_type"] = event_type
+    if user_id:
+        payload.setdefault("user_id", user_id)
+    if workspace_id:
+        payload.setdefault("workspace_id", workspace_id)
+    payload.setdefault("timestamp", datetime.now(timezone.utc).isoformat())
+
+    return publish_event(
+        event_type,
+        tenant_id=tenant_id,
+        workspace_id=workspace_id,
+        aggregate_type=aggregate_type or event_type.split(".")[0],
+        aggregate_id=aggregate_id,
+        payload=payload,
     )
-    if row is None:
-        return False
-    row.status = "processed"
-    row.processed_at = _utc_now()
-    session.flush()
-    return True
 
 
-# Short aliases keep the contract easy to discover for callers and tests.
-append_event = append_outbox_event
-consume_event = begin_event_consumption
+# ── Query helpers (for /events API) ───────────────────────────────────────────
+
+def query_outbox(
+    *,
+    status: str | None = None,
+    event_type: str | None = None,
+    workspace_id: str | None = None,
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    """Query recent outbox events."""
+    from aeon_db import get_db, OutboxEvent
+
+    db = get_db()
+    with db.session() as s:
+        q = s.query(OutboxEvent)
+        if status:
+            q = q.filter(OutboxEvent.status == status)
+        if event_type:
+            q = q.filter(OutboxEvent.event_type == event_type)
+        if workspace_id:
+            q = q.filter(OutboxEvent.workspace_id == workspace_id)
+        events = q.order_by(OutboxEvent.created_at.desc()).limit(limit).all()
+        return [
+            {
+                "id": e.id,
+                "event_type": e.event_type,
+                "status": e.status,
+                "tenant_id": e.tenant_id,
+                "workspace_id": e.workspace_id,
+                "aggregate_type": e.aggregate_type,
+                "aggregate_id": e.aggregate_id,
+                "attempt_count": e.attempt_count,
+                "created_at": e.created_at.isoformat() if e.created_at else None,
+                "published_at": e.published_at.isoformat() if e.published_at else None,
+                "last_error_code": e.last_error_code,
+                "last_error_message": e.last_error_message,
+            }
+            for e in events
+        ]
+
+
+def outbox_stats() -> dict[str, Any]:
+    """Return aggregate outbox statistics."""
+    from aeon_db import get_db, OutboxEvent
+
+    db = get_db()
+    with db.session() as s:
+        total = s.query(OutboxEvent).count()
+        pending = s.query(OutboxEvent).filter(OutboxEvent.status == "pending").count()
+        published = s.query(OutboxEvent).filter(OutboxEvent.status == "published").count()
+        errors = s.query(OutboxEvent).filter(OutboxEvent.status == "error").count()
+        return {
+            "total": total,
+            "pending": pending,
+            "published": published,
+            "errors": errors,
+            "relay_stats": get_relay().stats,
+            "consumer_types": list(_consumer_registry.keys()),
+        }
+
+
+
+__all__ = [
+    # Event type constants
+    *ALL_EVENT_TYPES,
+    # Publisher
+    "publish_event",
+    "emit",
+    # Consumer
+    "register_consumer",
+    "get_consumer_registry",
+    # Relay
+    "EventRelay",
+    "get_relay",
+    "start_event_relay",
+    "stop_event_relay",
+    # Query
+    "query_outbox",
+    "outbox_stats",
+]

@@ -247,6 +247,12 @@ from aeon_anomalies_routes import anomalies_bp
 from aeon_dr_routes import dr_bp
 from aeon_sectors import sectors_bp
 from aeon_siem_routes import siem_bp
+from aeon_events import (
+    emit as emit_event,
+    USER_REGISTERED, WORKSPACE_CREATED, MEMBERSHIP_CREATED,
+    SUBSCRIPTION_UPDATED, BILLING_CHECKOUT_COMPLETED,
+    AUTOMATION_TRIGGERED, AUTOMATION_COMPLETED, AUTOMATION_FAILED,
+)
 
 app.register_blueprint(anomalies_bp)
 app.register_blueprint(dr_bp)
@@ -1293,6 +1299,33 @@ def _operations_worker_snapshot() -> dict[str, Any]:
         }
 
 
+def _ai_ledger_snapshot(workspace_id: str) -> dict:
+    """Return a summary of AI execution ledger stats for the workspace."""
+    try:
+        from aeon_ai_ledger import get_ai_ledger
+        return get_ai_ledger().summary(workspace_id=workspace_id)
+    except Exception:
+        return {"ok": False, "error": "ledger unavailable"}
+
+
+def _dead_letter_snapshot() -> dict:
+    """Return dead-letter queue summary for ops visibility."""
+    with job_queue._lock:
+        letters = list(job_queue._dead_letter)
+    return {
+        "total": len(letters),
+        "recent": [
+            {
+                "job_id": entry.get("job_id", ""),
+                "attempts": entry.get("attempts", 0),
+                "error": entry.get("error", "")[:200],
+                "submitted_at": entry.get("submitted_at", ""),
+            }
+            for entry in letters[-10:]  # last 10 only
+        ],
+    }
+
+
 @app.route("/operations/snapshot", methods=["GET"])
 @require_auth
 @require_workspace_role("VIEWER")
@@ -1348,6 +1381,8 @@ def operations_snapshot():
             "executions_last_24h": len(executions),
             "execution_statuses": execution_statuses,
         },
+        "ai_ledger": _ai_ledger_snapshot(workspace_id),
+        "dead_letters": _dead_letter_snapshot(),
     })
 
 
@@ -1569,6 +1604,13 @@ def auth_register():
             email=user.email,
             workspace_id=workspace_id,
         )
+        # Domain events: user registered, workspace created, membership created
+        try:
+            emit_event(USER_REGISTERED, tenant_id="", workspace_id=workspace_id, payload={"user_id": str(user.id), "email": user.email, "name": name})
+            emit_event(WORKSPACE_CREATED, tenant_id="", workspace_id=workspace_id, payload={"user_id": str(user.id), "slug": slug, "name": f"{name}\u2019s Workspace", "plan": "free"})
+            emit_event(MEMBERSHIP_CREATED, tenant_id="", workspace_id=workspace_id, payload={"user_id": str(user.id), "workspace_id": workspace_id, "role": "ADMIN"})
+        except Exception as exc:
+            logger.debug("Failed to emit registration events: %s", exc)
         return jsonify({
             "ok": True,
             "token": token,
@@ -3542,6 +3584,17 @@ def stripe_webhook_receive():
         module="billing",
         metadata={"type": result.get("type"), "handled": result.get("handled")},
     )
+    # Emit domain events for handled Stripe events
+    try:
+        evt_type = result.get("type", "")
+        evt_data = result.get("data", {})
+        ws_id = evt_data.get("metadata", {}).get("workspace_id") or evt_data.get("workspace_id")
+        if evt_type.startswith("customer.subscription."):
+            emit_event(SUBSCRIPTION_UPDATED, tenant_id="", workspace_id=ws_id, payload={"stripe_event": evt_type, **evt_data})
+        elif evt_type == "checkout.session.completed":
+            emit_event(BILLING_CHECKOUT_COMPLETED, tenant_id="", workspace_id=ws_id, payload={"stripe_event": evt_type, **evt_data})
+    except Exception as exc:
+        logger.debug("Failed to emit Stripe domain events: %s", exc)
     return jsonify(result)
 
 
@@ -3584,13 +3637,16 @@ def health_detailed():
         {"id": cfg.id, "name": cfg.name, "type": cfg.type, "enabled": cfg.enabled}
         for cfg in get_integration_manager().list_integrations(mask=False)
     ]
-    return jsonify(
-        get_health_collector().snapshot(
-            agent_vitals=vitals,
-            queue_size=job_queue._pending,
-            integrations=integrations,
-        )
+    snapshot = get_health_collector().snapshot(
+        agent_vitals=vitals,
+        queue_size=job_queue._pending,
+        integrations=integrations,
     )
+    # Enrich with job queue detail and AI ledger stats
+    snapshot["worker"] = _operations_worker_snapshot()
+    snapshot["ai_ledger"] = _ai_ledger_snapshot(None)
+    snapshot["dead_letters"] = _dead_letter_snapshot()
+    return jsonify(snapshot)
 
 
 @app.route("/metrics", methods=["GET"])
@@ -4404,6 +4460,11 @@ def automation_run_now(rule_id: str):
         }
         _log_automation_event("automation_run", ctx, rule_id=rule_id, metadata={"rule_id": rule_id, "dry_run": dry_run})
         result = _execute_action(rule, event, dry_run=dry_run)
+        try:
+            evt_type = AUTOMATION_COMPLETED if result.get("ok") else AUTOMATION_FAILED
+            emit_event(evt_type, tenant_id="", workspace_id=workspace_id, payload={"rule_id": rule_id, "rule_name": rule.get("name"), "dry_run": dry_run, "result_ok": result.get("ok"), "status": result.get("status")})
+        except Exception:
+            pass
         return jsonify({"ok": result.get("ok"), "dry_run": dry_run, "result": result})
     except Exception as e:
         logger.warning("Failed to run automation rule manually: %s", e)
@@ -5785,6 +5846,25 @@ def slack_interactions():
         "text": f"Approval {decision}.",
     }), 200
 # ── AI Execution Ledger endpoints (Phase 4) ──────────────────────────────────
+
+
+@app.route("/events", methods=["GET"])
+@require_auth
+def events_outbox():
+    """Query the domain event outbox for observability."""
+    from aeon_events import query_outbox, outbox_stats
+    ws_id = _resolve_workspace_id()
+    status_filter = request.args.get("status")
+    type_filter = request.args.get("type")
+    limit = min(int(request.args.get("limit", 50)), 200)
+    stats = outbox_stats()
+    events = query_outbox(
+        status=status_filter,
+        event_type=type_filter,
+        workspace_id=ws_id,
+        limit=limit,
+    )
+    return jsonify({"ok": True, "stats": stats, "events": events})
 @app.route("/ai/ledger/summary", methods=["GET"])
 @require_auth
 @require_workspace_role("VIEWER")
@@ -5822,7 +5902,15 @@ def ai_ledger_executions():
     return jsonify({"ok": True, "executions": records, "total": len(records)})
 
 
-# ── Graceful shutdown# ── Graceful shutdown ────────────────────────────────────────────────────────
+# ── Event relay startup ─────────────────────────────────────────────────────────────────
+try:
+    from aeon_events import start_event_relay
+    start_event_relay()
+except Exception as _relay_exc:
+    logger.debug("Event relay not started: %s", _relay_exc)
+
+
+# ── Graceful shutdown ────────────────────────────────────────────────────────
 def _shutdown():
     logger.info("Shutting down AEON kernel...")
     try:
@@ -5838,6 +5926,11 @@ def _shutdown():
         get_ai_ledger().shutdown()
     except Exception as e:
         logger.warning("AI ledger shutdown error: %s", e)
+    try:
+        from aeon_events import stop_event_relay
+        stop_event_relay()
+    except Exception as e:
+        logger.warning("Event relay shutdown error: %s", e)
 
 
 import atexit
