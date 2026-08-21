@@ -1,0 +1,175 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0a0a1a"/>
+      <stop offset="40%" stop-color="#0f0f2e"/>
+      <stop offset="100%" stop-color="#1a0a2e"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#7c3aed"/>
+      <stop offset="50%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#06b6d4"/>
+    </linearGradient>
+    <linearGradient id="glow1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7c3aed" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#7c3aed" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="glow2" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#06b6d4" stop-opacity="0.1"/>
+      <stop offset="100%" stop-color="#06b6d4" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="glow3" x1="50%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%" stop-color="#10b981" stop-opacity="0.06"/>
+      <stop offset="100%" stop-color="#10b981" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="630" fill="url(#bg)"/>
+
+  <!-- Ambient glow effects -->
+  <ellipse cx="180" cy="120" rx="450" ry="350" fill="url(#glow1)"/>
+  <ellipse cx="1020" cy="480" rx="400" ry="300" fill="url(#glow2)"/>
+  <ellipse cx="600" cy="320" rx="300" ry="200" fill="url(#glow3)"/>
+
+  <!-- Subtle grid pattern -->
+  <g opacity="0.025" stroke="#ffffff" stroke-width="0.5">
+    <line x1="100" y1="0" x2="100" y2="630"/>
+    <line x1="200" y1="0" x2="200" y2="630"/>
+    <line x1="300" y1="0" x2="300" y2="630"/>
+    <line x1="400" y1="0" x2="400" y2="630"/>
+    <line x1="500" y1="0" x2="500" y2="630"/>
+    <line x1="600" y1="0" x2="600" y2="630"/>
+    <line x1="700" y1="0" x2="700" y2="630"/>
+    <line x1="800" y1="0" x2="800" y2="630"/>
+    <line x1="900" y1="0" x2="900" y2="630"/>
+    <line x1="1000" y1="0" x2="1000" y2="630"/>
+    <line x1="1100" y1="0" x2="1100" y2="630"/>
+    <line x1="0" y1="106" x2="1200" y2="106"/>
+    <line x1="0" y1="212" x2="1200" y2="212"/>
+    <line x1="0" y1="318" x2="1200" y2="318"/>
+    <line x1="0" y1="424" x2="1200" y2="424"/>
+    <line x1="0" y1="530" x2="1200" y2="530"/>
+  </g>
+
+  <!-- Brand mark -->
+  <g transform="translate(60, 50)">
+    <polygon points="16,0 32,9.2 32,27.7 16,37 0,27.7 0,9.2" fill="none" stroke="url(#accent)" stroke-width="1.5" opacity="0.8"/>
+    <text x="44" y="24" font-family="system-ui, -apple-system, sans-serif" font-size="22" font-weight="700" fill="#ffffff" letter-spacing="0.05em">AEON OS</text>
+  </g>
+
+  <!-- Status indicator -->
+  <g transform="translate(60, 115)">
+    <circle cx="6" cy="6" r="4" fill="#10b981"/>
+    <circle cx="6" cy="6" r="7" fill="none" stroke="#10b981" stroke-opacity="0.3" stroke-width="1"/>
+    <text x="18" y="10" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="600" fill="#10b981" letter-spacing="0.1em" text-transform="uppercase">SYSTEM ONLINE</text>
+  </g>
+
+  <!-- Main title -->
+  <text x="60" y="195" font-family="system-ui, -apple-system, sans-serif" font-size="54" font-weight="800" fill="#ffffff" letter-spacing="-0.02em">
+    Enterprise AI
+  </text>
+  <text x="60" y="255" font-family="system-ui, -apple-system, sans-serif" font-size="54" font-weight="800" fill="url(#accent)" letter-spacing="-0.02em">
+    Operating System
+  </text>
+
+  <!-- Subtitle -->
+  <text x="60" y="300" font-family="system-ui, -apple-system, sans-serif" font-size="18" fill="#94a3b8" letter-spacing="0.01em">
+    Governed, sector-aware AI at scale. 16 industries. One platform.
+  </text>
+
+  <!-- Feature chips -->
+  <g transform="translate(60, 340)">
+    <!-- Chip 1 -->
+    <rect width="160" height="32" rx="16" fill="#ffffff" fill-opacity="0.04" stroke="#ffffff" stroke-opacity="0.08" stroke-width="1"/>
+    <text x="16" y="21" font-family="system-ui, -apple-system, sans-serif" font-size="12" fill="#c4b5fd" font-weight="500">🤖 AI Governance</text>
+
+    <!-- Chip 2 -->
+    <g transform="translate(175, 0)">
+      <rect width="160" height="32" rx="16" fill="#ffffff" fill-opacity="0.04" stroke="#ffffff" stroke-opacity="0.08" stroke-width="1"/>
+      <text x="16" y="21" font-family="system-ui, -apple-system, sans-serif" font-size="12" fill="#c4b5fd" font-weight="500">🛡️ RBAC Security</text>
+    </g>
+
+    <!-- Chip 3 -->
+    <g transform="translate(350, 0)">
+      <rect width="160" height="32" rx="16" fill="#ffffff" fill-opacity="0.04" stroke="#ffffff" stroke-opacity="0.08" stroke-width="1"/>
+      <text x="16" y="21" font-family="system-ui, -apple-system, sans-serif" font-size="12" fill="#c4b5fd" font-weight="500">📊 16 Sectors</text>
+    </g>
+
+    <!-- Chip 4 -->
+    <g transform="translate(525, 0)">
+      <rect width="180" height="32" rx="16" fill="#ffffff" fill-opacity="0.04" stroke="#ffffff" stroke-opacity="0.08" stroke-width="1"/>
+      <text x="16" y="21" font-family="system-ui, -apple-system, sans-serif" font-size="12" fill="#c4b5fd" font-weight="500">⚡ Multi-Provider LLM</text>
+    </g>
+  </g>
+
+  <!-- Command Center cards (right side, decorative) -->
+  <g transform="translate(720, 100)" opacity="0.9">
+    <!-- Card 1: Security -->
+    <g>
+      <rect width="200" height="90" rx="10" fill="#ffffff" fill-opacity="0.03" stroke="#ef4444" stroke-opacity="0.15" stroke-width="1"/>
+      <text x="16" y="28" font-family="system-ui, -apple-system, sans-serif" font-size="16">🛡️</text>
+      <text x="40" y="28" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="600" fill="#ef4444">Security Command</text>
+      <text x="16" y="50" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#94a3b8">Threat intelligence · Compliance</text>
+      <circle cx="184" cy="16" r="4" fill="#10b981"/>
+    </g>
+
+    <!-- Card 2: Finance -->
+    <g transform="translate(0, 105)">
+      <rect width="200" height="90" rx="10" fill="#ffffff" fill-opacity="0.03" stroke="#f59e0b" stroke-opacity="0.15" stroke-width="1"/>
+      <text x="16" y="28" font-family="system-ui, -apple-system, sans-serif" font-size="16">💰</text>
+      <text x="40" y="28" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="600" fill="#f59e0b">Finance Command</text>
+      <text x="16" y="50" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#94a3b8">Risk analysis · Fraud detection</text>
+      <circle cx="184" cy="16" r="4" fill="#10b981"/>
+    </g>
+
+    <!-- Card 3: Health -->
+    <g transform="translate(0, 210)">
+      <rect width="200" height="90" rx="10" fill="#ffffff" fill-opacity="0.03" stroke="#10b981" stroke-opacity="0.15" stroke-width="1"/>
+      <text x="16" y="28" font-family="system-ui, -apple-system, sans-serif" font-size="16">🏥</text>
+      <text x="40" y="28" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="600" fill="#10b981">Health Command</text>
+      <text x="16" y="50" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#94a3b8">AI diagnostics · Patient monitoring</text>
+      <circle cx="184" cy="16" r="4" fill="#10b981"/>
+    </g>
+
+    <!-- Card 4: Commerce -->
+    <g transform="translate(220, 105)">
+      <rect width="200" height="90" rx="10" fill="#ffffff" fill-opacity="0.03" stroke="#6366f1" stroke-opacity="0.15" stroke-width="1"/>
+      <text x="16" y="28" font-family="system-ui, -apple-system, sans-serif" font-size="16">📦</text>
+      <text x="40" y="28" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="600" fill="#6366f1">Commerce Command</text>
+      <text x="16" y="50" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#94a3b8">Inventory · Pricing · Demand</text>
+      <circle cx="184" cy="16" r="4" fill="#10b981"/>
+    </g>
+  </g>
+
+  <!-- Stats bar -->
+  <g transform="translate(60, 430)">
+    <rect width="600" height="80" rx="12" fill="#ffffff" fill-opacity="0.02" stroke="#ffffff" stroke-opacity="0.05" stroke-width="1"/>
+
+    <text x="80" y="32" font-family="system-ui, -apple-system, sans-serif" font-size="28" font-weight="800" fill="#10b981">99.97%</text>
+    <text x="80" y="54" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#64748b" letter-spacing="0.08em">UPTIME</text>
+
+    <text x="230" y="32" font-family="system-ui, -apple-system, sans-serif" font-size="28" font-weight="800" fill="#6366f1">16</text>
+    <text x="230" y="54" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#64748b" letter-spacing="0.08em">SECTORS</text>
+
+    <text x="370" y="32" font-family="system-ui, -apple-system, sans-serif" font-size="28" font-weight="800" fill="#f59e0b">8+</text>
+    <text x="370" y="54" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#64748b" letter-spacing="0.08em">AI PROVIDERS</text>
+
+    <text x="510" y="32" font-family="system-ui, -apple-system, sans-serif" font-size="28" font-weight="800" fill="#06b6d4">SOC2</text>
+    <text x="510" y="54" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#64748b" letter-spacing="0.08em">READY</text>
+
+    <!-- Divider lines -->
+    <line x1="190" y1="16" x2="190" y2="64" stroke="#ffffff" stroke-opacity="0.06" stroke-width="1"/>
+    <line x1="340" y1="16" x2="340" y2="64" stroke="#ffffff" stroke-opacity="0.06" stroke-width="1"/>
+    <line x1="490" y1="16" x2="490" y2="64" stroke="#ffffff" stroke-opacity="0.06" stroke-width="1"/>
+  </g>
+
+  <!-- Bottom accent line -->
+  <rect x="0" y="626" width="1200" height="4" fill="url(#accent)" opacity="0.6"/>
+
+  <!-- Corner decorations -->
+  <circle cx="1140" cy="60" r="3" fill="#7c3aed" opacity="0.5"/>
+  <circle cx="1155" cy="60" r="3" fill="#6366f1" opacity="0.3"/>
+  <circle cx="1170" cy="60" r="3" fill="#06b6d4" opacity="0.2"/>
+  <circle cx="1185" cy="60" r="3" fill="#10b981" opacity="0.15"/>
+</svg>

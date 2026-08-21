@@ -1,4 +1,19 @@
+import type { Metadata } from "next";
 import Link from "next/link";
+
+export const metadata: Metadata = {
+  title: "Page Not Found — AEON OS",
+  description:
+    "The page you're looking for doesn't exist or has been moved. Return to AEON OS dashboard.",
+  robots: {
+    index: false,
+    follow: false,
+  },
+  openGraph: {
+    title: "Page Not Found — AEON OS",
+    description: "This page doesn't exist. Return to your AEON OS workspace.",
+  },
+};
 
 export default function NotFound() {
   return (
