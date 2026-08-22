@@ -1,4 +1,5 @@
 import { ReactNode } from "react";
+import AeonLogo from "./AeonLogo";
 import HealthStatus from "./HealthStatus";
 import SidebarLink from "./SidebarLink";
 import {
@@ -107,7 +108,7 @@ export default function AppSidebar({ health, branding, userRole }: AppSidebarPro
     <>
       <div className="sidebar-header">
         <div className="sidebar-brand">
-          <div className="sidebar-logo text-aeon-primary"></div>
+          <AeonLogo size={36} className="aeon-logo-mark" />
           <div>
             <div className="sidebar-brand-text text-aeon-fg">{config.productName}</div>
             <div className="sidebar-brand-sub text-aeon-fg-mute">{config.tagline}</div>

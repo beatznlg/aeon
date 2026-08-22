@@ -4,6 +4,7 @@ import { useState, Suspense, useEffect } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { loginToFlask, storeFlaskSession } from "@/lib/flask-auth";
+import AeonLogo from "@/components/AeonLogo";
 
 const DEMO_EMAIL = "admin@demo.local";
 const DEMO_PASSWORD = "demo123";
@@ -98,9 +99,11 @@ function LoginForm() {
       <div style={styles.card}>
         {/* Logo + Title */}
         <div style={styles.header}>
-          <div style={styles.logo}>⟁</div>
+          <div style={styles.logo}>
+            <AeonLogo size={48} />
+          </div>
           <h1 style={styles.title}>AEON OS</h1>
-          <p style={styles.subtitle}>Enterprise Intelligence Platform</p>
+          <p style={styles.subtitle}>AI OPERATIVE SYSTEM</p>
         </div>
 
         {/* Tabs */}
@@ -211,7 +214,9 @@ export default function LoginPage() {
     <Suspense fallback={
       <div style={{ ...styles.container, background: "#0a0a0f" }}>
         <div style={{ ...styles.card, textAlign: "center" }}>
-          <div style={{ ...styles.logo, margin: "0 auto 16px" }}>⟁</div>
+          <div style={{ ...styles.logo, margin: "0 auto 16px" }}>
+            <AeonLogo size={48} />
+          </div>
           <p style={{ color: "#666" }}>Loading...</p>
         </div>
       </div>
@@ -256,10 +261,9 @@ const styles: Record<string, React.CSSProperties> = {
     marginBottom: 32,
   },
   logo: {
-    fontSize: 40,
-    color: "#6366f1",
+    display: "flex",
+    justifyContent: "center",
     marginBottom: 12,
-    fontWeight: 700,
   },
   title: {
     fontSize: 24,
