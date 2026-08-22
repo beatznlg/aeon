@@ -2,10 +2,5 @@
   "version": 2,
   "framework": "nextjs",
   "buildCommand": "cd web && npm run build",
-  "installCommand": "cd web && npm install",
-  "functions": {
-    "web/app/api/**/*.ts": {
-      "maxDuration": 120
-    }
-  }
+  "installCommand": "cd web && npm install"
 }
