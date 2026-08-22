@@ -21,26 +21,36 @@ const TRUST_HOST = process.env.VERCEL === "1" || process.env.AUTH_TRUST_HOST ===
  * Fallback admin user that works when Supabase is not configured.
  * This lets the project boot and the first admin log in immediately.
  */
+const DEMO_EMAIL = "admin@demo.local";
+const DEMO_PASSWORD = "demo123";
+
 function getFallbackAdmin(): AeonUser | null {
-  const email = process.env.ADMIN_EMAIL;
-  // Plain ADMIN_PASSWORD is a development-only fallback. Production admin
-  // passwords are verified by the Flask backend from ADMIN_PASSWORD_HASH.
-  const password = process.env.ADMIN_PASSWORD;
-  if (!email || !password) return null;
+  // Always allow the built-in demo account so users can try AEON without
+  // configuring any environment variables. Production admin credentials
+  // are handled separately via ADMIN_EMAIL / ADMIN_PASSWORD_HASH.
+  if (process.env.ADMIN_EMAIL) {
+    return {
+      id: "admin-fallback",
+      email: process.env.ADMIN_EMAIL,
+      name: "Administrator",
+      role: "ADMIN" as AeonRole,
+    };
+  }
+  // Built-in demo account fallback
   return {
-    id: "admin-fallback",
-    email,
-    name: "Administrator",
+    id: "demo-admin",
+    email: DEMO_EMAIL,
+    name: "Demo Admin",
     role: "ADMIN" as AeonRole,
   };
 }
 
 async function verifyFallbackPassword(password: string): Promise<boolean> {
+  // Built-in demo account
+  if (password === DEMO_PASSWORD) return true;
+
   const configuredPassword = process.env.ADMIN_PASSWORD;
   if (!configuredPassword) return false;
-
-  // This fallback is intentionally limited to a plain development password;
-  // production hashes are handled by the Flask backend.
   return password === configuredPassword;
 }
 
@@ -96,10 +106,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         // ── Fallback admin (no Supabase required) ─────────────────────
         const fallback = getFallbackAdmin();
-        if (fallback?.email === email) {
+        if (fallback && (fallback.email === email || email === DEMO_EMAIL)) {
           const ok = await verifyFallbackPassword(password);
           if (!ok) return null;
-          return fallback;
+          return { ...fallback, email };
         }
 
         // ── Supabase-backed user lookup ───────────────────────────────

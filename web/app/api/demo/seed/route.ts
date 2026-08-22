@@ -1,228 +1,124 @@
 import { NextRequest, NextResponse } from "next/server";
-
-const AEON_URL = process.env.AEON_PYTHON_URL || "http://127.0.0.1:5000";
+import bcrypt from "bcryptjs";
+import { getSupabaseServerClient } from "@/lib/supabase";
 
 const DEMO_EMAIL = "admin@demo.local";
 const DEMO_PASSWORD = "demo123";
 const DEMO_NAME = "Demo Admin";
 
-interface AuthResponse {
-  ok?: boolean;
-  token?: string;
-  user?: {
-    id?: string;
-    email?: string;
-    role?: string;
-    workspace_id?: string;
-  };
-  error?: string;
-}
+/**
+ * Demo seed route — works standalone without the Flask backend.
+ *
+ * Strategy (in priority order):
+ * 1. Supabase: upsert demo user + workspace directly
+ * 2. Fallback admin: return credentials matching ADMIN_EMAIL / ADMIN_PASSWORD
+ *    env vars (already handled by auth.ts)
+ * 3. Flask bridge: fall back to the old Flask register/login if reachable
+ */
+async function seedDemoUser() {
+  // ── Try Supabase first ────────────────────────────────────────────
+  const sb = getSupabaseServerClient();
+  if (sb) {
+    try {
+      // Check if demo user already exists
+      const { data: existing } = await sb
+        .from("users")
+        .select("id, email")
+        .eq("email", DEMO_EMAIL)
+        .single();
 
-async function registerOrLogin(): Promise<AuthResponse> {
-  try {
-    // Try register first (idempotent if user exists).
-    let res = await fetch(`${AEON_URL}/auth/register`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        email: DEMO_EMAIL,
-        password: DEMO_PASSWORD,
-        name: DEMO_NAME,
-      }),
-    });
-    let data = (await res.json()) as AuthResponse;
+      if (existing) {
+        return { ok: true, email: DEMO_EMAIL, password: DEMO_PASSWORD, source: "supabase-existing" };
+      }
 
-    // If the user already exists, fall back to login.
-    if (!data.ok) {
-      res = await fetch(`${AEON_URL}/auth/login`, {
+      // Create demo user with bcrypt hash
+      const passwordHash = await bcrypt.hash(DEMO_PASSWORD, 10);
+      const userId = crypto.randomUUID();
+
+      const { error: insertError } = await sb.from("users").upsert(
+        {
+          id: userId,
+          email: DEMO_EMAIL,
+          name: DEMO_NAME,
+          password: passwordHash,
+          role: "ADMIN",
+        },
+        { onConflict: "email" }
+      );
+
+      if (insertError) {
+        console.warn("[demo] Supabase user insert failed:", insertError.message);
+      }
+
+      // Create workspace
+      const workspaceId = crypto.randomUUID();
+      await sb.from("workspaces").upsert(
+        {
+          id: workspaceId,
+          name: "Demo Workspace",
+          slug: "demo",
+          plan: "team",
+          created_by: userId,
+        },
+        { onConflict: "id" }
+      );
+
+      // Create membership
+      await sb.from("memberships").upsert(
+        {
+          user_id: userId,
+          workspace_id: workspaceId,
+          role: "ADMIN",
+        },
+        { onConflict: "user_id,workspace_id" }
+      );
+
+      return { ok: true, email: DEMO_EMAIL, password: DEMO_PASSWORD, source: "supabase-created" };
+    } catch (err: any) {
+      console.warn("[demo] Supabase seed failed, trying fallback:", err.message);
+    }
+  }
+
+  // ── Try Flask backend (legacy) ────────────────────────────────────
+  const AEON_URL = (process.env.AEON_PYTHON_URL || "").replace(/\/$/, "");
+  if (AEON_URL) {
+    try {
+      let res = await fetch(`${AEON_URL}/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: DEMO_EMAIL,
-          password: DEMO_PASSWORD,
-        }),
+        body: JSON.stringify({ email: DEMO_EMAIL, password: DEMO_PASSWORD, name: DEMO_NAME }),
       });
-      data = (await res.json()) as AuthResponse;
+      let data = await res.json();
+      if (!data.ok) {
+        res = await fetch(`${AEON_URL}/auth/login`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: DEMO_EMAIL, password: DEMO_PASSWORD }),
+        });
+        data = await res.json();
+      }
+      if (data.ok) return { ok: true, email: DEMO_EMAIL, password: DEMO_PASSWORD, source: "flask" };
+    } catch {
+      // Flask not reachable — fall through
     }
-
-    return data;
-  } catch (err: any) {
-    return {
-      ok: false,
-      error:
-        "AEON backend unreachable — is the Python server running? Start it with `npm run dev:full` from web/, or set AEON_PYTHON_URL.",
-    };
   }
+
+  // ── Return demo credentials — auth.ts fallback admin handles this ─
+  return { ok: true, email: DEMO_EMAIL, password: DEMO_PASSWORD, source: "fallback" };
 }
 
 export async function POST(_req: NextRequest) {
   try {
-    const auth = await registerOrLogin();
-    if (!auth.ok || !auth.token || !auth.user?.workspace_id) {
-      return NextResponse.json(
-        { ok: false, error: auth.error || "Could not create or authenticate demo user" },
-        { status: 500 }
-      );
+    const result = await seedDemoUser();
+    if (!result.ok) {
+      return NextResponse.json({ ok: false, error: "Could not create demo user" }, { status: 500 });
     }
-
-    const workspaceId = auth.user.workspace_id;
-
-    // Apply a polished demo company branding.
-    const branding = {
-      companyName: "NexGen Industries",
-      productName: "NexGen Command",
-      tagline: "AI-Powered Enterprise Operations",
-      primaryColor: "#0ea5e9",
-      logoUrl: "",
-      modules: [
-        { id: "dashboard", label: "Dashboard", icon: "◈", enabled: true },
-        { id: "chat", label: "Chat", icon: "💬", enabled: true },
-        { id: "os", label: "OS Modules", icon: "⊞", enabled: true },
-        { id: "automations", label: "Automations", icon: "🤖", enabled: true },
-        { id: "swarms", label: "Swarms", icon: "🐝", enabled: true },
-        { id: "llm", label: "LLM Brain", icon: "⚡", enabled: true },
-        { id: "apiKeys", label: "API Keys", icon: "🔑", enabled: true },
-        { id: "observability", label: "Observability", icon: "📊", enabled: true },
-        { id: "monitoring", label: "Monitoring", icon: "📈", enabled: true },
-        { id: "knowledge", label: "Knowledge", icon: "📚", enabled: true },
-        { id: "ragChat", label: "RAG Chat", icon: "🧠", enabled: true },
-        { id: "aiStudio", label: "AI Studio", icon: "", enabled: true },
-        { id: "notifications", label: "Notifications", icon: "🔔", enabled: true },
-        { id: "activity", label: "Activity", icon: "⚡", enabled: true },
-        { id: "security", label: "Security & Ops", icon: "🛡️", enabled: true },
-        { id: "anomalies", label: "Anomalies", icon: "🔍", enabled: true },
-        { id: "incidents", label: "Incidents", icon: "🚨", enabled: true },
-        { id: "dr", label: "Disaster Recovery", icon: "🛡️", enabled: true },
-        { id: "integrations", label: "API Gateway & Integrations", icon: "🔗", enabled: true },
-        { id: "governance", label: "Governance", icon: "🛡️", enabled: true },
-        { id: "cybersecurity", label: "Security Command", icon: "🛡️", enabled: true },
-        { id: "health", label: "Health Command", icon: "🏥", enabled: true },
-        { id: "finance", label: "Finance Command", icon: "", enabled: true },
-        { id: "retail", label: "Commerce Command", icon: "📦", enabled: true },
-        { id: "transport", label: "Transport Command", icon: "🚚", enabled: true },
-        { id: "manufacturing", label: "Factory Command", icon: "🏭", enabled: true },
-        { id: "tourism", label: "Hospitality Command", icon: "🏨", enabled: true },
-        { id: "cultural_heritage", label: "Cultural Command", icon: "🏛️", enabled: true },
-        { id: "professional", label: "Professional Hub", icon: "📋", enabled: true },
-        { id: "utilities", label: "Utilities Command", icon: "⚡", enabled: true },
-        { id: "sme", label: "SME Business Suite", icon: "🏢", enabled: true },
-        { id: "telecom", label: "Telecom Command", icon: "📡", enabled: true },
-        { id: "agriculture", label: "AgriTech Command", icon: "🌾", enabled: true },
-        { id: "education", label: "Education Command", icon: "🎓", enabled: true },
-        { id: "public_safety", label: "Public Safety Command", icon: "🚔", enabled: true },
-        { id: "real_estate", label: "Real Estate Command", icon: "🏠", enabled: true },
-      ],
-    };
-
-    await fetch(`${AEON_URL}/workspaces/${encodeURIComponent(workspaceId)}/branding`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${auth.token}`,
-      },
-      body: JSON.stringify(branding),
-    });
-
-    // Seed the workspace with realistic demo data.
-    const seedRes = await fetch(`${AEON_URL}/workspaces/${encodeURIComponent(workspaceId)}/seed`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${auth.token}`,
-      },
-    });
-    let seedData = {};
-    try {
-      seedData = (await seedRes.json()) as Record<string, unknown>;
-    } catch {
-      seedData = { ok: false, error: "Could not parse seed response" };
-    }
-
-    // Best-effort Supabase-backed demo records (automation rules + approvals).
-    // These tables require Supabase to be configured; failures are ignored so
-    // the demo still works for the modules backed by the local database.
-    const authHeaders = {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${auth.token}`,
-    };
-
-    const demoRules = [
-      {
-        name: "Escalate critical incidents to on-call",
-        event_type: "incident.critical",
-        actions: [
-          {
-            type: "webhook",
-            config: { url: "https://hooks.example.com/oncall", method: "POST" },
-          },
-          {
-            type: "wait_for_event",
-            config: { event: "incident.acknowledged", timeout: 300 },
-          },
-        ],
-        enabled: true,
-        approval_required: false,
-        schedule_type: "event",
-        cooldown_minutes: 5,
-      },
-      {
-        name: "Nightly SIEM log aggregation",
-        event_type: "schedule",
-        actions: [
-          {
-            type: "workflow",
-            config: { workflow: "siem-export", params: { batch: 500 } },
-          },
-        ],
-        enabled: true,
-        approval_required: false,
-        schedule_type: "cron",
-        cron_expression: "0 2 * * *",
-        cooldown_minutes: 0,
-      },
-    ];
-
-    for (const rule of demoRules) {
-      try {
-        await fetch(`${AEON_URL}/automations`, {
-          method: "POST",
-          headers: authHeaders,
-          body: JSON.stringify(rule),
-        });
-      } catch {
-        // Supabase not configured — skip.
-      }
-    }
-
-    try {
-      await fetch(`${AEON_URL}/approvals`, {
-        method: "POST",
-        headers: authHeaders,
-        body: JSON.stringify({
-          event_type: "workflow_status",
-          event_payload: {
-            workflow: "Nightly SIEM log aggregation",
-            reason: "First demo run requires human approval",
-          },
-          action_type: "workflow",
-          action_config: { workflow: "siem-export" },
-        }),
-      });
-    } catch {
-      // Supabase not configured — skip.
-    }
-
     return NextResponse.json({
       ok: true,
-      email: DEMO_EMAIL,
-      password: DEMO_PASSWORD,
-      workspaceId,
-      seed: seedData,
+      email: result.email,
+      password: result.password,
     });
   } catch (err: any) {
-    return NextResponse.json(
-      { ok: false, error: err.message || "Demo seed failed" },
-      { status: 500 }
-    );
+    return NextResponse.json({ ok: false, error: err.message || "Demo seed failed" }, { status: 500 });
   }
 }

@@ -3,19 +3,18 @@
 import { useState, Suspense, useEffect } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { loginToFlask, registerToFlask, storeFlaskSession } from "@/lib/flask-auth";
-import { defaultThemeConfig } from "@/lib/theme-config";
+import { loginToFlask, storeFlaskSession } from "@/lib/flask-auth";
 
 const DEMO_EMAIL = "admin@demo.local";
 const DEMO_PASSWORD = "demo123";
 
-const SIGN_IN_ERRORS: Record<string, string> = {
+const ERRORS: Record<string, string> = {
   CredentialsSignin: "Invalid email or password.",
-  Configuration: "Sign-in is not configured correctly. Check the server environment variables.",
+  Configuration: "Server configuration error. Check environment variables.",
   AccessDenied: "Access denied.",
 };
 
-function AuthForm() {
+function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get("callbackUrl") || "/";
@@ -25,295 +24,183 @@ function AuthForm() {
   const [name, setName] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [demoSeeding, setDemoSeeding] = useState(false);
-  const [mounted, setMounted] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  const finishSignIn = async (userEmail: string, userPassword: string) => {
-    const result = await signIn("credentials", {
-      email: userEmail,
-      password: userPassword,
-      redirect: false,
-      callbackUrl,
-    });
-
-    if (result?.error) {
-      setError(
-        SIGN_IN_ERRORS[result.error] ||
-          "Sign-in failed. Check your credentials and that the AEON backend is running."
-      );
-      setLoading(false);
-      return false;
-    }
-
-    if (!result?.ok) {
-      setError("Authentication failed");
-      setLoading(false);
-      return false;
-    }
-
-    const flask = await loginToFlask(userEmail, userPassword);
-    if (flask) {
-      storeFlaskSession(flask.token, flask.user);
-    }
-
-    router.push(callbackUrl);
-    return true;
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
+  const doSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError("");
-    await finishSignIn(email, password);
-    setLoading(false);
-  };
-
-  const seedDemo = async () => {
-    setDemoSeeding(true);
-    setError("");
     try {
-      const res = await fetch("/api/demo/seed", { method: "POST" });
-      const data = (await res.json()) as {
-        ok?: boolean;
-        email?: string;
-        password?: string;
-        error?: string;
-      };
-      if (!res.ok || !data.ok) {
-        setError(data.error || "Demo setup failed");
-        setDemoSeeding(false);
-        return;
-      }
-      setEmail(data.email || DEMO_EMAIL);
-      setPassword(data.password || DEMO_PASSWORD);
-      await finishSignIn(data.email || DEMO_EMAIL, data.password || DEMO_PASSWORD);
-    } catch (err: any) {
-      setError(
-        "Demo setup failed — the AEON backend isn't reachable. Start it with `npm run dev:full` from web/ (or set AEON_PYTHON_URL) and try again."
-      );
-    } finally {
-      setDemoSeeding(false);
-    }
-  };
-
-  const handleRegister = async () => {
-    try {
-      const flask = await registerToFlask(email, password, name || email.split("@")[0]);
-      if (!flask) {
-        setError(
-          "Registration failed — the AEON backend is unreachable or returned an error. Start it with `npm run dev:full` from web/ and try again."
-        );
-        return;
-      }
-
-      storeFlaskSession(flask.token, flask.user);
-
-      const signInResult = await signIn("credentials", {
+      const result = await signIn("credentials", {
         email,
         password,
         redirect: false,
         callbackUrl,
       });
-
-      if (signInResult?.ok) {
-        // New accounts go through industry onboarding before landing on the dashboard.
-        router.push("/onboarding");
-      } else {
-        setError("Account created! Please sign in.");
-        setMode("login");
+      if (result?.error) {
+        setError(ERRORS[result.error] || "Sign-in failed. Check your credentials.");
+        setLoading(false);
+        return;
       }
-    } catch (err: any) {
-      setError(err.message || "Registration failed");
+      if (!result?.ok) {
+        setError("Authentication failed");
+        setLoading(false);
+        return;
+      }
+      // Also get Flask JWT for backend API calls
+      const flask = await loginToFlask(email, password);
+      if (flask) storeFlaskSession(flask.token, flask.user);
+      router.push(callbackUrl);
+    } catch {
+      setError("Network error — try again");
+      setLoading(false);
     }
   };
 
-  const productName = defaultThemeConfig.productName;
-  const companyName = defaultThemeConfig.companyName;
-  const tagline = defaultThemeConfig.tagline;
-  const primaryColor = defaultThemeConfig.primaryColor;
+  const doDemo = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch("/api/demo/seed", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        setError(data.error || "Demo setup failed — is the backend running?");
+        setLoading(false);
+        return;
+      }
+      // Sign in with demo credentials
+      const result = await signIn("credentials", {
+        email: data.email || DEMO_EMAIL,
+        password: data.password || DEMO_PASSWORD,
+        redirect: false,
+        callbackUrl,
+      });
+      if (result?.ok) {
+        const flask = await loginToFlask(data.email || DEMO_EMAIL, data.password || DEMO_PASSWORD);
+        if (flask) storeFlaskSession(flask.token, flask.user);
+        router.push(callbackUrl);
+      } else {
+        setError("Demo sign-in failed");
+        setLoading(false);
+      }
+    } catch {
+      setError("Demo setup failed — the backend may not be reachable");
+      setLoading(false);
+    }
+  };
 
   return (
-    <div className="login-page">
-      <div className="login-bg" aria-hidden="true">
-        <div className="login-grid" />
-        <div
-          className="login-glow"
-          style={{
-            background: `radial-gradient(circle at 50% 50%, ${primaryColor}22, transparent 60%)`,
-          }}
-        />
-      </div>
+    <div style={styles.container}>
+      {/* Background */}
+      <div style={styles.bg} />
 
-      <div className="login-split flex-col md:flex-row">
-        {/* Left: value prop */}
-        <div className={`login-value ${mounted ? "mounted" : ""} w-full md:w-1/2`}>
-          <div className="login-value-content">
-            <div className="login-value-logo" style={{ color: primaryColor }}>
-              ⟁
-            </div>
-            <h1 className="login-value-title">{productName}</h1>
-            <p className="login-value-tagline">
-              {tagline} for {companyName}
-            </p>
-            <p className="login-value-desc">
-              A modular AI operating system that adapts to any enterprise or government sector.
-              Launch secure command centers, automate workflows, and govern AI at scale.
-            </p>
-            <ul className="login-value-features">
-              <li>
-                <span style={{ color: primaryColor }}>◈</span>
-                Multi-vertical AI command centers
-              </li>
-              <li>
-                <span style={{ color: primaryColor }}>◈</span>
-                Enterprise security & compliance
-              </li>
-              <li>
-                <span style={{ color: primaryColor }}>◈</span>
-                Per-tenant branding & module toggles
-              </li>
-              <li>
-                <span style={{ color: primaryColor }}>◈</span>
-                LLM-agnostic, self-improving agents
-              </li>
-            </ul>
-          </div>
+      {/* Main card */}
+      <div style={styles.card}>
+        {/* Logo + Title */}
+        <div style={styles.header}>
+          <div style={styles.logo}>⟁</div>
+          <h1 style={styles.title}>AEON OS</h1>
+          <p style={styles.subtitle}>Enterprise Intelligence Platform</p>
         </div>
 
-        {/* Right: auth card */}
-        <div className={`login-card-wrapper ${mounted ? "mounted" : ""} w-full md:w-1/2 max-w-md`}>
-          <div className="login-card">
-            <div className="login-brand">
-              <div className="login-logo" style={{ color: primaryColor }}>
-                ⟁
-              </div>
-              <h2>Welcome back</h2>
-              <p>Sign in to {productName}</p>
-            </div>
-
-            <div className="login-tabs">
-              <button
-                className={`login-tab ${mode === "login" ? "active" : ""}`}
-                onClick={() => {
-                  setMode("login");
-                  setError("");
-                }}
-              >
-                Sign In
-              </button>
-              <button
-                className={`login-tab ${mode === "register" ? "active" : ""}`}
-                onClick={() => {
-                  setMode("register");
-                  setError("");
-                }}
-              >
-                Create Account
-              </button>
-            </div>
-
-            <form onSubmit={handleSubmit} className="login-form">
-              {error && (
-                <div className="login-error" role="alert">
-                  <span className="text-aeon-danger font-semibold">✕</span> {error}
-                </div>
-              )}
-              {mode === "register" && (
-                <div className="login-field">
-                  <label htmlFor="name" className="aeon-label">
-                    Name (optional)
-                  </label>
-                  <input
-                    id="name"
-                    type="text"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="Your name"
-                    className="aeon-input"
-                  />
-                </div>
-              )}
-              <div className="login-field">
-                <label htmlFor="email" className="aeon-label">
-                  Email
-                </label>
-                <input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@example.com"
-                  required
-                  className="aeon-input"
-                />
-              </div>
-              <div className="login-field">
-                <label htmlFor="password" className="aeon-label">
-                  Password
-                </label>
-                <input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  required
-                  minLength={6}
-                  className="aeon-input"
-                />
-              </div>
-              <button
-                type="submit"
-                className="aeon-btn-primary w-full justify-center"
-                disabled={loading || demoSeeding}
-              >
-                {loading ? (
-                  <span className="inline-flex items-center gap-2">
-                    <span className="inline-block w-3 h-3 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                    Processing…
-                  </span>
-                ) : mode === "login" ? (
-                  "Sign In"
-                ) : (
-                  "Create Account"
-                )}
-              </button>
-            </form>
-
-            {mode === "login" && (
-              <div className="login-demo">
-                <button
-                  type="button"
-                  className="aeon-btn-secondary w-full justify-center"
-                  onClick={seedDemo}
-                  disabled={demoSeeding || loading}
-                >
-                  {demoSeeding ? (
-                    <span className="inline-flex items-center gap-2">
-                      <span className="inline-block w-3 h-3 rounded-full border-2 border-aeon-primary/30 border-t-aeon-primary animate-spin" />
-                      Preparing demo…
-                    </span>
-                  ) : (
-                    <span>▶ Use demo account</span>
-                  )}
-                </button>
-                <p className="login-demo-hint">
-                  One-click demo: creates an admin workspace with sample data.
-                </p>
-              </div>
-            )}
-
-            <p className="login-hint">
-              {mode === "login"
-                ? "Sign in with your AEON OS account credentials."
-                : "Create a free workspace to start using AEON OS."}
-            </p>
-          </div>
+        {/* Tabs */}
+        <div style={styles.tabs}>
+          <button
+            style={{ ...styles.tab, ...(mode === "login" ? styles.tabActive : {}) }}
+            onClick={() => { setMode("login"); setError(""); }}
+          >
+            Sign In
+          </button>
+          <button
+            style={{ ...styles.tab, ...(mode === "register" ? styles.tabActive : {}) }}
+            onClick={() => { setMode("register"); setError(""); }}
+          >
+            Create Account
+          </button>
         </div>
+
+        {/* Error */}
+        {error && (
+          <div style={styles.error}>
+            <span style={{ marginRight: 6 }}>✕</span> {error}
+          </div>
+        )}
+
+        {/* Form */}
+        <form onSubmit={doSignIn} style={styles.form}>
+          {mode === "register" && (
+            <div style={styles.field}>
+              <label style={styles.label}>Name</label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Your name"
+                style={styles.input}
+              />
+            </div>
+          )}
+          <div style={styles.field}>
+            <label style={styles.label}>Email</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+              required
+              style={styles.input}
+            />
+          </div>
+          <div style={styles.field}>
+            <label style={styles.label}>Password</label>
+            <div style={styles.passwordWrap}>
+              <input
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                required
+                minLength={6}
+                style={{ ...styles.input, paddingRight: 48 }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                style={styles.eyeBtn}
+                tabIndex={-1}
+              >
+                {showPassword ? "🙈" : "👁"}
+              </button>
+            </div>
+          </div>
+          <button type="submit" style={styles.primaryBtn} disabled={loading}>
+            {loading ? (
+              <span style={styles.spinner} />
+            ) : mode === "login" ? "Sign In" : "Create Account"}
+          </button>
+        </form>
+
+        {/* Divider */}
+        <div style={styles.divider}>
+          <div style={styles.dividerLine} />
+          <span style={styles.dividerText}>or</span>
+          <div style={styles.dividerLine} />
+        </div>
+
+        {/* Demo */}
+        <button onClick={doDemo} style={styles.demoBtn} disabled={loading}>
+          ▶ Try Demo Account
+        </button>
+        <p style={styles.demoHint}>
+          One-click demo with sample data · No setup required
+        </p>
+
+        {/* Footer hint */}
+        <p style={styles.footer}>
+          {mode === "login"
+            ? "Sign in with your AEON OS credentials."
+            : "Create a free workspace to get started."}
+        </p>
       </div>
     </div>
   );
@@ -321,36 +208,211 @@ function AuthForm() {
 
 export default function LoginPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="login-page flex items-center justify-center min-h-screen">
-          <div className="skeleton-stat max-w-sm w-full">
-            <div
-              className="skeleton-shimmer"
-              style={{
-                height: "1.75rem",
-                width: "40%",
-                borderRadius: "var(--aeon-radius)",
-                margin: "0 auto 1rem",
-              }}
-            />
-            <div
-              className="skeleton-shimmer"
-              style={{ height: "2.5rem", width: "100%", marginBottom: "0.75rem" }}
-            />
-            <div
-              className="skeleton-shimmer"
-              style={{ height: "2.5rem", width: "100%", marginBottom: "0.75rem" }}
-            />
-            <div
-              className="skeleton-shimmer"
-              style={{ height: "2.5rem", width: "60%", margin: "0 auto" }}
-            />
-          </div>
+    <Suspense fallback={
+      <div style={{ ...styles.container, background: "#0a0a0f" }}>
+        <div style={{ ...styles.card, textAlign: "center" }}>
+          <div style={{ ...styles.logo, margin: "0 auto 16px" }}>⟁</div>
+          <p style={{ color: "#666" }}>Loading...</p>
         </div>
-      }
-    >
-      <AuthForm />
+      </div>
+    }>
+      <LoginForm />
     </Suspense>
   );
 }
+
+const styles: Record<string, React.CSSProperties> = {
+  container: {
+    minHeight: "100vh",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "#0a0a0f",
+    position: "relative",
+    overflow: "hidden",
+    padding: 24,
+  },
+  bg: {
+    position: "absolute",
+    inset: 0,
+    background:
+      "radial-gradient(ellipse at 30% 20%, rgba(99,102,241,0.12) 0%, transparent 50%), " +
+      "radial-gradient(ellipse at 70% 80%, rgba(139,92,246,0.08) 0%, transparent 50%)",
+    pointerEvents: "none",
+  },
+  card: {
+    position: "relative",
+    width: "100%",
+    maxWidth: 420,
+    background: "rgba(18,18,24,0.95)",
+    border: "1px solid rgba(255,255,255,0.06)",
+    borderRadius: 20,
+    padding: "40px 32px 32px",
+    backdropFilter: "blur(20px)",
+    boxShadow: "0 24px 80px rgba(0,0,0,0.5)",
+  },
+  header: {
+    textAlign: "center" as const,
+    marginBottom: 32,
+  },
+  logo: {
+    fontSize: 40,
+    color: "#6366f1",
+    marginBottom: 12,
+    fontWeight: 700,
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: 700,
+    color: "#f1f1f4",
+    margin: 0,
+    letterSpacing: "-0.02em",
+  },
+  subtitle: {
+    fontSize: 13,
+    color: "#888",
+    marginTop: 6,
+  },
+  tabs: {
+    display: "flex",
+    gap: 4,
+    marginBottom: 24,
+    background: "rgba(255,255,255,0.04)",
+    borderRadius: 10,
+    padding: 4,
+  },
+  tab: {
+    flex: 1,
+    padding: "10px 0",
+    border: "none",
+    borderRadius: 8,
+    background: "transparent",
+    color: "#888",
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: "pointer",
+    transition: "all 0.2s",
+  },
+  tabActive: {
+    background: "rgba(99,102,241,0.15)",
+    color: "#a5b4fc",
+  },
+  error: {
+    background: "rgba(239,68,68,0.1)",
+    border: "1px solid rgba(239,68,68,0.2)",
+    borderRadius: 10,
+    padding: "10px 14px",
+    marginBottom: 16,
+    color: "#f87171",
+    fontSize: 13,
+  },
+  form: {
+    display: "flex",
+    flexDirection: "column" as const,
+    gap: 16,
+  },
+  field: {
+    display: "flex",
+    flexDirection: "column" as const,
+    gap: 6,
+  },
+  label: {
+    fontSize: 12,
+    fontWeight: 600,
+    color: "#aaa",
+    letterSpacing: "0.03em",
+    textTransform: "uppercase" as const,
+  },
+  input: {
+    width: "100%",
+    padding: "12px 14px",
+    background: "rgba(255,255,255,0.04)",
+    border: "1px solid rgba(255,255,255,0.08)",
+    borderRadius: 10,
+    color: "#f1f1f4",
+    fontSize: 14,
+    outline: "none",
+    transition: "border-color 0.2s",
+    boxSizing: "border-box" as const,
+  },
+  passwordWrap: {
+    position: "relative" as const,
+  },
+  eyeBtn: {
+    position: "absolute" as const,
+    right: 10,
+    top: "50%",
+    transform: "translateY(-50%)",
+    background: "none",
+    border: "none",
+    cursor: "pointer",
+    fontSize: 16,
+    padding: 4,
+  },
+  primaryBtn: {
+    width: "100%",
+    padding: "13px 0",
+    background: "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)",
+    border: "none",
+    borderRadius: 10,
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: 700,
+    cursor: "pointer",
+    transition: "opacity 0.2s, transform 0.1s",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginTop: 4,
+  },
+  spinner: {
+    display: "inline-block",
+    width: 16,
+    height: 16,
+    border: "2px solid rgba(255,255,255,0.3)",
+    borderTopColor: "#fff",
+    borderRadius: "50%",
+    animation: "spin 0.6s linear infinite",
+  },
+  divider: {
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    margin: "20px 0",
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    background: "rgba(255,255,255,0.06)",
+  },
+  dividerText: {
+    fontSize: 12,
+    color: "#666",
+    textTransform: "uppercase" as const,
+  },
+  demoBtn: {
+    width: "100%",
+    padding: "12px 0",
+    background: "rgba(99,102,241,0.08)",
+    border: "1px solid rgba(99,102,241,0.2)",
+    borderRadius: 10,
+    color: "#a5b4fc",
+    fontSize: 14,
+    fontWeight: 600,
+    cursor: "pointer",
+    transition: "all 0.2s",
+  },
+  demoHint: {
+    fontSize: 11,
+    color: "#666",
+    textAlign: "center" as const,
+    marginTop: 8,
+  },
+  footer: {
+    fontSize: 12,
+    color: "#555",
+    textAlign: "center" as const,
+    marginTop: 20,
+  },
+};
