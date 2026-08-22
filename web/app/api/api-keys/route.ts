@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { pythonUrl } from "@/lib/kernel";
+import { demoApiKeys } from "@/lib/demo-data";
 
 export const dynamic = "force-dynamic";
 
@@ -9,7 +10,8 @@ export async function GET() {
   const workspaceId = ((session?.user as any)?.workspaceId as string) || "default";
   const url = pythonUrl();
   if (!url) {
-    return NextResponse.json({ ok: true, keys: [], workspace_id: workspaceId });
+    // No backend configured — serve demo API keys so the page renders populated.
+    return NextResponse.json({ ...demoApiKeys, workspace_id: workspaceId, demo: true });
   }
   try {
     const res = await fetch(`${url}/api-keys?workspace_id=${encodeURIComponent(workspaceId)}`, {
@@ -17,8 +19,9 @@ export async function GET() {
     });
     const data = await res.json();
     return NextResponse.json(data);
-  } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message || String(e) }, { status: 503 });
+  } catch {
+    // Backend unreachable — serve demo API keys so the page renders populated.
+    return NextResponse.json({ ...demoApiKeys, workspace_id: workspaceId, demo: true });
   }
 }
 

@@ -53,6 +53,9 @@ web/.env.local
 aeon_state/
 server.log
 
+# Local project snapshot/backup (never commit)
+isolate/
+
 # Security scan artifacts
 bandit-report.json
 scripts/output/

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { broadcastEvent } from "@/lib/events";
+import { demoNotifications } from "@/lib/demo-data";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +19,18 @@ export async function GET(req: NextRequest) {
 
   const sb = getSupabaseServerClient();
   if (!sb) {
-    return NextResponse.json({ ok: true, notifications: [], count: 0 });
+    // No Supabase configured — serve demo notifications so the UI renders
+    // a populated activity feed.
+    const list = unreadOnly
+      ? demoNotifications.notifications.filter((n) => !n.read)
+      : demoNotifications.notifications;
+    return NextResponse.json({
+      ok: true,
+      demo: true,
+      notifications: list.slice(offset, offset + limit),
+      count: list.length,
+      unread_count: demoNotifications.notifications.filter((n) => !n.read).length,
+    });
   }
 
   try {
@@ -49,8 +61,14 @@ export async function GET(req: NextRequest) {
       count: count || 0,
       unread_count: unreadCount || 0,
     });
-  } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message || String(e) }, { status: 500 });
+  } catch {
+    return NextResponse.json({
+      ok: true,
+      demo: true,
+      notifications: demoNotifications.notifications.slice(offset, offset + limit),
+      count: demoNotifications.notifications.length,
+      unread_count: demoNotifications.notifications.filter((n) => !n.read).length,
+    });
   }
 }
 

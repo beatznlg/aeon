@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { getSupabaseServerClient } from "@/lib/supabase";
+import { demoActivity } from "@/lib/demo-data";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +18,13 @@ export async function GET(req: NextRequest) {
 
   const sb = getSupabaseServerClient();
   if (!sb) {
-    return NextResponse.json({ ok: true, events: [] });
+    // No Supabase configured — serve demo activity so the feed is populated.
+    return NextResponse.json({
+      ok: true,
+      demo: true,
+      events: demoActivity.events.slice(offset, offset + limit),
+      count: demoActivity.events.length,
+    });
   }
 
   try {
@@ -37,7 +44,12 @@ export async function GET(req: NextRequest) {
       events: data || [],
       count: count || 0,
     });
-  } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message || String(e) }, { status: 500 });
+  } catch {
+    return NextResponse.json({
+      ok: true,
+      demo: true,
+      events: demoActivity.events.slice(offset, offset + limit),
+      count: demoActivity.events.length,
+    });
   }
 }

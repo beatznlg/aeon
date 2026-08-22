@@ -1,32 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
-
-const AEON_URL = process.env.AEON_PYTHON_URL || "http://127.0.0.1:5000";
+import { NextRequest } from "next/server";
+import { backendFetch } from "@/lib/backend-fetch";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
-  try {
-    const headers: Record<string, string> = {};
-    const authHeader = req.headers.get("authorization");
-    if (authHeader) headers["Authorization"] = authHeader;
-
-    const { searchParams } = new URL(req.url);
-    const query = searchParams.toString();
-    const url = `${AEON_URL}/automations/metrics${query ? `?${query}` : ""}`;
-
-    const res = await fetch(url, {
-      method: "GET",
-      headers,
-    });
-    const text = await res.text();
-    let data: any;
-    try {
-      data = JSON.parse(text);
-    } catch {
-      data = { message: text };
-    }
-    return NextResponse.json(data, { status: res.status });
-  } catch (err: any) {
-    return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
-  }
+  return backendFetch(req, "/automations/metrics");
 }
