@@ -115,6 +115,45 @@ def test_connector_health_reports_contract(manager):
         connector_health("nope")
 
 
+def test_build_tenant_context_prompt(manager):
+    manager.set("ag_group", company="AG Group", industry="engineering-construction", currency="EUR", country="MT")
+    from aeon_platform import build_tenant_context_prompt
+
+    # Point the process-wide manager at the temp store for the prompt builder.
+    import aeon_platform
+
+    original = aeon_platform.get_tenant_config_manager
+    aeon_platform.get_tenant_config_manager = lambda root=None: manager
+    try:
+        prompt = build_tenant_context_prompt("ag_group")
+    finally:
+        aeon_platform.get_tenant_config_manager = original
+    assert "Company: AG Group" in prompt
+    assert "Engineering & Construction" in prompt
+    assert "Currency: EUR" in prompt
+    assert "Country: MT" in prompt
+    assert "projects" in prompt
+    assert "Sage" in prompt
+    assert "Microsoft 365" in prompt
+    assert "Indigo" in prompt
+
+
+def test_build_tenant_context_prompt_generic_for_unknown_tenant(manager):
+    from aeon_platform import build_tenant_context_prompt
+
+    import aeon_platform
+
+    original = aeon_platform.get_tenant_config_manager
+    aeon_platform.get_tenant_config_manager = lambda root=None: manager
+    try:
+        prompt = build_tenant_context_prompt("")
+    finally:
+        aeon_platform.get_tenant_config_manager = original
+    # Unknown tenants still get a generic context so chat never loses grounding.
+    assert "an AEON tenant" in prompt
+    assert "Enabled modules:" in prompt
+
+
 def test_catalog_listing_functions():
     modules = list_modules()
     assert len(modules) == len(MODULE_CATALOG)

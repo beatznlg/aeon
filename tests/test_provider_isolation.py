@@ -53,7 +53,9 @@ def test_chat_route_uses_request_local_provider_without_global_mutation(client, 
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 200
-    assert recorder.recorded[0]["query"] == "hello"
+    # The tenant-aware Brain prepends the tenant context, preserving the query.
+    assert recorder.recorded[0]["query"].endswith("hello")
+    assert "AEON TENANT CONTEXT" in recorder.recorded[0]["query"]
     assert recorder.recorded[0]["provider"] is not None
     # Process-global provider state must be untouched by the request.
     assert getattr(real_aeon, "QW", None) is baseline_qw

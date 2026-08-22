@@ -552,6 +552,44 @@ def list_universal_entities() -> list[dict[str, Any]]:
     return [dict(e) for e in UNIVERSAL_ENTITIES]
 
 
+# ──────────────────────────────────────────────────────────────────────
+# Tenant-aware Brain context
+# ──────────────────────────────────────────────────────────────────────
+def build_tenant_context_prompt(workspace_id: str) -> str:
+    """Build the tenant context fragment the AEON Brain sees on every call.
+
+    The Brain gets its context dynamically: which tenant, which industry
+    pack, which modules, which connected systems, which currency. Same Brain
+    for every company — only the context changes.
+    """
+    try:
+        effective = get_tenant_config_manager().effective(workspace_id)
+    except Exception:  # nosec B110 - context must never break a chat call
+        return ""
+    company = effective.get("company") or "an AEON tenant"
+    pack = effective.get("pack") or {}
+    industry = pack.get("name") or effective.get("industry") or "general"
+    modules = list(effective.get("modules") or ())
+    connector_ids = list(effective.get("connectors") or ())
+    connector_names = [
+        connector["name"] for connector in CONNECTOR_CATALOG if connector["id"] in connector_ids
+    ]
+    currency = effective.get("currency") or ""
+    country = effective.get("country") or ""
+    deployment = effective.get("deployment_mode") or "cloud"
+    lines = [
+        "AEON TENANT CONTEXT (authoritative for this conversation):",
+        f"- Company: {company}",
+        f"- Industry pack: {industry}",
+        f"- Currency: {currency or 'n/a'} | Country: {country or 'n/a'} | Deployment: {deployment}",
+        f"- Enabled modules: {', '.join(modules) or 'none'}",
+        f"- Connected systems: {', '.join(connector_names) or 'none'}",
+        "Answer strictly within this tenant's enabled modules and connected systems.",
+        "If asked about a module or system this tenant does not use, say the tenant does not have it activated.",
+    ]
+    return "\n".join(lines)
+
+
 __all__ = [
     "CONNECTOR_CATALOG",
     "CONNECTOR_CONTRACT",
@@ -560,6 +598,7 @@ __all__ = [
     "TenantConfig",
     "TenantConfigManager",
     "UNIVERSAL_ENTITIES",
+    "build_tenant_context_prompt",
     "connector_health",
     "get_tenant_config_manager",
     "list_connectors",

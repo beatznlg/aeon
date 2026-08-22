@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { useTheme } from "@/components/ThemeProvider";
-import { isModuleEnabled, isWorkspaceAdmin } from "@/lib/theme-config";
+import { isModuleEnabled, isWorkspaceAdmin, applyTenantModuleConfig } from "@/lib/theme-config";
 import { FadeIn, StaggerContainer, StaggerItem, ScaleOnHover } from "@/components/animations";
 import CrossSectorSearch from "@/components/CrossSectorSearch";
 import ErrorState from "@/components/ui/ErrorState";
@@ -51,8 +51,25 @@ export default function OSPage() {
   const { config } = useTheme();
   const { data: session } = useSession();
   const admin = isWorkspaceAdmin((session?.user as any)?.role);
+  const [tenantModules, setTenantModules] = useState<string[] | null>(null);
 
-  const isVisible = (moduleId: string) => isModuleEnabled(config, moduleId, true) || admin;
+  useEffect(() => {
+    fetch("/api/platform/config", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.ok && data.config?.modules) setTenantModules(data.config.modules);
+      })
+      .catch(() => {
+        /* keep default visibility */
+      });
+  }, []);
+
+  const effectiveConfig = useMemo(
+    () => (tenantModules ? applyTenantModuleConfig(config, tenantModules) : config),
+    [config, tenantModules]
+  );
+
+  const isVisible = (moduleId: string) => isModuleEnabled(effectiveConfig, moduleId, true) || admin;
 
   useEffect(() => {
     setError(null);

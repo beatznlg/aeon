@@ -123,6 +123,65 @@ export function isModuleEnabled(
 }
 
 /**
+ * UI module ids that are platform-level and always visible regardless of the
+ * tenant's business-module activation (Core modules of the Module Engine).
+ */
+const ALWAYS_VISIBLE_UI_MODULES = new Set([
+  "dashboard",
+  "os",
+  "llm",
+  "apiKeys",
+  "notifications",
+  "activity",
+  "integrations",
+  "governance",
+  "operatingProfiles",
+  "sectorAdmin",
+]);
+
+/**
+ * Maps tenant Module Engine ids (finance, projects, risk-engine, …) to the UI
+ * module ids that should become visible when the tenant activates them.
+ * This is the bridge between the Platform configuration and the navigation.
+ */
+const TENANT_TO_UI_MODULES: Record<string, string[]> = {
+  "ai-assistant": ["chat"],
+  "ai-agents": ["swarms", "aiStudio"],
+  automation: ["automations"],
+  workflows: ["automations"],
+  analytics: ["observability", "monitoring"],
+  documents: ["knowledge", "ragChat"],
+  finance: ["billing", "finance"],
+  "risk-engine": ["security", "anomalies", "incidents", "dr", "cybersecurity"],
+  sales: ["retail", "tourism"],
+  inventory: ["retail"],
+  crm: ["professional", "sme"],
+  hr: ["professional", "health"],
+  operations: ["manufacturing", "transport", "utilities"],
+};
+
+/**
+ * Derive UI module visibility from a tenant's activated Module Engine ids.
+ * Platform-level modules stay visible; business modules only show when their
+ * tenant module is active; unmapped modules keep their current flag.
+ */
+export function applyTenantModuleConfig(
+  config: Partial<ThemeConfig> | undefined,
+  tenantModules: string[]
+): Partial<ThemeConfig> {
+  const active = new Set(tenantModules);
+  const modules = (config?.modules ?? defaultThemeConfig.modules).map((m) => {
+    if (ALWAYS_VISIBLE_UI_MODULES.has(m.id)) return { ...m, enabled: true };
+    const requiredTenant = Object.entries(TENANT_TO_UI_MODULES)
+      .filter(([, uiIds]) => uiIds.includes(m.id))
+      .map(([tenantId]) => tenantId);
+    if (requiredTenant.length === 0) return m; // unmapped → keep current state
+    return { ...m, enabled: requiredTenant.some((id) => active.has(id)) };
+  });
+  return { ...config, modules };
+}
+
+/**
  * Fetch the per-workspace branding from the Next.js API proxy.
  * This is public so it can be called on login/landing pages before auth.
  */

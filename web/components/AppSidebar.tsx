@@ -1,4 +1,6 @@
-import { ReactNode } from "react";
+"use client";
+
+import { ReactNode, useEffect, useMemo, useState } from "react";
 import AeonLogo from "./AeonLogo";
 import HealthStatus from "./HealthStatus";
 import SidebarLink from "./SidebarLink";
@@ -8,6 +10,7 @@ import {
   ThemeConfig,
   isWorkspaceAdmin,
   isModuleEnabled,
+  applyTenantModuleConfig,
 } from "@/lib/theme-config";
 import { listRegisteredSectors } from "@/lib/sector-registry";
 
@@ -99,7 +102,25 @@ function filterLinks(
 }
 
 export default function AppSidebar({ health, branding, userRole }: AppSidebarProps) {
-  const config = branding ? mergeThemeConfig(branding) : getThemeConfig();
+  const [tenantModules, setTenantModules] = useState<string[] | null>(null);
+
+  useEffect(() => {
+    fetch("/api/platform/config", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.ok && data.config?.modules) {
+          setTenantModules(data.config.modules);
+        }
+      })
+      .catch(() => {
+        /* demo/branding fallback keeps the sidebar fully visible */
+      });
+  }, []);
+
+  const config = useMemo(() => {
+    const base = branding ? mergeThemeConfig(branding) : getThemeConfig();
+    return tenantModules ? applyTenantModuleConfig(base, tenantModules) : base;
+  }, [branding, tenantModules]);
   const admin = isWorkspaceAdmin(userRole);
 
   const coreLinks = filterLinks(CORE_LINKS, config, admin);

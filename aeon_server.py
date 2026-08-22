@@ -2481,6 +2481,12 @@ def chat():
         return _error_response("missing query", "MISSING_FIELD", 400)
     ctx = _governance_context()
     try:
+        # Tenant-aware Brain: every call carries this tenant's context.
+        from aeon_platform import build_tenant_context_prompt
+
+        tenant_context = build_tenant_context_prompt(ctx.get("workspace_id"))
+        if tenant_context:
+            query = f"{tenant_context}\n\n{query}"
         # Request-local provider override; never mutate shared process state.
         agent = get_agent("default")
         result = _agent_act_for_request(
@@ -2553,11 +2559,16 @@ def app_chat(app_id: str):
         return _error_response("missing query", "MISSING_FIELD", 400)
     ctx = _governance_context()
     try:
-        agent = get_agent(app_id)
-        # Inject module context into the query so the agent is aware of the vertical
+        # Tenant-aware Brain: module context + tenant configuration.
+        from aeon_platform import build_tenant_context_prompt
+
+        tenant_context = build_tenant_context_prompt(ctx.get("workspace_id"))
         system_hint = data.get("system")
         if system_hint:
             query = f"[{app_id} module context] {system_hint}\n\n{query}"
+        if tenant_context:
+            query = f"{tenant_context}\n\n{query}"
+        agent = get_agent(app_id)
         result = _agent_act_for_request(
             agent,
             query,
