@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import pytest
-
 import json
+
+import pytest
 
 from aeon_platform import (
     CONNECTOR_CATALOG,
@@ -46,7 +46,7 @@ def test_connector_catalog_implements_universal_contract():
         assert set(connector["capabilities"]) <= set(CONNECTOR_CONTRACT)
         assert connector["required_secrets"]
     ids = {c["id"] for c in CONNECTOR_CATALOG}
-    for expected in ("sage", "microsoft365", "indigo", "xero", "sap", "salesforce"):
+    for expected in ("sage", "microsoft365", "indigo", "open-time-clock", "oisoft", "xero", "sap", "salesforce"):
         assert expected in ids
 
 
@@ -66,7 +66,7 @@ def test_engineering_pack_applies_modules_and_connectors(manager):
     assert out["pack"]["name"] == "Engineering & Construction"
     assert "projects" in out["modules"]
     assert "risk-engine" in out["modules"]
-    assert set(out["connectors"]) == {"sage", "microsoft365", "indigo"}
+    assert set(out["connectors"]) == {"sage", "microsoft365", "indigo", "open-time-clock", "oisoft"}
 
 
 def test_restaurant_tenant_different_config_same_platform(manager):
@@ -125,7 +125,8 @@ def test_connector_credential_status_is_masked(manager, monkeypatch):
 
 def test_connector_health_reports_contract(manager):
     result = connector_health("sage")
-    assert result["status"] == "operational"
+    assert result["status"] == "needs_configuration"
+    assert result["ok"] is False
     assert set(result["contract"]) == set(CONNECTOR_CONTRACT)
     with pytest.raises(ValueError, match="unknown connector"):
         connector_health("nope")
@@ -133,10 +134,9 @@ def test_connector_health_reports_contract(manager):
 
 def test_build_tenant_context_prompt(manager):
     manager.set("ag_group", company="AG Group", industry="engineering-construction", currency="EUR", country="MT")
-    from aeon_platform import build_tenant_context_prompt
-
     # Point the process-wide manager at the temp store for the prompt builder.
     import aeon_platform
+    from aeon_platform import build_tenant_context_prompt
 
     original = aeon_platform.get_tenant_config_manager
     aeon_platform.get_tenant_config_manager = lambda root=None: manager
@@ -155,9 +155,8 @@ def test_build_tenant_context_prompt(manager):
 
 
 def test_build_tenant_context_prompt_generic_for_unknown_tenant(manager):
-    from aeon_platform import build_tenant_context_prompt
-
     import aeon_platform
+    from aeon_platform import build_tenant_context_prompt
 
     original = aeon_platform.get_tenant_config_manager
     aeon_platform.get_tenant_config_manager = lambda root=None: manager

@@ -52,6 +52,24 @@ def test_catalog_manifests_are_internally_valid() -> None:
         assert manifest.entry_points
 
 
+def test_catalog_includes_requested_enterprise_connector_plugins() -> None:
+    """Requested AG Group systems are available through the plugin lifecycle."""
+    plugins = {manifest.id: manifest for manifest in BUILTIN_PLUGIN_CATALOG}
+    expected = {
+        "sage-connector": "sage",
+        "microsoft365-connector": "microsoft365",
+        "indigo-shireburn-connector": "indigo",
+        "open-time-clock-connector": "open-time-clock",
+        "oisoft-connector": "oisoft",
+    }
+    for plugin_id, connector_id in expected.items():
+        assert plugin_id in plugins
+        manifest = plugins[plugin_id]
+        assert manifest.category == "integration"
+        assert {"health", "sync", "status"} <= set(manifest.entry_points)
+        assert manifest.config_schema["connector_id"]["default"] == connector_id
+
+
 def test_catalog_covers_all_modules_and_sectors() -> None:
     """The catalog spans every module category and every industry vertical."""
     categories = {m.category for m in BUILTIN_PLUGIN_CATALOG}

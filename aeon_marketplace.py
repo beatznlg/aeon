@@ -39,6 +39,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from aeon_connector_plugins import CONNECTOR_PLUGIN_DEFINITIONS
+
 # === constants =============================================================
 
 MARKETPLACE_VERSION = 1
@@ -259,6 +261,7 @@ def validate_config(schema: dict[str, Any], config: dict[str, Any]) -> dict[str,
 # === built-in catalog ======================================================
 
 BUILTIN_PLUGIN_CATALOG: tuple[PluginManifest, ...] = (
+    *(PluginManifest(**definition) for definition in CONNECTOR_PLUGIN_DEFINITIONS),
     PluginManifest(
         id="incident-responder",
         name="Incident Responder",

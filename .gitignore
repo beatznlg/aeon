@@ -39,7 +39,8 @@ node_modules/
 # SDK build artifacts
 sdk/typescript/dist/
 
-# web/ frontend (Next.js): exclude build artifacts + node_modules
+# Next.js frontend build artifacts
+.next/
 web/node_modules/
 web/.next/
 web/out/

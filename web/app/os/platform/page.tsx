@@ -427,11 +427,14 @@ export default function PlatformPage() {
                     <span
                       style={{
                         ...s.statusChip,
-                        color: status === "operational" ? "#34d399" : "#f87171",
-                        borderColor: status === "operational" ? "rgba(52,211,153,0.4)" : "rgba(248,113,113,0.4)",
+                        color: status === "operational" || status === "configured" ? "#34d399" : "#f87171",
+                        borderColor:
+                          status === "operational" || status === "configured"
+                            ? "rgba(52,211,153,0.4)"
+                            : "rgba(248,113,113,0.4)",
                       }}
                     >
-                      {status === "operational" ? "✓ operational" : status}
+                      {status === "operational" || status === "configured" ? "✓ ready" : status}
                     </span>
                   )}
                   {!on && <span style={s.connOff}>DISABLED</span>}

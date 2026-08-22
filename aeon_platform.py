@@ -82,6 +82,8 @@ MODULE_CATALOG: tuple[dict[str, Any], ...] = (
      "description": "Invoices, payments, budgets and financial analytics."},
     {"id": "hr", "name": "HR", "icon": "👥", "category": "business", "required": False,
      "description": "Employees, contracts, timesheets and workforce data."},
+    {"id": "workforce", "name": "Workforce", "icon": "🕒", "category": "business", "required": False,
+     "description": "Time clock, attendance, schedules and workforce operations."},
     {"id": "projects", "name": "Projects", "icon": "📋", "category": "business", "required": False,
      "description": "Projects, tasks, milestones, budgets and margins."},
     {"id": "crm", "name": "CRM", "icon": "🤝", "category": "business", "required": False,
@@ -130,10 +132,18 @@ CONNECTOR_CATALOG: tuple[dict[str, Any], ...] = (
      "description": "Outlook, SharePoint, Teams, OneDrive and Calendar via Microsoft Graph.",
      "required_secrets": ["MS_GRAPH_TENANT_ID", "MS_GRAPH_CLIENT_ID", "MS_GRAPH_CLIENT_SECRET"],
      "capabilities": ["authenticate", "connect", "discover", "fetch", "normalize", "sync", "webhook", "health_check", "disconnect"]},
-    {"id": "indigo", "name": "Indigo", "icon": "🟧", "category": "Project / PMIS",
-     "description": "Project management and control data from Indigo.",
+    {"id": "indigo", "name": "Indigo by Shireburn", "icon": "🟧", "category": "Project / PMIS",
+     "description": "Project management and control data from Indigo by Shireburn.",
      "required_secrets": ["INDIGO_API_KEY", "INDIGO_BASE_URL"],
-     "capabilities": ["authenticate", "connect", "discover", "fetch", "normalize", "sync", "health_check", "disconnect"]},
+     "capabilities": ["authenticate", "connect", "discover", "fetch", "normalize", "sync", "webhook", "health_check", "disconnect"]},
+    {"id": "open-time-clock", "name": "Open Time Clock", "icon": "⏱️", "category": "Workforce / Time",
+     "description": "Attendance, shifts and time entries from Open Time Clock.",
+     "required_secrets": ["OPEN_TIME_CLOCK_API_KEY", "OPEN_TIME_CLOCK_BASE_URL"],
+     "capabilities": ["authenticate", "connect", "discover", "fetch", "normalize", "sync", "webhook", "health_check", "disconnect"]},
+    {"id": "oisoft", "name": "OiSoft", "icon": "🟪", "category": "Workforce / Operations",
+     "description": "Workforce, time and operational records from OiSoft.",
+     "required_secrets": ["OISOFT_API_KEY", "OISOFT_BASE_URL"],
+     "capabilities": ["authenticate", "connect", "discover", "fetch", "normalize", "sync", "webhook", "health_check", "disconnect"]},
     {"id": "xero", "name": "Xero", "icon": "⬛", "category": "Accounting / ERP",
      "description": "Cloud accounting: invoices, bank feeds and reconciliation.",
      "required_secrets": ["XERO_CLIENT_ID", "XERO_CLIENT_SECRET", "XERO_TENANT_ID"],
@@ -179,6 +189,8 @@ UNIVERSAL_ENTITIES: tuple[dict[str, Any], ...] = (
      "sources": ["Sage", "Salesforce", "HubSpot", "Xero"]},
     {"id": "employee", "name": "Employee", "icon": "🪪", "domain": "people", "fields": ["id", "person_id", "employee_no", "department", "job_title", "start_date", "status"],
      "sources": ["Workday", "Microsoft 365", "HR systems"]},
+    {"id": "time-entry", "name": "Time Entry", "icon": "🕒", "domain": "people", "fields": ["id", "employee_id", "started_at", "ended_at", "duration_minutes", "source", "status"],
+     "sources": ["Open Time Clock", "Oisoft", "Workday", "Indigo"]},
     {"id": "customer", "name": "Customer", "icon": "🤝", "domain": "people", "fields": ["id", "person_id", "organization_id", "segment", "credit_limit"],
      "sources": ["Salesforce", "HubSpot", "Sage", "Xero", "POS"]},
     {"id": "supplier", "name": "Supplier", "icon": "🚚", "domain": "people", "fields": ["id", "organization_id", "category", "payment_terms", "rating"],
@@ -253,8 +265,8 @@ INDUSTRY_PACKS: tuple[dict[str, Any], ...] = (
      "profile": "general-business", "required": True},
     {"id": "engineering-construction", "name": "Engineering & Construction", "icon": "🏗️", "industry": "engineering",
      "description": "Projects, contracts, labour, equipment, materials, site management, margins, safety and procurement.",
-     "modules": ["finance", "projects", "hr", "procurement", "documents", "analytics", "ai-assistant", "risk-engine"],
-     "connectors": ["sage", "microsoft365", "indigo"], "currency": "EUR", "country": "MT",
+     "modules": ["finance", "projects", "hr", "workforce", "procurement", "documents", "analytics", "ai-assistant", "risk-engine"],
+     "connectors": ["sage", "microsoft365", "indigo", "open-time-clock", "oisoft"], "currency": "EUR", "country": "MT",
      "profile": "regulated-enterprise",
      "reference_tenant": "AG Group — the first enterprise implementation of the AEON platform."},
     {"id": "restaurant", "name": "Restaurant & Hospitality", "icon": "🍽️", "industry": "restaurant",
@@ -513,23 +525,30 @@ def connector_credential_status() -> dict[str, dict[str, Any]]:
 def connector_health(connector_id: str) -> dict[str, Any]:
     """Run the connector contract's ``health_check`` step.
 
-    Built-in connectors report their contract capabilities and a simulated
-    status. Real credentials are never read; production connectors would
-    perform an authenticated round-trip.
+    Built-in connectors report their contract capabilities and credential
+    readiness. Real credentials are never returned; production adapters add an
+    authenticated round-trip after the required secrets are configured.
     """
     connector = _CONNECTOR_MAP.get(str(connector_id or "").strip().lower())
     if connector is None:
         raise ValueError(f"unknown connector: {connector_id}")
+    credentials = connector_credential_status()[connector["id"]]
+    ready = bool(credentials["ready"])
     return {
-        "ok": True,
+        "ok": ready,
         "connector_id": connector["id"],
         "name": connector["name"],
-        "status": "operational",
+        "status": "configured" if ready else "needs_configuration",
         "contract": list(CONNECTOR_CONTRACT),
         "capabilities": list(connector["capabilities"]),
         "required_secrets": list(connector["required_secrets"]),
         "simulated": True,
-        "message": f"{connector['name']} connector implements the universal contract and is ready to authenticate when credentials are configured.",
+        "missing": list(credentials["missing"]),
+        "message": (
+            f"{connector['name']} connector implements the universal contract and is ready for a live check."
+            if ready
+            else f"Configure the required {connector['name']} credentials before syncing live data."
+        ),
     }
 
 

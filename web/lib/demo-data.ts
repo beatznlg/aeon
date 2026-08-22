@@ -412,8 +412,8 @@ export const demoPlatformConfig = {
     industry: "engineering-construction",
     currency: "EUR",
     country: "MT",
-    modules: ["identity", "permissions", "audit", "notifications", "ai", "documents", "workflows", "finance", "projects", "hr", "procurement", "analytics", "ai-assistant", "risk-engine"],
-    connectors: ["sage", "microsoft365", "indigo"],
+    modules: ["identity", "permissions", "audit", "notifications", "ai", "documents", "workflows", "finance", "projects", "hr", "workforce", "procurement", "analytics", "ai-assistant", "risk-engine"],
+    connectors: ["sage", "microsoft365", "indigo", "open-time-clock", "oisoft"],
     deployment_mode: "cloud",
     pack: {
       id: "engineering-construction",
@@ -421,8 +421,8 @@ export const demoPlatformConfig = {
       icon: "🏗️",
       industry: "engineering",
       description: "Projects, contracts, labour, equipment, materials, site management, margins, safety and procurement.",
-      modules: ["finance", "projects", "hr", "procurement", "documents", "analytics", "ai-assistant", "risk-engine"],
-      connectors: ["sage", "microsoft365", "indigo"],
+      modules: ["finance", "projects", "hr", "workforce", "procurement", "documents", "analytics", "ai-assistant", "risk-engine"],
+      connectors: ["sage", "microsoft365", "indigo", "open-time-clock", "oisoft"],
       currency: "EUR",
       country: "MT",
       profile: "regulated-enterprise",
@@ -445,6 +445,7 @@ export const demoPlatformModules = {
     { id: "workflows", name: "Workflows", icon: "🔀", category: "core", required: true, enabled: true, description: "Visual workflow engine for tenant automations." },
     { id: "finance", name: "Finance", icon: "💰", category: "business", required: false, enabled: true, description: "Invoices, payments, budgets and financial analytics." },
     { id: "hr", name: "HR", icon: "👥", category: "business", required: false, enabled: true, description: "Employees, contracts, timesheets and workforce data." },
+    { id: "workforce", name: "Workforce", icon: "🕒", category: "business", required: false, enabled: true, description: "Time clock, attendance, schedules and workforce operations." },
     { id: "projects", name: "Projects", icon: "📋", category: "business", required: false, enabled: true, description: "Projects, tasks, milestones, budgets and margins." },
     { id: "crm", name: "CRM", icon: "🤝", category: "business", required: false, enabled: false, description: "Customers, leads, deals and pipelines." },
     { id: "procurement", name: "Procurement", icon: "🛒", category: "business", required: false, enabled: true, description: "Suppliers, purchase orders and sourcing." },
@@ -468,7 +469,9 @@ export const demoPlatformConnectors = {
   connectors: [
     { id: "sage", name: "Sage", icon: "🧮", category: "Accounting / ERP", enabled: true, description: "Invoicing, accounting and financials (Sage 50 / Sage Intacct).", required_secrets: ["SAGE_CLIENT_ID", "SAGE_CLIENT_SECRET", "SAGE_REALM_ID"] },
     { id: "microsoft365", name: "Microsoft 365", icon: "🟦", category: "Productivity", enabled: true, description: "Outlook, SharePoint, Teams, OneDrive and Calendar via Microsoft Graph.", required_secrets: ["MS_GRAPH_TENANT_ID", "MS_GRAPH_CLIENT_ID", "MS_GRAPH_CLIENT_SECRET"] },
-    { id: "indigo", name: "Indigo", icon: "🟧", category: "Project / PMIS", enabled: true, description: "Project management and control data from Indigo.", required_secrets: ["INDIGO_API_KEY", "INDIGO_BASE_URL"] },
+    { id: "indigo", name: "Indigo by Shireburn", icon: "🟧", category: "Project / PMIS", enabled: true, description: "Project management and control data from Indigo by Shireburn.", required_secrets: ["INDIGO_API_KEY", "INDIGO_BASE_URL"] },
+    { id: "open-time-clock", name: "Open Time Clock", icon: "⏱️", category: "Workforce / Time", enabled: true, description: "Attendance, shifts and time entries from Open Time Clock.", required_secrets: ["OPEN_TIME_CLOCK_API_KEY", "OPEN_TIME_CLOCK_BASE_URL"] },
+    { id: "oisoft", name: "OiSoft", icon: "🟪", category: "Workforce / Operations", enabled: true, description: "Workforce, time and operational records from OiSoft.", required_secrets: ["OISOFT_API_KEY", "OISOFT_BASE_URL"] },
     { id: "xero", name: "Xero", icon: "⬛", category: "Accounting / ERP", enabled: false, description: "Cloud accounting: invoices, bank feeds and reconciliation.", required_secrets: ["XERO_CLIENT_ID", "XERO_CLIENT_SECRET", "XERO_TENANT_ID"] },
     { id: "sap", name: "SAP", icon: "🟩", category: "Accounting / ERP", enabled: false, description: "SAP ERP and S/4HANA financial and supply chain data.", required_secrets: ["SAP_BASE_URL", "SAP_CLIENT_ID", "SAP_CLIENT_SECRET"] },
     { id: "quickbooks", name: "QuickBooks", icon: "🟢", category: "Accounting / ERP", enabled: false, description: "QuickBooks Online invoices, expenses and reports.", required_secrets: ["QUICKBOOKS_CLIENT_ID", "QUICKBOOKS_CLIENT_SECRET", "QUICKBOOKS_COMPANY_ID"] },
@@ -486,6 +489,8 @@ export const demoConnectorStatus = {
     sage: { required_secrets: ["SAGE_CLIENT_ID", "SAGE_CLIENT_SECRET", "SAGE_REALM_ID"], configured: ["SAGE_CLIENT_ID", "SAGE_CLIENT_SECRET", "SAGE_REALM_ID"], missing: [], ready: true },
     microsoft365: { required_secrets: ["MS_GRAPH_TENANT_ID", "MS_GRAPH_CLIENT_ID", "MS_GRAPH_CLIENT_SECRET"], configured: ["MS_GRAPH_TENANT_ID", "MS_GRAPH_CLIENT_ID", "MS_GRAPH_CLIENT_SECRET"], missing: [], ready: true },
     indigo: { required_secrets: ["INDIGO_API_KEY", "INDIGO_BASE_URL"], configured: ["INDIGO_API_KEY", "INDIGO_BASE_URL"], missing: [], ready: true },
+    "open-time-clock": { required_secrets: ["OPEN_TIME_CLOCK_API_KEY", "OPEN_TIME_CLOCK_BASE_URL"], configured: ["OPEN_TIME_CLOCK_API_KEY", "OPEN_TIME_CLOCK_BASE_URL"], missing: [], ready: true },
+    oisoft: { required_secrets: ["OISOFT_API_KEY", "OISOFT_BASE_URL"], configured: ["OISOFT_API_KEY", "OISOFT_BASE_URL"], missing: [], ready: true },
     xero: { required_secrets: ["XERO_CLIENT_ID", "XERO_CLIENT_SECRET", "XERO_TENANT_ID"], configured: [], missing: ["XERO_CLIENT_ID", "XERO_CLIENT_SECRET", "XERO_TENANT_ID"], ready: false },
     sap: { required_secrets: ["SAP_BASE_URL", "SAP_CLIENT_ID", "SAP_CLIENT_SECRET"], configured: [], missing: ["SAP_BASE_URL", "SAP_CLIENT_ID", "SAP_CLIENT_SECRET"], ready: false },
     quickbooks: { required_secrets: ["QUICKBOOKS_CLIENT_ID", "QUICKBOOKS_CLIENT_SECRET", "QUICKBOOKS_COMPANY_ID"], configured: [], missing: ["QUICKBOOKS_CLIENT_ID", "QUICKBOOKS_CLIENT_SECRET", "QUICKBOOKS_COMPANY_ID"], ready: false },
@@ -502,7 +507,7 @@ export const demoIndustryPacks = {
   version: 1,
   packs: [
     { id: "core", name: "AEON Core", icon: "🧬", industry: "universal", required: true, description: "The universal foundation every tenant gets: identity, permissions, audit, notifications, AI, documents, workflows.", modules: ["identity", "permissions", "audit", "notifications", "ai", "documents", "workflows"], connectors: [], currency: "EUR", country: "", profile: "general-business" },
-    { id: "engineering-construction", name: "Engineering & Construction", icon: "🏗️", industry: "engineering", description: "Projects, contracts, labour, equipment, materials, site management, margins, safety and procurement.", modules: ["finance", "projects", "hr", "procurement", "documents", "analytics", "ai-assistant", "risk-engine"], connectors: ["sage", "microsoft365", "indigo"], currency: "EUR", country: "MT", profile: "regulated-enterprise", reference_tenant: "AG Group — the first enterprise implementation of the AEON platform." },
+    { id: "engineering-construction", name: "Engineering & Construction", icon: "🏗️", industry: "engineering", description: "Projects, contracts, labour, equipment, materials, site management, margins, safety and procurement.", modules: ["finance", "projects", "hr", "workforce", "procurement", "documents", "analytics", "ai-assistant", "risk-engine"], connectors: ["sage", "microsoft365", "indigo", "open-time-clock", "oisoft"], currency: "EUR", country: "MT", profile: "regulated-enterprise", reference_tenant: "AG Group — the first enterprise implementation of the AEON platform." },
     { id: "restaurant", name: "Restaurant & Hospitality", icon: "🍽️", industry: "restaurant", description: "POS, reservations, inventory, food cost, recipes, labour, purchasing, sales, margins and staff.", modules: ["finance", "hr", "inventory", "sales", "procurement", "analytics", "ai-assistant"], connectors: ["xero", "microsoft365", "pos"], currency: "EUR", country: "", profile: "general-business" },
     { id: "professional-services", name: "Professional Services", icon: "🧑‍💼", industry: "services", description: "Clients, projects, timesheets, billing, expenses, employees, documents and CRM.", modules: ["crm", "projects", "hr", "documents", "analytics", "ai-assistant"], connectors: ["microsoft365", "xero", "salesforce"], currency: "EUR", country: "", profile: "general-business" },
     { id: "retail", name: "Retail", icon: "🛍️", industry: "retail", description: "Sales, inventory, suppliers, pricing, promotions and customer loyalty.", modules: ["finance", "inventory", "sales", "crm", "procurement", "analytics", "ai-assistant"], connectors: ["xero", "quickbooks", "salesforce", "pos"], currency: "EUR", country: "", profile: "general-business" },
@@ -517,6 +522,7 @@ export const demoUniversalModel = {
     { id: "person", name: "Person", icon: "👤", domain: "people", fields: ["id", "name", "email", "phone", "address"], sources: ["Sage", "Microsoft 365", "Salesforce", "HubSpot", "Workday"] },
     { id: "organization", name: "Organization", icon: "🏢", domain: "people", fields: ["id", "name", "legal_name", "vat_number", "address", "country"], sources: ["Sage", "Salesforce", "HubSpot", "Xero"] },
     { id: "employee", name: "Employee", icon: "🪪", domain: "people", fields: ["id", "person_id", "employee_no", "department", "job_title", "start_date", "status"], sources: ["Workday", "Microsoft 365", "HR systems"] },
+    { id: "time-entry", name: "Time Entry", icon: "🕒", domain: "people", fields: ["id", "employee_id", "started_at", "ended_at", "duration_minutes", "source", "status"], sources: ["Open Time Clock", "OiSoft", "Workday", "Indigo"] },
     { id: "customer", name: "Customer", icon: "🤝", domain: "people", fields: ["id", "person_id", "organization_id", "segment", "credit_limit"], sources: ["Salesforce", "HubSpot", "Sage", "Xero", "POS"] },
     { id: "supplier", name: "Supplier", icon: "🚚", domain: "people", fields: ["id", "organization_id", "category", "payment_terms", "rating"], sources: ["Sage", "SAP", "Procurement systems"] },
     { id: "financial-account", name: "Financial Account", icon: "🏦", domain: "finance", fields: ["id", "code", "name", "type", "currency", "balance"], sources: ["Sage", "Xero", "QuickBooks", "SAP"] },
@@ -602,19 +608,53 @@ export const demoSwarm = {
   ],
 };
 
+const demoMarketplacePlugin = (plugin: {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  icon: string;
+  version?: string;
+  verified?: boolean;
+  installed?: boolean;
+  enabled?: boolean;
+  permissions?: string[];
+  entry_points?: Record<string, string>;
+  config_schema?: Record<string, { type?: string; default?: unknown; description?: string }>;
+  source?: string;
+  tags?: string[];
+}) => ({
+  version: "1.0.0",
+  author: "AEON Labs",
+  permissions: ["read", "execute"],
+  entry_points: { status: "Show the current connector or plugin status." },
+  config_schema: {},
+  verified: true,
+  source: "builtin",
+  tags: [],
+  installed: false,
+  enabled: false,
+  ...plugin,
+});
+
 export const demoMarketplace = {
   ok: true,
   demo: true,
   plugins: [
-    { id: "slack", name: "Slack", description: "Alerts, approvals, and notifications", category: "communication", verified: true, installed: true, version: "2.1.0", icon: "💬" },
-    { id: "github", name: "GitHub", description: "Repo events and PR automation", category: "devops", verified: true, installed: true, version: "1.8.2", icon: "🐙" },
-    { id: "stripe", name: "Stripe", description: "Billing and subscription sync", category: "billing", verified: true, installed: true, version: "3.0.1", icon: "💳" },
-    { id: "sentry", name: "Sentry", description: "Error tracking integration", category: "monitoring", verified: true, installed: false, version: "1.2.0", icon: "📈" },
-    { id: "pagerduty", name: "PagerDuty", description: "Incident response on-call", category: "oncall", verified: true, installed: false, version: "2.0.0", icon: "🚨" },
-    { id: "webhook", name: "Outbound Webhooks", description: "Deliver events to any endpoint", category: "webhooks", verified: true, installed: true, version: "1.5.0", icon: "🔗" },
-    { id: "tensorflow", name: "TensorFlow", description: "Run ML models in automations", category: "ai", verified: false, installed: false, version: "0.9.0", icon: "🧠" },
+    demoMarketplacePlugin({ id: "slack", name: "Slack", description: "Alerts, approvals, and notifications", category: "communication", icon: "💬", version: "2.1.0", installed: true, enabled: true, tags: ["slack", "notifications"], entry_points: { status: "Check Slack readiness.", notify: "Prepare a notification delivery." } }),
+    demoMarketplacePlugin({ id: "github", name: "GitHub", description: "Repo events and PR automation", category: "devops", icon: "🐙", version: "1.8.2", installed: true, enabled: true, tags: ["github", "devops"], entry_points: { status: "Check GitHub readiness.", review: "Prepare a pull request review." } }),
+    demoMarketplacePlugin({ id: "stripe", name: "Stripe", description: "Billing and subscription sync", category: "billing", icon: "💳", version: "3.0.1", installed: true, enabled: true, tags: ["stripe", "billing"], entry_points: { status: "Check Stripe readiness.", sync: "Prepare a billing synchronization." } }),
+    demoMarketplacePlugin({ id: "sentry", name: "Sentry", description: "Error tracking integration", category: "monitoring", icon: "📈", version: "1.2.0", tags: ["sentry", "monitoring"] }),
+    demoMarketplacePlugin({ id: "pagerduty", name: "PagerDuty", description: "Incident response on-call", category: "oncall", icon: "🚨", version: "2.0.0", tags: ["pagerduty", "incidents"] }),
+    demoMarketplacePlugin({ id: "webhook", name: "Outbound Webhooks", description: "Deliver events to any endpoint", category: "webhooks", icon: "🔗", version: "1.5.0", installed: true, enabled: true, tags: ["webhooks", "events"] }),
+    demoMarketplacePlugin({ id: "tensorflow", name: "TensorFlow", description: "Run ML models in automations", category: "ai", icon: "🧠", version: "0.9.0", verified: false, tags: ["ml", "ai"] }),
+    demoMarketplacePlugin({ id: "sage-connector", name: "Sage Connector", description: "Connect Sage accounting data to AEON Finance and the universal Invoice model.", category: "integration", icon: "🧮", tags: ["sage", "accounting", "erp", "connector"], permissions: ["read", "execute", "network"], entry_points: { health: "Check Sage readiness.", sync: "Prepare a Sage synchronization run.", status: "Summarize Sage connector state." }, config_schema: { connector_id: { type: "string", default: "sage", description: "Connector engine id." } } }),
+    demoMarketplacePlugin({ id: "microsoft365-connector", name: "Microsoft 365 Connector", description: "Connect Microsoft Graph services to AEON Documents, People, Meetings, and Messages.", category: "integration", icon: "🟦", tags: ["microsoft365", "graph", "productivity", "connector"], permissions: ["read", "execute", "network"], entry_points: { health: "Check Microsoft Graph readiness.", sync: "Prepare a Microsoft 365 synchronization run.", status: "Summarize Microsoft 365 connector state." }, config_schema: { connector_id: { type: "string", default: "microsoft365", description: "Connector engine id." } } }),
+    demoMarketplacePlugin({ id: "indigo-shireburn-connector", name: "Indigo by Shireburn Connector", description: "Connect Indigo project controls to AEON Projects, Tasks, Budgets, Costs, and Risks.", category: "integration", icon: "🟧", tags: ["indigo", "shireburn", "projects", "construction", "connector"], permissions: ["read", "execute", "network"], entry_points: { health: "Check Indigo by Shireburn readiness.", sync: "Prepare an Indigo synchronization run.", status: "Summarize Indigo connector state." }, config_schema: { connector_id: { type: "string", default: "indigo", description: "Connector engine id." } } }),
+    demoMarketplacePlugin({ id: "open-time-clock-connector", name: "Open Time Clock Connector", description: "Connect attendance and time records to AEON Workforce and the universal Time Entry model.", category: "integration", icon: "⏱️", tags: ["open-time-clock", "workforce", "attendance", "connector"], permissions: ["read", "execute", "network"], entry_points: { health: "Check Open Time Clock readiness.", sync: "Prepare an attendance synchronization run.", status: "Summarize time-clock connector state." }, config_schema: { connector_id: { type: "string", default: "open-time-clock", description: "Connector engine id." } } }),
+    demoMarketplacePlugin({ id: "oisoft-connector", name: "OiSoft Connector", description: "Connect OiSoft workforce operations to AEON Workforce, Employees, and Time Entries.", category: "integration", icon: "🟪", tags: ["oisoft", "workforce", "operations", "connector"], permissions: ["read", "execute", "network"], entry_points: { health: "Check OiSoft readiness.", sync: "Prepare an OiSoft synchronization run.", status: "Summarize OiSoft connector state." }, config_schema: { connector_id: { type: "string", default: "oisoft", description: "Connector engine id." } } }),
   ],
-  summary: { plugins: 7, verified: 6, installed: 4 },
+  summary: { plugins: 12, verified: 11, categories: ["communication", "devops", "billing", "monitoring", "oncall", "webhooks", "ai", "integration"], version: 1 },
 };
 
 export const demoMcp = {
