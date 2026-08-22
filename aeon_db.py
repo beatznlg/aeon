@@ -1136,18 +1136,24 @@ def list_anomalies(
         return q.order_by(Anomaly.created_at.desc()).limit(limit).all()
 
 
-def get_anomaly(anomaly_id: str) -> Anomaly | None:
-    """Fetch a single anomaly by ID."""
+def get_anomaly(anomaly_id: str, workspace_id: str | None = None) -> Anomaly | None:
+    """Fetch an anomaly by ID, optionally constrained to one workspace."""
     db = get_db()
     with db.session() as s:
-        return s.query(Anomaly).filter_by(id=str(anomaly_id)).first()
+        query = s.query(Anomaly).filter_by(id=str(anomaly_id))
+        if workspace_id is not None:
+            query = query.filter_by(workspace_id=str(workspace_id))
+        return query.first()
 
 
-def dismiss_anomaly(anomaly_id: str) -> Anomaly | None:
-    """Mark an anomaly as dismissed."""
+def dismiss_anomaly(anomaly_id: str, workspace_id: str | None = None) -> Anomaly | None:
+    """Mark an anomaly as dismissed, optionally constrained to one workspace."""
     db = get_db()
     with db.session() as s:
-        anomaly = s.query(Anomaly).filter_by(id=str(anomaly_id)).first()
+        query = s.query(Anomaly).filter_by(id=str(anomaly_id))
+        if workspace_id is not None:
+            query = query.filter_by(workspace_id=str(workspace_id))
+        anomaly = query.first()
         if anomaly:
             anomaly.dismissed = True
             s.commit()
@@ -1182,11 +1188,14 @@ def create_incident(
         return incident
 
 
-def get_incident(incident_id: str) -> Incident | None:
-    """Fetch a single incident by ID."""
+def get_incident(incident_id: str, workspace_id: str | None = None) -> Incident | None:
+    """Fetch an incident by ID, optionally constrained to one workspace."""
     db = get_db()
     with db.session() as s:
-        return s.query(Incident).filter_by(id=str(incident_id)).first()
+        query = s.query(Incident).filter_by(id=str(incident_id))
+        if workspace_id is not None:
+            query = query.filter_by(workspace_id=str(workspace_id))
+        return query.first()
 
 
 def list_incidents(
@@ -1249,11 +1258,14 @@ def create_incident_runbook(
         return runbook
 
 
-def get_incident_runbook(runbook_id: str) -> IncidentRunbook | None:
-    """Fetch a single runbook by ID."""
+def get_incident_runbook(runbook_id: str, workspace_id: str | None = None) -> IncidentRunbook | None:
+    """Fetch a runbook by ID, optionally constrained to one workspace."""
     db = get_db()
     with db.session() as s:
-        return s.query(IncidentRunbook).filter_by(id=str(runbook_id)).first()
+        query = s.query(IncidentRunbook).filter_by(id=str(runbook_id))
+        if workspace_id is not None:
+            query = query.filter_by(workspace_id=str(workspace_id))
+        return query.first()
 
 
 def list_incident_runbooks(workspace_id: str, enabled_only: bool = False) -> list[IncidentRunbook]:
@@ -1292,11 +1304,13 @@ def update_incident_runbook(
         return runbook
 
 
-def delete_incident_runbook(runbook_id: str) -> bool:
-    """Delete a runbook and return True if a row was removed."""
+def delete_incident_runbook(runbook_id: str, workspace_id: str | None = None) -> bool:
+    """Delete a runbook only within the requested workspace when supplied."""
     db = get_db()
     with db.session() as s:
         q = s.query(IncidentRunbook).filter_by(id=str(runbook_id))
+        if workspace_id is not None:
+            q = q.filter_by(workspace_id=str(workspace_id))
         deleted = q.delete()
         s.commit()
         return bool(deleted)

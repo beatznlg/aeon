@@ -94,6 +94,42 @@ def test_summary_aggregation():
         assert summary["avg_latency_ms"] == 300
 
 
+def test_summary_includes_daily_trends_and_buffered_records():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        ledger = AIExecutionLedger(tmpdir)
+        ledger.record(
+            _make_record(
+                timestamp="2026-08-20T10:00:00+00:00",
+                tokens_total=120,
+                cost_usd=0.004,
+                latency_ms=200,
+            )
+        )
+        ledger.record(
+            _make_record(
+                timestamp="2026-08-20T12:00:00+00:00",
+                tokens_total=80,
+                cost_usd=0.002,
+                latency_ms=300,
+            )
+        )
+
+        # Summary includes records still in the write buffer so dashboards do
+        # not lag behind the latest execution until the periodic flush.
+        summary = ledger.summary(workspace_id="ws-test", days=3650)
+        assert summary["total_records"] == 2
+        assert summary["total_executions"] == 2
+        assert summary["daily"] == [
+            {
+                "date": "2026-08-20",
+                "executions": 2,
+                "tokens": 200,
+                "cost_usd": 0.006,
+                "latency_ms": 500,
+            }
+        ]
+
+
 def test_flush_prunes_old_records():
     with tempfile.TemporaryDirectory() as tmpdir:
         ledger = AIExecutionLedger(tmpdir, max_records=5)

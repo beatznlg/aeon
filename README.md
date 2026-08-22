@@ -77,7 +77,7 @@ AEON_ADMIN_NAME=AEON Admin
 
 ## 🧠 LLM Provider and Model Architecture
 
-AEON exposes a credential-free provider catalog through `GET /llm/providers` and supports model selection through `POST /llm/switch` with `{ "provider": "custom", "model": "my-model" }`. The Python kernel uses `GET /llm/models` for catalog discovery when available. Custom hosted and local providers share the OpenAI-compatible chat-completions contract:
+AEON exposes a credential-free provider catalog through `GET /llm/providers` and supports model selection through `POST /llm/switch` with `{ "provider": "custom", "model": "my-model" }`. Static model entries are compatibility defaults, not a claim that they are the latest releases. For current provider model IDs, call `GET /llm/models?provider=<id>&discover=true`; AEON queries the provider's server-side `/models` endpoint and returns only model identifiers. Custom hosted and local providers share the OpenAI-compatible chat-completions contract:
 
 ```json
 {
@@ -87,7 +87,7 @@ AEON exposes a credential-free provider catalog through `GET /llm/providers` and
 }
 ```
 
-The endpoint may be an Ollama, LM Studio, vLLM, OpenRouter, private gateway, or any compatible service. AEON accepts `http://` for local endpoints and `https://` for hosted endpoints, rejects URLs containing credentials/query strings/fragments, and never returns API keys or custom endpoint URLs in provider metadata. Configure secrets through the Keys/API Keys manager rather than committing them to the repository.
+The endpoint may be an Ollama, LM Studio, vLLM, OpenRouter, private gateway, or any compatible service. AEON accepts `http://` for local endpoints and `https://` for hosted endpoints, rejects URLs containing credentials/query strings/fragments, and never returns API keys or custom endpoint URLs in provider metadata. Configure `AEON_CUSTOM_LLM_BASE_URL`, `AEON_CUSTOM_LLM_MODEL`, and optional `AEON_CUSTOM_LLM_API_KEY` through the deployment secret/configuration manager rather than committing them to the repository. The connector's **Models** action refreshes the endpoint's live model list without sending credentials to the browser.
 
 ## 📦 Architecture
 

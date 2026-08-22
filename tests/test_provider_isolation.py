@@ -107,7 +107,7 @@ def test_async_app_tick_payload_carries_provider_model_and_workspace(client, mon
     resp = client.post(
         "/apps/finance/tick",
         json={"query": "tick", "async": True, "provider": "stub", "model": "m"},
-        headers={"Authorization": f"Bearer {token}", "X-Workspace-Id": "ws-iso4"},
+        headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 200
     assert captured["payload"]["query"] == "tick"

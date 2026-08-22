@@ -34,6 +34,14 @@ type BackupJob = {
   created_at: string;
 };
 
+type BackupVerification = {
+  verified: boolean;
+  checked_at: string;
+  bytes_read?: number | null;
+  checks: Array<{ check: string; status: string; message: string }>;
+  failed_checks: string[];
+};
+
 type RestoreJob = {
   id: string;
   backup_job_id: string;
@@ -65,6 +73,8 @@ export default function DRPageClient() {
   const [restores, setRestores] = useState<RestoreJob[]>([]);
   const [plans, setPlans] = useState<DRPlan[]>([]);
   const [drills, setDrills] = useState<DRDrill[]>([]);
+  const [verificationByJob, setVerificationByJob] = useState<Record<string, BackupVerification>>({});
+  const [verifyingJobId, setVerifyingJobId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -158,6 +168,27 @@ export default function DRPageClient() {
       else setError(data.error || "run failed");
     } catch (e) {
       setError(String(e));
+    }
+  };
+
+  const verifyBackup = async (id: string) => {
+    try {
+      setVerifyingJobId(id);
+      setError(null);
+      const res = await fetch(`/api/dr/backups/${id}/verify`, {
+        cache: "no-store",
+        headers: getAuthHeaders(),
+      });
+      const data = await res.json();
+      if (res.ok && data.ok && data.verification) {
+        setVerificationByJob((current) => ({ ...current, [id]: data.verification }));
+      } else {
+        setError(data.error || "backup verification failed");
+      }
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setVerifyingJobId(null);
     }
   };
 
@@ -381,6 +412,31 @@ export default function DRPageClient() {
                     {new Date(j.created_at).toLocaleString()}
                     {j.size_bytes ? ` · ${(j.size_bytes / 1024 / 1024).toFixed(2)} MB` : ""}
                   </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => verifyBackup(j.id)}
+                      loading={verifyingJobId === j.id}
+                    >
+                      Verify integrity
+                    </Button>
+                    {verificationByJob[j.id] && (
+                      <Badge variant={verificationByJob[j.id].verified ? "success" : "danger"}>
+                        {verificationByJob[j.id].verified ? "verified" : "needs attention"}
+                      </Badge>
+                    )}
+                  </div>
+                  {verificationByJob[j.id] && !verificationByJob[j.id].verified && (
+                    <div className="mt-2 text-xs text-aeon-danger">
+                      Failed checks: {verificationByJob[j.id].failed_checks.join(", ")}
+                    </div>
+                  )}
+                  {verificationByJob[j.id] && (
+                    <div className="mt-1 text-xs text-aeon-fg-mute">
+                      Checked {new Date(verificationByJob[j.id].checked_at).toLocaleString()} · {verificationByJob[j.id].checks.length} checks
+                    </div>
+                  )}
                   {j.error_message && (
                     <div className="mt-1 text-xs text-aeon-danger">{j.error_message}</div>
                   )}

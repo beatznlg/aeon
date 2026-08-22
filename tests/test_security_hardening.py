@@ -109,3 +109,88 @@ def test_workspace_chat_denies_cross_tenant_access(client):
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 403
+
+
+def test_workspace_header_is_a_selector_not_an_authorization_grant(client):
+    registration = client.post(
+        "/auth/register",
+        json={"email": "header-owner@test.local", "password": "secure123", "name": "Header Owner"},
+    )
+    token = registration.get_json()["token"]
+    own_workspace = registration.get_json()["user"]["workspace_id"]
+    other = client.post(
+        "/auth/register",
+        json={"email": "header-other@test.local", "password": "secure123", "name": "Header Other"},
+    )
+    other_workspace = other.get_json()["user"]["workspace_id"]
+    headers = {"Authorization": f"Bearer {token}", "X-Workspace-Id": other_workspace}
+
+    denied = client.get("/anomalies", headers=headers)
+    assert denied.status_code == 403
+
+    allowed = client.get(
+        "/anomalies",
+        headers={"Authorization": f"Bearer {token}", "X-Workspace-Id": own_workspace},
+    )
+    assert allowed.status_code == 200
+    assert allowed.get_json()["anomalies"] == []
+
+
+def test_anomaly_mutation_is_scoped_to_authorized_workspace(client):
+    owner = client.post(
+        "/auth/register",
+        json={"email": "anomaly-owner@test.local", "password": "secure123", "name": "Owner"},
+    ).get_json()
+    foreign = client.post(
+        "/auth/register",
+        json={"email": "anomaly-foreign@test.local", "password": "secure123", "name": "Foreign"},
+    ).get_json()
+
+    from aeon_db import create_anomaly, get_anomaly
+
+    anomaly = create_anomaly(
+        workspace_id=foreign["user"]["workspace_id"],
+        anomaly_type="test",
+        severity="warning",
+        title="foreign anomaly",
+    )
+    response = client.post(
+        f"/anomalies/{anomaly.id}/dismiss",
+        headers={
+            "Authorization": f"Bearer {owner['token']}",
+            "X-Workspace-Id": owner["user"]["workspace_id"],
+        },
+    )
+    assert response.status_code == 404
+    assert get_anomaly(anomaly.id).dismissed is False
+
+
+def test_integration_manager_scopes_lookup_and_proxy(tmp_path):
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[1] / "aeon_integrations.py"
+    spec = importlib.util.spec_from_file_location("aeon_integrations_regression", path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    manager = module.IntegrationManager(tmp_path)
+    workspace_a = manager.save({"name": "A", "type": "rest"}, workspace_id="workspace-a")
+    workspace_b = manager.save({"name": "B", "type": "rest"}, workspace_id="workspace-b")
+
+    assert [item["id"] for item in manager.list_integrations(workspace_id="workspace-a")] == [workspace_a.id]
+    assert manager.get(workspace_b.id, workspace_id="workspace-a") is None
+    denied = manager.proxy(workspace_b.id, endpoint="", method="GET", workspace_id="workspace-a")
+    assert denied == {"ok": False, "error": "integration not found"}
+
+
+def test_job_status_cannot_cross_workspace():
+    import aeon_server
+
+    job_queue = aeon_server.JobQueue(workers=1)
+    try:
+        job_id = job_queue.submit("app", "act", {"query": "hi", "workspace_id": "workspace-a"})
+        assert job_queue.status(job_id, workspace_id="workspace-a") is not None
+        assert job_queue.status(job_id, workspace_id="workspace-b") is None
+    finally:
+        job_queue.shutdown()

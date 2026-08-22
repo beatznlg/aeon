@@ -9,7 +9,7 @@ from flask import g, jsonify, request
 
 from aeon_auth import has_role, require_auth, require_workspace_role
 from aeon_db import get_workspace_llm_preference, update_workspace_llm_preference
-from aeon_llm import list_models, list_providers, provider_health, set_active_provider, test_provider
+from aeon_llm import discover_models, list_models, list_providers, provider_health, set_active_provider, test_provider
 
 
 def _workspace_id() -> str:
@@ -42,7 +42,19 @@ def register_llm_routes(app: Any) -> None:
     @require_auth
     @require_workspace_role("VIEWER")
     def llm_model_catalog():
-        return jsonify({"ok": True, "models": list_models(request.args.get("provider"))})
+        provider = request.args.get("provider")
+        static_models = list_models(provider)
+        discover = request.args.get("discover", "").strip().lower() in {"1", "true", "yes"}
+        if not discover:
+            return jsonify({"ok": True, "models": static_models, "source": "default"})
+
+        discovery = discover_models(provider, model=request.args.get("model"))
+        if discovery.get("ok"):
+            discovered_ids = {item["id"] for item in discovery.get("models", [])}
+            merged = [item for item in static_models if item["id"] not in discovered_ids]
+            merged.extend(discovery["models"])
+            discovery["models"] = merged
+        return jsonify({"ok": discovery.get("ok", False), "models": discovery.get("models", []), "source": discovery.get("source", "provider_api"), "status": discovery.get("status"), **({"http_status": discovery["http_status"]} if discovery.get("http_status") is not None else {})}), 200 if discovery.get("ok") else 502
 
     @app.route("/llm/preferences", methods=["GET", "PUT"], endpoint="llm_workspace_preference")
     @require_auth

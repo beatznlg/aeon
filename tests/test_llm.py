@@ -33,6 +33,21 @@ class _Session:
         return _Response()
 
 
+class _ModelsResponse:
+    def raise_for_status(self) -> None:
+        return None
+
+    def json(self) -> dict:
+        return {
+            "data": [
+                {"id": "frontier-model-2026"},
+                {"id": "local-qwen"},
+                {"id": ""},
+                {"name": "ignored-without-id"},
+            ]
+        }
+
+
 def test_registry_contains_builtin_and_custom_provider_metadata() -> None:
     providers = {item["id"]: item for item in aeon_llm.list_providers()}
 
@@ -106,6 +121,24 @@ def test_provider_health_uses_models_endpoint_without_exposing_credentials() -> 
     assert args[0] == "http://127.0.0.1:1234/v1/models"
     assert kwargs["headers"]["Authorization"] == "Bearer test-secret"
     assert "test-secret" not in str(result)
+
+
+def test_discover_models_returns_provider_ids_without_secret_or_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
+    session = _Session()
+    session.get = lambda *args, **kwargs: (_ModelsResponse())
+    provider = aeon_llm.CustomLLMProvider(
+        model="local-qwen",
+        base_url="http://127.0.0.1:1234/v1",
+        api_key="test-secret",
+    )
+    with patch.object(aeon_llm, "_SESSION", session), patch.object(aeon_llm, "get_llm_provider", return_value=provider):
+        result = aeon_llm.discover_models("custom")
+
+    assert result["ok"] is True
+    assert [item["id"] for item in result["models"]] == ["frontier-model-2026", "local-qwen"]
+    assert all(item["source"] == "provider_api" for item in result["models"])
+    assert "test-secret" not in str(result)
+    assert "127.0.0.1" not in str(result)
 
 
 def test_provider_health_does_not_claim_non_compatible_provider_is_ready(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -14,15 +14,28 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import threading
 import uuid
 from collections.abc import Iterable
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - Windows uses the process-local lock
+    fcntl = None  # type: ignore[assignment]
+
 LEDGER_VERSION = 1
 _VALID_STATUSES = {"verified", "failed", "pending", "not_applicable"}
+
+# A process-local lock prevents multiple ledger instances in one worker from
+# racing. The companion lock file extends that protection across worker
+# processes without changing the evidence ledger format.
+_path_locks: dict[str, threading.RLock] = {}
+_path_locks_guard = threading.Lock()
 
 # These identifiers describe evidence obligations, not legal conclusions.
 _REQUIRED_EVIDENCE: dict[str, tuple[str, ...]] = {
@@ -87,6 +100,25 @@ class EvidenceLedger:
 
     def __init__(self, path: str | os.PathLike[str]):
         self.path = Path(path)
+        key = str(self.path.resolve())
+        with _path_locks_guard:
+            self._path_lock = _path_locks.setdefault(key, threading.RLock())
+
+    @contextmanager
+    def _file_lock(self, *, exclusive: bool):
+        """Serialize ledger reads/writes across threads and processes."""
+        with self._path_lock:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            lock_path = self.path.with_name(f"{self.path.name}.lock")
+            with lock_path.open("a+", encoding="utf-8") as lock_stream:
+                if fcntl is not None:
+                    operation = fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH
+                    fcntl.flock(lock_stream.fileno(), operation)
+                try:
+                    yield
+                finally:
+                    if fcntl is not None:
+                        fcntl.flock(lock_stream.fileno(), fcntl.LOCK_UN)
 
     @staticmethod
     def _canonical(payload: dict[str, Any]) -> bytes:
@@ -142,34 +174,34 @@ class EvidenceLedger:
             if len(artifact_sha256) != 64 or any(char not in "0123456789abcdef" for char in artifact_sha256):
                 raise ValueError("artifact_sha256 must be a SHA-256 hex digest")
 
-        existing = self.verify()
-        if not existing["ok"]:
-            raise ValueError("cannot append to an invalid evidence ledger")
-        records = self._records()
-        previous_hash = records[-1].record_hash if records else "0" * 64
-        observed = observed_at or datetime.now(timezone.utc).isoformat()
-        unsigned = {
-            "evidence_id": str(uuid.uuid4()),
-            "control_id": control_id,
-            "profile": profile,
-            "status": status,
-            "summary": summary,
-            "source": source,
-            "observed_at": observed,
-            "artifact_sha256": artifact_sha256,
-            "previous_hash": previous_hash,
-            "ledger_version": LEDGER_VERSION,
-        }
-        record = EvidenceRecord(**unsigned, record_hash=self._digest(unsigned))
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        with self.path.open("a", encoding="utf-8") as stream:
-            stream.write(json.dumps(record.to_dict(), sort_keys=True, ensure_ascii=False) + "\n")
-            stream.flush()
-            os.fsync(stream.fileno())
-        return record
+        with self._file_lock(exclusive=True):
+            existing = self._verify_unlocked()
+            if not existing["ok"]:
+                raise ValueError("cannot append to an invalid evidence ledger")
+            records = self._records()
+            previous_hash = records[-1].record_hash if records else "0" * 64
+            observed = observed_at or datetime.now(timezone.utc).isoformat()
+            unsigned = {
+                "evidence_id": str(uuid.uuid4()),
+                "control_id": control_id,
+                "profile": profile,
+                "status": status,
+                "summary": summary,
+                "source": source,
+                "observed_at": observed,
+                "artifact_sha256": artifact_sha256,
+                "previous_hash": previous_hash,
+                "ledger_version": LEDGER_VERSION,
+            }
+            record = EvidenceRecord(**unsigned, record_hash=self._digest(unsigned))
+            with self.path.open("a", encoding="utf-8") as stream:
+                stream.write(json.dumps(record.to_dict(), sort_keys=True, ensure_ascii=False) + "\n")
+                stream.flush()
+                os.fsync(stream.fileno())
+            return record
 
-    def verify(self, expected_last_hash: str | None = None) -> dict[str, Any]:
-        """Verify parsing, hash links, record hashes, IDs, and an optional anchor.
+    def _verify_unlocked(self, expected_last_hash: str | None = None) -> dict[str, Any]:
+        """Verify the ledger while the caller holds its read/write lock.
 
         The optional anchor should be stored outside the ledger in an approved,
         access-controlled or immutable evidence system. A local sidecar is only
@@ -208,6 +240,11 @@ class EvidenceLedger:
             "errors": errors,
         }
 
+    def verify(self, expected_last_hash: str | None = None) -> dict[str, Any]:
+        """Verify parsing, hash links, record hashes, IDs, and an optional anchor."""
+        with self._file_lock(exclusive=False):
+            return self._verify_unlocked(expected_last_hash=expected_last_hash)
+
     def latest_by_control(self, profiles: str | Iterable[str] | None = None) -> dict[str, EvidenceRecord]:
         """Return latest records, optionally restricted to one or more profiles."""
         allowed: set[str] | None
@@ -218,7 +255,9 @@ class EvidenceLedger:
         else:
             allowed = {profile.strip().lower() for profile in profiles}
         latest: dict[str, EvidenceRecord] = {}
-        for record in self._records():
+        with self._file_lock(exclusive=False):
+            records = self._records()
+        for record in records:
             if allowed is not None and record.profile not in allowed:
                 continue
             latest[record.control_id] = record

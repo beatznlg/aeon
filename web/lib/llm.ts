@@ -47,7 +47,7 @@ function getModel(provider: LLMProvider, override?: string): string {
   const envByProvider: Partial<Record<LLMProvider, string | undefined>> = {
     openai: process.env.OPENAI_MODEL || process.env.AEON_LLM_MODEL || "gpt-5-mini",
     anthropic: process.env.ANTHROPIC_MODEL || process.env.AEON_LLM_MODEL || "claude-sonnet-4-20250514",
-    google: process.env.GEMINI_MODEL || process.env.AEON_LLM_MODEL || "gemini-2.5-flash",
+    google: process.env.GEMINI_MODEL || process.env.AEON_LLM_MODEL || "gemini-3.7-flash",
     mistral: process.env.MISTRAL_MODEL || process.env.AEON_LLM_MODEL || "mistral-small-latest",
     hf: process.env.HF_MODEL || process.env.AEON_LLM_MODEL || "Qwen/Qwen2.5-7B-Instruct",
     openrouter: process.env.OPENROUTER_MODEL || process.env.AEON_LLM_MODEL || "openai/gpt-4.1-mini",

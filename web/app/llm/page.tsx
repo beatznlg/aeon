@@ -13,6 +13,8 @@ interface ProviderMeta {
   configured: boolean;
   active: boolean;
   env_var: string | null;
+  base_url_env?: string;
+  model_env_var?: string;
   desc: string;
 }
 
@@ -55,7 +57,7 @@ const FALLBACK_PROVIDERS: ProviderMeta[] = [
     name: "Google Gemini",
     icon: "✦",
     color: "#4285f4",
-    models: ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite"],
+    models: ["gemini-3.7-flash", "gemini-3.1-pro", "gemini-3.1-flash-lite"],
     configured: false,
     active: false,
     env_var: "GEMINI_API_KEY",
@@ -77,7 +79,7 @@ const FALLBACK_PROVIDERS: ProviderMeta[] = [
     name: "OpenRouter",
     icon: "◈",
     color: "#7c3aed",
-    models: ["openai/gpt-4.1-mini", "anthropic/claude-sonnet-4", "google/gemini-2.5-flash", "meta-llama/llama-4-scout"],
+    models: ["openai/gpt-4.1-mini", "anthropic/claude-sonnet-4", "google/gemini-3.7-flash", "meta-llama/llama-4-scout"],
     configured: false,
     active: false,
     env_var: "OPENROUTER_API_KEY",
@@ -125,6 +127,8 @@ const FALLBACK_PROVIDERS: ProviderMeta[] = [
     configured: false,
     active: false,
     env_var: "AEON_CUSTOM_LLM_API_KEY",
+    base_url_env: "AEON_CUSTOM_LLM_BASE_URL",
+    model_env_var: "AEON_CUSTOM_LLM_MODEL",
     desc: "Connect any hosted API or local server implementing /v1/chat/completions.",
   },
   {
@@ -159,6 +163,7 @@ export default function LLMPage() {
   const [testResult, setTestResult] = useState<string | null>(null);
   const [healthResult, setHealthResult] = useState<string | null>(null);
   const [healthLoading, setHealthLoading] = useState<string | null>(null);
+  const [discoverLoading, setDiscoverLoading] = useState<string | null>(null);
   const [testLoading, setTestLoading] = useState<string | null>(null);
   const [switchLoading, setSwitchLoading] = useState<string | null>(null);
   const [preferenceSource, setPreferenceSource] = useState<string>("environment");
@@ -246,6 +251,33 @@ export default function LLMPage() {
       setHealthResult(`🔴 ${id} health check failed.`);
     } finally {
       setHealthLoading(null);
+    }
+  };
+
+  const discoverModels = async (id: string, model?: string) => {
+    setDiscoverLoading(id);
+    setHealthResult(null);
+    setError(null);
+    try {
+      const params = new URLSearchParams({ provider: id, discover: "true" });
+      if (model) params.set("model", model);
+      const res = await fetch(`/api/llm/models?${params.toString()}`, { cache: "no-store" });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        setHealthResult(`🔴 ${id} model discovery failed.`);
+        return;
+      }
+      const discovered = Array.isArray(data.models) ? data.models.map((item: { id?: string }) => item.id).filter(Boolean) : [];
+      setProviders((prev) => prev.map((provider) => (
+        provider.id === id
+          ? { ...provider, models: Array.from(new Set([...provider.models, ...discovered])) }
+          : provider
+      )));
+      setHealthResult(`🟢 ${id} reported ${discovered.length} model${discovered.length === 1 ? "" : "s"}.`);
+    } catch {
+      setHealthResult(`🔴 ${id} model discovery failed.`);
+    } finally {
+      setDiscoverLoading(null);
     }
   };
 
@@ -451,6 +483,16 @@ export default function LLMPage() {
                   className="btn btn-sm"
                   onClick={(e) => {
                     e.stopPropagation();
+                    discoverModels(provider.id, selectedModels[provider.id] || provider.model || provider.models[0]);
+                  }}
+                  disabled={discoverLoading === provider.id}
+                >
+                  {discoverLoading === provider.id ? "Loading..." : "Models"}
+                </button>
+                <button
+                  className="btn btn-sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
                     testProvider(provider.id, selectedModels[provider.id] || provider.model || provider.models[0]);
                   }}
                   disabled={testLoading === provider.id}
@@ -485,6 +527,15 @@ export default function LLMPage() {
                     </div>
                   ) : (
                     <div>
+                      {provider.id === "custom" && (
+                        <div className="info-box" style={{ marginBottom: 10 }}>
+                          Configure the endpoint and key on the server, never in the browser:
+                          <br />
+                          <code>{provider.base_url_env || "AEON_CUSTOM_LLM_BASE_URL"}</code>
+                          {provider.model_env_var && <> · <code>{provider.model_env_var}</code></>}
+                          {provider.env_var && <> · <code>{provider.env_var}</code></>}
+                        </div>
+                      )}
                       {setupUrls[provider.id] && (
                         <a
                           href={setupUrls[provider.id]}

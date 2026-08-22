@@ -31,6 +31,7 @@ class IntegrationConfig:
     id: str
     name: str
     type: str
+    workspace_id: str | None = None
     base_url: str = ""
     enabled: bool = True
     secrets: dict[str, Any] = field(default_factory=dict)
@@ -44,6 +45,7 @@ class IntegrationConfig:
             "id": self.id,
             "name": self.name,
             "type": self.type,
+            "workspace_id": self.workspace_id,
             "base_url": self.base_url,
             "enabled": self.enabled,
             "secrets": _mask_secrets(self.secrets) if mask else self.secrets,
@@ -60,6 +62,7 @@ class IntegrationConfig:
             id=data["id"],
             name=data["name"],
             type=data["type"],
+            workspace_id=data.get("workspace_id"),
             base_url=data.get("base_url", ""),
             enabled=data.get("enabled", True),
             secrets=data.get("secrets", {}),
@@ -117,6 +120,18 @@ def _mask_secrets(secrets: dict[str, Any]) -> dict[str, Any]:
 
 def _generate_id() -> str:
     return _secrets.token_urlsafe(8)
+
+
+def _request_workspace_id() -> str | None:
+    """Read the already-authorized Flask workspace context when available."""
+    try:
+        from flask import g, has_request_context
+        if has_request_context():
+            workspace_id = getattr(g, "workspace_id", None)
+            return str(workspace_id) if workspace_id else None
+    except Exception:  # pragma: no cover - manager also works outside Flask
+        pass
+    return None
 
 
 # === adapters ============================================================
@@ -541,15 +556,31 @@ class IntegrationManager:
     def _save_deliveries(self) -> None:
         self.deliveries_path.write_text(json.dumps([d.to_dict() for d in self._deliveries[-100:]], indent=2))
 
-    def list_integrations(self, mask: bool = True) -> list[dict[str, Any]]:
-        return [c.to_dict(mask=mask) for c in self._configs.values()]
+    def list_integrations(self, mask: bool = True, workspace_id: str | None = None) -> list[dict[str, Any]]:
+        workspace_id = workspace_id or _request_workspace_id()
+        configs = self._configs.values()
+        if workspace_id is not None:
+            configs = (c for c in configs if c.workspace_id == str(workspace_id))
+        return [c.to_dict(mask=mask) for c in configs]
 
-    def get(self, integration_id: str) -> IntegrationConfig | None:
-        return self._configs.get(integration_id)
+    def get(self, integration_id: str, workspace_id: str | None = None) -> IntegrationConfig | None:
+        workspace_id = workspace_id or _request_workspace_id()
+        config = self._configs.get(integration_id)
+        if config is None or (workspace_id is not None and config.workspace_id != str(workspace_id)):
+            return None
+        return config
 
-    def save(self, data: dict[str, Any], integration_id: str | None = None) -> IntegrationConfig:
+    def save(
+        self,
+        data: dict[str, Any],
+        integration_id: str | None = None,
+        workspace_id: str | None = None,
+    ) -> IntegrationConfig:
+        workspace_id = workspace_id or _request_workspace_id()
         if integration_id and integration_id in self._configs:
             cfg = self._configs[integration_id]
+            if workspace_id is not None and cfg.workspace_id != str(workspace_id):
+                raise KeyError("integration not found")
             cfg.name = data.get("name", cfg.name)
             cfg.type = data.get("type", cfg.type)
             cfg.base_url = data.get("base_url", cfg.base_url)
@@ -568,6 +599,7 @@ class IntegrationManager:
                 id=integration_id or _generate_id(),
                 name=data.get("name", "Untitled"),
                 type=data.get("type", "rest"),
+                workspace_id=str(workspace_id) if workspace_id is not None else data.get("workspace_id"),
                 base_url=data.get("base_url", ""),
                 enabled=data.get("enabled", True),
                 secrets=data.get("secrets", {}),
@@ -578,15 +610,24 @@ class IntegrationManager:
         self._save_configs()
         return cfg
 
-    def delete(self, integration_id: str) -> bool:
-        if integration_id in self._configs:
+    def delete(self, integration_id: str, workspace_id: str | None = None) -> bool:
+        workspace_id = workspace_id or _request_workspace_id()
+        if self.get(integration_id, workspace_id=workspace_id) is not None:
             del self._configs[integration_id]
             self._save_configs()
             return True
         return False
 
-    def run(self, integration_id: str, endpoint: str = "", method: str = "GET", payload: dict[str, Any] | None = None) -> dict[str, Any]:
-        cfg = self._configs.get(integration_id)
+    def run(
+        self,
+        integration_id: str,
+        endpoint: str = "",
+        method: str = "GET",
+        payload: dict[str, Any] | None = None,
+        workspace_id: str | None = None,
+    ) -> dict[str, Any]:
+        workspace_id = workspace_id or _request_workspace_id()
+        cfg = self.get(integration_id, workspace_id=workspace_id)
         if not cfg:
             return {"ok": False, "error": "integration not found"}
         if not cfg.enabled:
@@ -594,12 +635,35 @@ class IntegrationManager:
         adapter = get_adapter(cfg)
         return adapter.run(endpoint=endpoint, method=method, payload=payload)
 
-    def proxy(self, integration_id: str, endpoint: str, method: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
-        return self.run(integration_id, endpoint=endpoint, method=method, payload=payload)
+    def proxy(
+        self,
+        integration_id: str,
+        endpoint: str,
+        method: str,
+        payload: dict[str, Any] | None = None,
+        workspace_id: str | None = None,
+    ) -> dict[str, Any]:
+        return self.run(
+            integration_id,
+            endpoint=endpoint,
+            method=method,
+            payload=payload,
+            workspace_id=workspace_id,
+        )
 
-    def verify_webhook(self, integration_id: str, signature_header: str | None, payload: bytes, algo: str = "sha256") -> bool:
-        cfg = self._configs.get(integration_id)
-        if not cfg or not cfg.webhook_secret:
+    def verify_webhook(
+        self,
+        integration_id: str,
+        signature_header: str | None,
+        payload: bytes,
+        algo: str = "sha256",
+        workspace_id: str | None = None,
+    ) -> bool:
+        workspace_id = workspace_id or _request_workspace_id()
+        cfg = self.get(integration_id, workspace_id=workspace_id)
+        if not cfg:
+            return False
+        if not cfg.webhook_secret:
             return True  # no secret configured, accept all
         secret = cfg.webhook_secret.encode()
         if algo == "sha256":
@@ -614,5 +678,14 @@ class IntegrationManager:
         self._deliveries.append(delivery)
         self._save_deliveries()
 
-    def list_deliveries(self, limit: int = 100) -> list[dict[str, Any]]:
-        return [d.to_dict() for d in self._deliveries[-limit:][::-1]]
+    def list_deliveries(self, limit: int = 100, workspace_id: str | None = None) -> list[dict[str, Any]]:
+        workspace_id = workspace_id or _request_workspace_id()
+        deliveries = self._deliveries
+        if workspace_id is not None:
+            owned_ids = {
+                config.id
+                for config in self._configs.values()
+                if config.workspace_id == str(workspace_id)
+            }
+            deliveries = [d for d in deliveries if d.integration_id in owned_ids]
+        return [d.to_dict() for d in deliveries[-limit:][::-1]]

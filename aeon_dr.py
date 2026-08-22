@@ -206,8 +206,105 @@ class BackupManager:
             )
         return job
 
+    def verify_backup(self, backup_job_id: str) -> dict[str, Any]:
+        """Perform a read-only integrity check without exposing backup contents."""
+        job = get_backup_job(backup_job_id, workspace_id=self.workspace_id)
+        if not job:
+            raise ValueError(f"Backup job {backup_job_id} not found")
+
+        checks: list[dict[str, str]] = []
+
+        def add_check(name: str, status: str, message: str) -> None:
+            checks.append({"check": name, "status": status, "message": message})
+
+        add_check(
+            "job_status",
+            "pass" if job.status == "completed" else "fail",
+            "Backup job completed" if job.status == "completed" else f"Backup job status is {job.status}",
+        )
+        if not job.storage_key:
+            add_check("storage_key", "fail", "Backup has no storage key")
+            add_check("storage_read", "fail", "Backup object cannot be read without a storage key")
+            return {
+                "verified": False,
+                "backup_job_id": job.id,
+                "checked_at": _now().isoformat(),
+                "checks": checks,
+                "failed_checks": [check["check"] for check in checks if check["status"] == "fail"],
+            }
+
+        add_check("storage_key", "pass", "Backup storage key is present")
+        data: bytes | None = None
+        try:
+            data = get_storage().read(job.storage_key)
+            add_check("storage_read", "pass", "Backup object is readable")
+        except Exception:  # noqa: BLE001
+            logger.warning("Backup verification could not read job %s", backup_job_id, exc_info=True)
+            add_check("storage_read", "fail", "Backup object could not be read")
+
+        payload: dict[str, Any] | None = None
+        if data is not None:
+            if job.size_bytes is None:
+                add_check("size", "warn", "Backup size was not recorded")
+            elif len(data) == job.size_bytes:
+                add_check("size", "pass", "Stored size matches the recorded size")
+            else:
+                add_check("size", "fail", "Stored size does not match the recorded size")
+
+            checksum = _compute_checksum(data)
+            if job.checksum and checksum == job.checksum:
+                add_check("checksum", "pass", "Backup checksum matches the recorded checksum")
+            elif job.checksum:
+                add_check("checksum", "fail", "Backup checksum does not match the recorded checksum")
+            else:
+                add_check("checksum", "fail", "Backup checksum is missing")
+
+            try:
+                payload = _deserialize_backup(data)
+                if not isinstance(payload, dict):
+                    raise ValueError("payload is not an object")
+                add_check("payload_format", "pass", "Backup payload is valid gzip-compressed JSON")
+            except Exception:  # noqa: BLE001
+                logger.warning("Backup verification found an invalid payload for job %s", backup_job_id, exc_info=True)
+                add_check("payload_format", "fail", "Backup payload could not be decoded")
+
+        if payload is not None:
+            version = payload.get("version")
+            add_check(
+                "backup_version",
+                "pass" if version == BACKUP_VERSION else "fail",
+                "Backup format version is supported" if version == BACKUP_VERSION else "Backup format version is unsupported",
+            )
+            payload_workspace_id = str(payload.get("workspace_id") or "")
+            add_check(
+                "workspace_scope",
+                "pass" if payload_workspace_id == self.workspace_id else "fail",
+                "Backup belongs to the requested workspace" if payload_workspace_id == self.workspace_id else "Backup workspace does not match the requested workspace",
+            )
+            add_check(
+                "snapshot_shape",
+                "pass" if isinstance(payload.get("snapshot"), dict) else "fail",
+                "Backup snapshot is present" if isinstance(payload.get("snapshot"), dict) else "Backup snapshot is missing or invalid",
+            )
+            if job.policy_id:
+                add_check(
+                    "policy_scope",
+                    "pass" if str(payload.get("policy_id") or "") == str(job.policy_id) else "fail",
+                    "Backup policy matches the recorded job" if str(payload.get("policy_id") or "") == str(job.policy_id) else "Backup policy does not match the recorded job",
+                )
+
+        failed_checks = [check["check"] for check in checks if check["status"] == "fail"]
+        return {
+            "verified": not failed_checks,
+            "backup_job_id": job.id,
+            "checked_at": _now().isoformat(),
+            "bytes_read": len(data) if data is not None else None,
+            "checks": checks,
+            "failed_checks": failed_checks,
+        }
+
     def restore_backup(self, backup_job_id: str) -> RestoreJob:
-        """Restore from a previous backup job by verifying checksum and returning the snapshot."""
+        """Restore from a verified backup job and return the restore record."""
         job = get_backup_job(backup_job_id, workspace_id=self.workspace_id)
         if not job:
             raise ValueError(f"Backup job {backup_job_id} not found")
@@ -220,16 +317,13 @@ class BackupManager:
         update_restore_job(restore, started_at=_now())
 
         try:
+            verification = self.verify_backup(backup_job_id)
+            if not verification["verified"]:
+                raise ValueError("Backup verification failed")
             if not job.storage_key:
                 raise ValueError("Backup job has no storage key")
 
-            storage = get_storage()
-            data = storage.read(job.storage_key)
-            checksum = _compute_checksum(data)
-            if job.checksum and checksum != job.checksum:
-                raise ValueError("Backup checksum verification failed")
-
-            payload = _deserialize_backup(data)
+            payload = _deserialize_backup(get_storage().read(job.storage_key))
             update_restore_job(
                 restore,
                 status="completed",
@@ -318,17 +412,12 @@ class DRDrillSimulator:
 
         if recent_jobs:
             latest = recent_jobs[0]
-            storage = get_storage()
-            try:
-                data = storage.read(latest.storage_key)
-                checksum = _compute_checksum(data)
-                if latest.checksum and checksum == latest.checksum:
-                    findings.append({"check": "checksum", "status": "pass", "message": "Latest backup checksum verified"})
-                else:
-                    findings.append({"check": "checksum", "status": "fail", "message": "Checksum mismatch on latest backup"})
-                    score -= 30.0
-            except Exception as exc:  # noqa: BLE001
-                findings.append({"check": "storage_read", "status": "fail", "message": f"Could not read latest backup: {exc}"})
+            verification = self.verify_backup(latest.id)
+            if verification["verified"]:
+                findings.append({"check": "checksum", "status": "pass", "message": "Latest backup integrity verified"})
+            else:
+                failed_checks = ", ".join(verification.get("failed_checks", [])) or "backup_integrity"
+                findings.append({"check": "checksum", "status": "fail", "message": f"Latest backup verification failed: {failed_checks}"})
                 score -= 30.0
 
         if plan.rto_minutes <= 0 or plan.rpo_minutes <= 0:

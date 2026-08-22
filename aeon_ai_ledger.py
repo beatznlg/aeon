@@ -165,30 +165,59 @@ class AIExecutionLedger:
         workspace_id: str | None = None,
         days: int = 30,
     ) -> dict[str, Any]:
-        """Return aggregate usage stats for a workspace."""
+        """Return aggregate usage stats and daily trends for a workspace."""
+        days = max(1, min(days, 365))
         records = self._read_all()
+        with self._lock:
+            records.extend(self._buffer)
         if workspace_id:
             records = [r for r in records if r.get("workspace_id") == workspace_id]
 
-        # Filter by recency
-        since = datetime.now(timezone.utc).isoformat()[:10]  # rough day filter
-        total = len(records)
-        total_tokens = sum(r.get("tokens_total", 0) for r in records)
-        total_cost = sum(r.get("cost_usd", 0) for r in records)
-        total_latency = sum(r.get("latency_ms", 0) for r in records)
+        cutoff = datetime.now(timezone.utc).timestamp() - (days * 86400)
+        recent_records: list[dict[str, Any]] = []
+        for record in records:
+            try:
+                timestamp = datetime.fromisoformat(str(record.get("timestamp", "")).replace("Z", "+00:00"))
+                if timestamp.timestamp() >= cutoff:
+                    recent_records.append(record)
+            except (TypeError, ValueError, OverflowError):
+                # Preserve legacy records with malformed timestamps in totals,
+                # but exclude them from time-series buckets.
+                continue
+
+        total = len(recent_records)
+        total_tokens = sum(int(r.get("tokens_total", 0) or 0) for r in recent_records)
+        total_cost = sum(float(r.get("cost_usd", 0) or 0) for r in recent_records)
+        total_latency = sum(int(r.get("latency_ms", 0) or 0) for r in recent_records)
         by_status: dict[str, int] = {}
         by_sector: dict[str, int] = {}
         by_provider: dict[str, int] = {}
-        for r in records:
-            s = r.get("status", "unknown")
-            by_status[s] = by_status.get(s, 0) + 1
-            sec = r.get("sector", "") or "unspecified"
-            by_sector[sec] = by_sector.get(sec, 0) + 1
-            prov = r.get("provider", "") or "unknown"
-            by_provider[prov] = by_provider.get(prov, 0) + 1
+        by_day: dict[str, dict[str, Any]] = {}
+        for record in recent_records:
+            status = record.get("status", "unknown") or "unknown"
+            by_status[status] = by_status.get(status, 0) + 1
+            sector = record.get("sector", "") or "unspecified"
+            by_sector[sector] = by_sector.get(sector, 0) + 1
+            provider = record.get("provider", "") or "unknown"
+            by_provider[provider] = by_provider.get(provider, 0) + 1
+            try:
+                day = datetime.fromisoformat(str(record.get("timestamp", "")).replace("Z", "+00:00")).date().isoformat()
+                bucket = by_day.setdefault(day, {"executions": 0, "tokens": 0, "cost_usd": 0.0, "latency_ms": 0})
+                bucket["executions"] += 1
+                bucket["tokens"] += int(record.get("tokens_total", 0) or 0)
+                bucket["cost_usd"] += float(record.get("cost_usd", 0) or 0)
+                bucket["latency_ms"] += int(record.get("latency_ms", 0) or 0)
+            except (TypeError, ValueError, OverflowError):
+                continue
 
+        daily = [
+            {"date": day, **values, "cost_usd": round(values["cost_usd"], 6)}
+            for day, values in sorted(by_day.items())
+        ]
         return {
             "ok": True,
+            "days": days,
+            "total_records": total,
             "total_executions": total,
             "total_tokens": total_tokens,
             "total_cost_usd": round(total_cost, 6),
@@ -196,6 +225,7 @@ class AIExecutionLedger:
             "by_status": by_status,
             "by_sector": by_sector,
             "by_provider": by_provider,
+            "daily": daily,
         }
 
     def flush(self) -> None:

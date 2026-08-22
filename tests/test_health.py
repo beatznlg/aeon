@@ -19,6 +19,20 @@ def test_live_returns_alive(client):
     assert data["status"] == "alive"
 
 
+def test_versioned_health_probes_preserve_contract(client):
+    for path in ("/api/v1/health", "/api/v1/live", "/api/v1/ready"):
+        response = client.get(path)
+        assert response.status_code == 200
+        assert response.headers["X-AEON-API-Version"] == "1"
+        assert response.headers["X-Request-ID"].startswith("aeon-")
+
+
+def test_legacy_health_probe_advertises_api_version(client):
+    response = client.get("/health")
+    assert response.status_code == 200
+    assert response.headers["X-AEON-API-Version"] == "1"
+
+
 def test_request_id_is_generated_and_returned(client):
     resp = client.get("/health")
     request_id = resp.headers.get("X-Request-ID")
@@ -85,7 +99,36 @@ def test_operations_snapshot_is_workspace_scoped_and_count_only(client):
     assert data["automations"]["policies"]["total"] == 0
     assert data["automations"]["budgets"]["total"] == 0
     assert data["automations"]["executions_last_24h"] == 0
+    assert data["ai_ledger"]["ok"] is True
+    assert data["ai_ledger"]["total_records"] == 0
+    assert data["ai_ledger"]["daily"] == []
+    assert data["dead_letters"]["total"] == 0
+    assert data["dead_letters"]["recent"] == []
     assert "results" not in data["worker"]
+
+
+def test_operations_snapshot_includes_workspace_ai_execution_summary(client):
+    registration = client.post(
+        "/auth/register",
+        json={
+            "email": "operations-ai@test.local",
+            "password": "secure123",
+            "name": "AI Operations Viewer",
+        },
+    )
+    assert registration.status_code == 201
+    token = registration.get_json()["token"]
+
+    resp = client.get(
+        "/operations/snapshot",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert resp.status_code == 200
+    ledger = resp.get_json()["ai_ledger"]
+    assert ledger["ok"] is True
+    assert ledger["days"] == 30
+    assert set(("total_records", "total_executions", "total_tokens", "daily")) <= set(ledger)
 
 
 def test_operations_snapshot_rejects_another_agent_key(client):

@@ -128,6 +128,44 @@ def test_run_backup_and_list(client, workspace_id):
     assert len(resp.json["jobs"]) >= 1
 
 
+def test_verify_backup_endpoint(client, workspace_id):
+    headers = _auth_headers(client, workspace_id)
+    created = client.post("/dr/policies", json={"name": "P1"}, headers=headers)
+    policy_id = created.json["policy"]["id"]
+    run_resp = client.post(f"/dr/policies/{policy_id}/run", headers=headers)
+    job_id = run_resp.json["job"]["id"]
+
+    resp = client.get(f"/dr/backups/{job_id}/verify", headers=headers)
+    assert resp.status_code == 200
+    assert resp.json["ok"] is True
+    assert resp.json["verification"]["verified"] is True
+    assert resp.json["verification"]["failed_checks"] == []
+    assert "restored_snapshot" not in resp.json["verification"]
+
+
+def test_verify_backup_requires_auth(client):
+    resp = client.get("/dr/backups/not-a-real-job/verify")
+    assert resp.status_code == 401
+
+
+def test_verify_backup_detects_corruption(workspace_id):
+    from aeon_db import create_backup_policy
+    from aeon_dr import BackupManager
+    from aeon_storage import get_storage
+
+    policy = create_backup_policy(workspace_id=workspace_id, name="test")
+    manager = BackupManager(workspace_id)
+    job = manager.run_backup(policy.id)
+    assert job.storage_key
+    get_storage().write(job.storage_key, b"corrupt backup payload")
+
+    report = manager.verify_backup(job.id)
+    assert report["verified"] is False
+    assert "checksum" in report["failed_checks"]
+    assert "payload_format" in report["failed_checks"]
+    assert manager.restore_backup(job.id).status == "failed"
+
+
 def test_restore_backup(client, workspace_id):
     headers = _auth_headers(client, workspace_id)
     created = client.post("/dr/policies", json={"name": "P1"}, headers=headers)

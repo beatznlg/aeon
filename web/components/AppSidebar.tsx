@@ -65,6 +65,11 @@ const SECURITY_LINKS: SidebarLinkDef[] = [
   { href: "/os/siem", label: "SIEM", icon: "🔍", moduleId: "security" },
 ];
 
+const ADMIN_LINKS: SidebarLinkDef[] = [
+  { href: "/admin", label: "Admin Panel", icon: "⚙️" },
+  { href: "/admin/observability", label: "Observability", icon: "🔭" },
+];
+
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div className="mb-5">
@@ -145,6 +150,13 @@ export default function AppSidebar({ health, branding, userRole }: AppSidebarPro
             />
           ))}
         </Section>
+        {admin && (
+          <Section title="Administration">
+            {ADMIN_LINKS.map((link) => (
+              <SidebarLink key={link.href} href={link.href} icon={link.icon} label={link.label} />
+            ))}
+          </Section>
+        )}
       </nav>
     </>
   );

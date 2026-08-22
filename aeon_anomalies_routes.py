@@ -10,7 +10,7 @@ from typing import Any
 from flask import Blueprint, g, jsonify, request
 
 from aeon_anomalies import AnomalyDetector
-from aeon_auth import require_auth, require_workspace_role
+from aeon_auth import require_auth, require_permission
 from aeon_db import (
     Anomaly,
     Incident,
@@ -85,7 +85,7 @@ def _runbook_to_dict(rb: IncidentRunbook) -> dict[str, Any]:
 
 @anomalies_bp.route("/anomalies", methods=["GET"])
 @require_auth
-@require_workspace_role("VIEWER")
+@require_permission("incident.read")
 def list_anomalies_endpoint():
     """List anomalies for the current workspace."""
     ctx = g.user
@@ -101,7 +101,7 @@ def list_anomalies_endpoint():
 
 @anomalies_bp.route("/anomalies/detect", methods=["POST"])
 @require_auth
-@require_workspace_role("ADMIN")
+@require_permission("incident.manage")
 def detect_anomalies_endpoint():
     """Run anomaly detection for the current workspace."""
     ctx = g.user
@@ -113,10 +113,10 @@ def detect_anomalies_endpoint():
 
 @anomalies_bp.route("/anomalies/<anomaly_id>/dismiss", methods=["POST"])
 @require_auth
-@require_workspace_role("ADMIN")
+@require_permission("incident.manage")
 def dismiss_anomaly_endpoint(anomaly_id: str):
     """Dismiss an anomaly as a false positive."""
-    anomaly = dismiss_anomaly(anomaly_id)
+    anomaly = dismiss_anomaly(anomaly_id, workspace_id=g.workspace_id)
     if not anomaly:
         return jsonify({"ok": False, "error": "anomaly not found"}), 404
     return jsonify({"ok": True, "anomaly": _anomaly_to_dict(anomaly)})
@@ -124,7 +124,7 @@ def dismiss_anomaly_endpoint(anomaly_id: str):
 
 @anomalies_bp.route("/incidents", methods=["GET"])
 @require_auth
-@require_workspace_role("VIEWER")
+@require_permission("incident.read")
 def list_incidents_endpoint():
     """List incidents for the current workspace."""
     ctx = g.user
@@ -137,7 +137,7 @@ def list_incidents_endpoint():
 
 @anomalies_bp.route("/incidents", methods=["POST"])
 @require_auth
-@require_workspace_role("ADMIN")
+@require_permission("incident.manage")
 def create_incident_endpoint():
     """Manually create an incident."""
     ctx = g.user
@@ -161,10 +161,10 @@ def create_incident_endpoint():
 
 @anomalies_bp.route("/incidents/<incident_id>", methods=["PATCH"])
 @require_auth
-@require_workspace_role("ADMIN")
+@require_permission("incident.manage")
 def update_incident_endpoint(incident_id: str):
     """Update an incident's status and/or assignee."""
-    incident = get_incident(incident_id)
+    incident = get_incident(incident_id, workspace_id=g.workspace_id)
     if not incident:
         return jsonify({"ok": False, "error": "incident not found"}), 404
     data = request.json or {}
@@ -178,7 +178,7 @@ def update_incident_endpoint(incident_id: str):
 
 @anomalies_bp.route("/runbooks", methods=["GET"])
 @require_auth
-@require_workspace_role("VIEWER")
+@require_permission("incident.read")
 def list_runbooks_endpoint():
     """List incident runbooks for the current workspace."""
     ctx = g.user
@@ -189,7 +189,7 @@ def list_runbooks_endpoint():
 
 @anomalies_bp.route("/runbooks", methods=["POST"])
 @require_auth
-@require_workspace_role("ADMIN")
+@require_permission("incident.manage")
 def create_runbook_endpoint():
     """Create an incident runbook."""
     ctx = g.user
@@ -215,10 +215,10 @@ def create_runbook_endpoint():
 
 @anomalies_bp.route("/runbooks/<runbook_id>", methods=["PATCH"])
 @require_auth
-@require_workspace_role("ADMIN")
+@require_permission("incident.manage")
 def update_runbook_endpoint(runbook_id: str):
     """Update an incident runbook."""
-    runbook = get_incident_runbook(runbook_id)
+    runbook = get_incident_runbook(runbook_id, workspace_id=g.workspace_id)
     if not runbook:
         return jsonify({"ok": False, "error": "runbook not found"}), 404
     data = request.json or {}
@@ -241,9 +241,9 @@ def update_runbook_endpoint(runbook_id: str):
 
 @anomalies_bp.route("/runbooks/<runbook_id>", methods=["DELETE"])
 @require_auth
-@require_workspace_role("ADMIN")
+@require_permission("incident.manage")
 def delete_runbook_endpoint(runbook_id: str):
     """Delete an incident runbook."""
-    if delete_incident_runbook(runbook_id):
+    if delete_incident_runbook(runbook_id, workspace_id=g.workspace_id):
         return jsonify({"ok": True})
     return jsonify({"ok": False, "error": "runbook not found"}), 404

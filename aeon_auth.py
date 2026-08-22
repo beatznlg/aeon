@@ -23,7 +23,7 @@ from functools import wraps
 from typing import Any
 
 import jwt
-from flask import g, jsonify, request
+from flask import g, has_request_context, jsonify, request
 from werkzeug.security import check_password_hash
 
 # === Configuration ============================================================
@@ -108,6 +108,16 @@ PERMISSION_MINIMUM_ROLES = {
     "audit.read": "ADMIN",
     "compliance.manage": "ADMIN",
     "api_keys.manage": "ADMIN",
+    "chat.use": "VIEWER",
+    "agent.use": "VIEWER",
+    "knowledge.read": "VIEWER",
+    "knowledge.write": "OPERATOR",
+    "prompt.read": "VIEWER",
+    "prompt.write": "OPERATOR",
+    "integrations.proxy": "OPERATOR",
+    "observability.read": "ADMIN",
+    "incident.read": "VIEWER",
+    "incident.manage": "ADMIN",
 }
 
 
@@ -261,6 +271,14 @@ def get_current_user_context() -> dict[str, Any] | None:
       2. X-API-Token header (for service accounts / integrations)
       3. X-User-Id / X-Workspace-Id headers (dev fallback)
     """
+    # Decorators may replace the selected workspace after validating membership.
+    # Reuse that request-local context so handlers cannot accidentally fall back
+    # to the workspace embedded in the JWT after header/query selection.
+    if has_request_context():
+        request_context = getattr(g, "user", None)
+        if request_context:
+            return request_context
+
     # 1. JWT bearer token
     token = get_auth_token_from_request()
     if token:
@@ -323,6 +341,9 @@ def _requested_workspace_id(kwargs: dict[str, Any] | None = None) -> str | None:
     payload = request.get_json(silent=True) or {}
     if isinstance(payload, dict) and payload.get("workspace_id"):
         return str(payload["workspace_id"]).strip()
+    header_workspace = request.headers.get("X-Workspace-Id")
+    if header_workspace:
+        return str(header_workspace).strip()
     return str(getattr(g, "user", {}).get("workspace_id") or "").strip() or None
 
 
@@ -343,7 +364,10 @@ def _authorize_workspace(
     if not workspace_id:
         return (jsonify({"ok": False, "error": "workspace_id required"}), 400), None
 
-    is_platform_admin = has_role(ctx.get("role"), "SUPER_ADMIN")
+    # The development/bootstrap admin is a platform identity, not a tenant
+    # membership. It is disabled outside development, so it may retain access
+    # to platform-wide auth/audit endpoints without inventing a tenant row.
+    is_platform_admin = has_role(ctx.get("role"), "SUPER_ADMIN") or ctx.get("user_id") == "admin-fallback"
     membership = _get_workspace_membership(ctx.get("user_id"), workspace_id)
     service_auth = ctx.get("auth_method") == "api_token"
     if not is_platform_admin and not membership and not service_auth:
@@ -359,6 +383,7 @@ def _authorize_workspace(
 
 def _set_workspace_context(ctx: dict[str, Any], workspace_id: str, membership: Any = None) -> None:
     """Publish the authenticated workspace context for route handlers."""
+    ctx["workspace_id"] = str(workspace_id)
     g.user = ctx
     g.workspace_id = str(workspace_id)
     if membership is not None:
@@ -414,6 +439,17 @@ def require_auth(func: Callable) -> Callable:
         if not ctx:
             return jsonify({"ok": False, "error": "unauthorized"}), 401
         g.user = ctx
+        # Every authenticated request carrying workspace context must pass the
+        # same membership boundary, even when a legacy route has not yet been
+        # migrated to an explicit workspace decorator. Route, query, body, and
+        # workspace headers are untrusted selectors; only the membership lookup
+        # establishes access.
+        workspace_id = _requested_workspace_id(kwargs)
+        if workspace_id:
+            error, membership = _authorize_workspace(ctx, workspace_id)
+            if error is not None:
+                return error
+            _set_workspace_context(ctx, workspace_id, membership)
         scope_error = _authorize_sensitive_workspace_request(ctx)
         if scope_error is not None:
             return scope_error

@@ -7,6 +7,10 @@ on:
   workflow_dispatch:
   repository_dispatch:
 
+# CI only checks out source and publishes test artifacts.
+permissions:
+  contents: read
+
 jobs:
   smoke-check:
     name: Compile + notebook sanity

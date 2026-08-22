@@ -27,6 +27,10 @@ on:
       - "monitoring/**"
       - ".gitignore"
 
+# Docker CI builds and tests only; it must not receive write-capable repo tokens.
+permissions:
+  contents: read
+
 env:
   REGISTRY: ghcr.io
   # Use the repo owner in lowercase for GHCR — will be set by GitHub

@@ -71,6 +71,17 @@ def test_stripe_does_not_simulate_paid_checkout_in_production(client, tmp_path, 
     assert "not configured" in result["error"]
 
 
+def test_usage_summary_requires_explicit_workspace_context(client):
+    token, own_workspace = _register(client, "route-missing-workspace")
+    response = client.get(
+        "/usage/summary",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 400
+    assert response.get_json()["error"] == "workspace_id required"
+    assert own_workspace
+
+
 def test_billing_and_usage_routes_reject_foreign_workspace(client):
     token, _own_workspace = _register(client, "route-owner")
     _other_token, other_workspace = _register(client, "route-other")

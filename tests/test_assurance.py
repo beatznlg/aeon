@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 
 import pytest
 
@@ -114,3 +118,66 @@ def test_malformed_ledger_fails_closed(tmp_path):
     assert report["ok"] is False
     assert report["ledger"]["ok"] is False
     assert set(report["missing"]) == set(required_evidence("baseline"))
+
+
+def test_concurrent_appenders_preserve_hash_chain(tmp_path):
+    path = tmp_path / "evidence.ndjson"
+    ledgers = [EvidenceLedger(path), EvidenceLedger(path)]
+
+    def append(index: int) -> str:
+        record = ledgers[index % len(ledgers)].append(
+            control_id=f"control_{index}",
+            profile="baseline",
+            status="verified",
+            summary=f"Concurrent check {index}",
+            source="test-suite",
+        )
+        return record.record_hash
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        hashes = list(executor.map(append, range(32)))
+
+    report = ledgers[0].verify()
+
+    assert len(hashes) == 32
+    assert len(set(hashes)) == 32
+    assert report["ok"] is True
+    assert report["records"] == 32
+
+
+def test_cross_process_appenders_preserve_hash_chain(tmp_path):
+    path = tmp_path / "evidence.ndjson"
+    repo_root = str(Path(__file__).resolve().parents[1])
+    append_code = """
+import sys
+from aeon_assurance import EvidenceLedger
+
+ledger = EvidenceLedger(sys.argv[1])
+index = sys.argv[2]
+ledger.append(
+    control_id=f\"process_{index}\",
+    profile=\"baseline\",
+    status=\"verified\",
+    summary=f\"Process check {index}\",
+    source=\"test-suite\",
+)
+"""
+
+    def append(index: int) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [sys.executable, "-c", append_code, str(path), str(index)],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        results = list(executor.map(append, range(16)))
+
+    failures = [result.stderr for result in results if result.returncode != 0]
+    report = EvidenceLedger(path).verify()
+
+    assert failures == []
+    assert report["ok"] is True
+    assert report["records"] == 16

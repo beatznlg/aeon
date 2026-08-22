@@ -230,6 +230,20 @@ def list_backup_jobs_endpoint():
     return jsonify({"ok": True, "jobs": [_job_to_dict(j) for j in rows]})
 
 
+@dr_bp.route("/dr/backups/<job_id>/verify", methods=["GET"])
+@require_auth
+@require_workspace_role("VIEWER")
+def verify_backup_endpoint(job_id: str):
+    """Run a read-only integrity check for a workspace backup."""
+    ctx = g.user
+    job = get_backup_job(job_id, workspace_id=ctx.get("workspace_id"))
+    if not job:
+        return jsonify({"ok": False, "error": "not found"}), 404
+    manager = BackupManager(ctx.get("workspace_id"))
+    verification = manager.verify_backup(job_id)
+    return jsonify({"ok": True, "verification": verification})
+
+
 @dr_bp.route("/dr/backups/<job_id>/restore", methods=["POST"])
 @require_auth
 @require_workspace_role("ADMIN")

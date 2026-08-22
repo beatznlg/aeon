@@ -71,6 +71,7 @@ from aeon_api_keys import ApiKeyManager
 from aeon_auth import (
     get_current_user_context,
     require_auth,
+    require_permission,
     require_role,
     require_workspace_access,
     require_workspace_role,
@@ -920,7 +921,7 @@ def _before_request():
     g.request_id = _request_id_for_request()
 
     # Health/readiness/metrics endpoints are excluded from rate limiting.
-    if request.path in ("/health", "/ready", "/metrics"):
+    if request.path in ("/health", "/api/v1/health", "/ready", "/api/v1/ready", "/metrics", "/api/v1/metrics"):
         return None
     if not rate_limiter.is_allowed(rate_limiter.key_for_request()):
         return _rate_limit_response("ip", rate_limiter.key_for_request())
@@ -947,6 +948,7 @@ def _after_request(response):
     request_id = getattr(g, "request_id", None) or _request_id_for_request()
     logger.info("request_id=%s %s %s -> %s (%d ms)", request_id, request.method, request.path, response.status_code, int(duration_ms))
     response.headers["X-Request-ID"] = request_id
+    response.headers["X-AEON-API-Version"] = "1"
     # Record Prometheus metrics for every request (except the metrics endpoint itself to avoid loops)
     if request.path != "/metrics":
         metrics_collector.inc("aeon_http_requests_total", labels={
@@ -1081,6 +1083,7 @@ class JobQueue:
                 result = {"error": f"unknown action {action}"}
             with self._lock:
                 self._results[job_id] = {
+                    "workspace_id": payload.get("workspace_id"),
                     "status": "done",
                     "attempts": attempt,
                     "finished_at": datetime.now(timezone.utc).isoformat(),
@@ -1090,6 +1093,7 @@ class JobQueue:
             if attempt < self.max_retries:
                 with self._lock:
                     self._results[job_id] = {
+                        "workspace_id": payload.get("workspace_id"),
                         "status": "retrying",
                         "attempts": attempt,
                         "error": str(e),
@@ -1105,6 +1109,7 @@ class JobQueue:
             else:
                 with self._lock:
                     self._results[job_id] = {
+                        "workspace_id": payload.get("workspace_id"),
                         "status": "failed",
                         "attempts": attempt,
                         "finished_at": datetime.now(timezone.utc).isoformat(),
@@ -1125,6 +1130,7 @@ class JobQueue:
         job_id = f"{app_id}-{action}-{int(time.time() * 1000)}-{id(payload)}"
         with self._lock:
             self._results[job_id] = {
+                "workspace_id": payload.get("workspace_id"),
                 "status": "queued",
                 "attempts": 0,
                 "submitted_at": datetime.now(timezone.utc).isoformat(),
@@ -1136,9 +1142,31 @@ class JobQueue:
         with self._lock:
             self._pending = max(0, self._pending - 1)
 
-    def status(self, job_id: str) -> dict[str, Any] | None:
+    def status(self, job_id: str, workspace_id: str | None = None) -> dict[str, Any] | None:
+        """Return a job only to its workspace when called from Flask.
+
+        The queue is also used directly by unit tests and worker code, where no
+        request context exists. HTTP callers without an authorized workspace
+        therefore receive the same not-found response as an unknown job instead
+        of learning whether another tenant's job ID exists.
+        """
+        request_scoped = False
+        if workspace_id is None:
+            try:
+                from flask import g, has_request_context
+                request_scoped = has_request_context()
+                workspace_id = getattr(g, "workspace_id", None)
+            except Exception:  # pragma: no cover - Flask is always present in API use
+                pass
+            if request_scoped and not workspace_id:
+                return None
         with self._lock:
-            return self._results.get(job_id)
+            result = self._results.get(job_id)
+            if result is None:
+                return None
+            if workspace_id is not None and result.get("workspace_id") != str(workspace_id):
+                return None
+            return dict(result)
 
     def dead_letters(self, limit: int = 50) -> list[dict[str, Any]]:
         """Return recent dead-lettered jobs (newest first) for ops visibility."""
@@ -1164,6 +1192,7 @@ job_queue = JobQueue(workers=2)
 
 # ── Flask routes ───────────────────────────────────────────────────────────
 @app.route("/health", methods=["GET"])
+@app.route("/api/v1/health", methods=["GET"])
 def health():
     dependencies = {}
     # Database connectivity
@@ -1200,6 +1229,7 @@ def health():
 
 
 @app.route("/live", methods=["GET"])
+@app.route("/api/v1/live", methods=["GET"])
 def live():
     """Liveness probe: returns 200 as long as the server process is responsive."""
     return jsonify({"ok": True, "status": "alive"}), 200
@@ -1384,6 +1414,12 @@ def operations_snapshot():
         "ai_ledger": _ai_ledger_snapshot(workspace_id),
         "dead_letters": _dead_letter_snapshot(),
     })
+
+
+@app.route("/api/v1/ready", methods=["GET"])
+def api_v1_ready():
+    """Versioned readiness alias retained alongside the legacy endpoint."""
+    return ready()
 
 
 # Initialize Stripe at startup

@@ -216,7 +216,7 @@ class CustomLLMProvider(OpenAICompatibleProvider):
 class OpenAIProvider(OpenAICompatibleProvider):
     def __init__(self, model: str | None = None):
         super().__init__(
-            model=model or os.environ.get("AEON_LLM_MODEL") or "gpt-5-mini",
+            model=model or os.environ.get("OPENAI_MODEL") or os.environ.get("AEON_LLM_MODEL") or "gpt-5-mini",
             base_url=os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1"),
             api_key=os.environ.get("OPENAI_API_KEY"),
             provider_id="openai",
@@ -232,7 +232,7 @@ class OpenAIProvider(OpenAICompatibleProvider):
 
 class AnthropicProvider(LLMProvider):
     def __init__(self, model: str | None = None):
-        self.model = model or os.environ.get("AEON_LLM_MODEL") or "claude-sonnet-4-20250514"
+        self.model = model or os.environ.get("ANTHROPIC_MODEL") or os.environ.get("AEON_LLM_MODEL") or "claude-sonnet-4-20250514"
         self.api_key = os.environ.get("ANTHROPIC_API_KEY")
         self.base_url = os.environ.get("ANTHROPIC_BASE_URL", "https://api.anthropic.com").rstrip("/")
 
@@ -278,7 +278,7 @@ class OllamaProvider(OpenAICompatibleProvider):
     def __init__(self, model: str | None = None):
         base_url = os.environ.get("OLLAMA_OPENAI_BASE_URL", f"{os.environ.get('OLLAMA_BASE_URL', 'http://localhost:11434').rstrip('/')}/v1")
         super().__init__(
-            model=model or os.environ.get("AEON_LLM_MODEL") or "llama3.1",
+            model=model or os.environ.get("OLLAMA_MODEL") or os.environ.get("AEON_LLM_MODEL") or "llama3.1",
             base_url=base_url,
             api_key=os.environ.get("OLLAMA_API_KEY"),
             provider_id="ollama",
@@ -292,7 +292,7 @@ class HFInferenceProvider(OpenAICompatibleProvider):
 
     def __init__(self, model: str | None = None):
         super().__init__(
-            model=model or os.environ.get("AEON_LLM_MODEL") or "Qwen/Qwen2.5-7B-Instruct",
+            model=model or os.environ.get("HF_MODEL") or os.environ.get("AEON_LLM_MODEL") or "Qwen/Qwen2.5-7B-Instruct",
             base_url=os.environ.get("HF_OPENAI_BASE_URL", "https://router.huggingface.co/v1"),
             api_key=os.environ.get("HUGGINGFACE_TOKEN") or os.environ.get("AEON_HF_TOKEN"),
             provider_id="hf",
@@ -324,15 +324,15 @@ class QwenLocalProvider(LLMProvider):
 MODEL_REGISTRY: dict[str, dict[str, Any]] = {
     "openai": {"name": "OpenAI", "models": ["gpt-5.6", "gpt-5-mini", "gpt-4.1", "gpt-4.1-mini", "o3-pro", "o4-mini-deep-research", "gpt-realtime-mini"], "env_var": "OPENAI_API_KEY", "desc": "OpenAI frontier, coding, reasoning, and realtime models."},
     "anthropic": {"name": "Anthropic (Claude)", "models": ["claude-opus-4-1", "claude-sonnet-4-20250514", "claude-3-7-sonnet-latest", "claude-3-5-haiku-latest"], "env_var": "ANTHROPIC_API_KEY", "desc": "Claude models for reasoning, coding, and long-context work."},
-    "google": {"name": "Google Gemini (OpenAI-compatible)", "models": ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite"], "env_var": "GEMINI_API_KEY", "desc": "Gemini through Google's OpenAI-compatible endpoint.", "base_url": "https://generativelanguage.googleapis.com/v1beta/openai"},
-    "mistral": {"name": "Mistral (OpenAI-compatible)", "models": ["mistral-large-latest", "mistral-medium-latest", "mistral-small-latest", "codestral-latest"], "env_var": "MISTRAL_API_KEY", "desc": "Mistral hosted models, including coding-focused Codestral.", "base_url": "https://api.mistral.ai/v1"},
-    "openrouter": {"name": "OpenRouter", "models": ["openai/gpt-4.1-mini", "anthropic/claude-sonnet-4", "google/gemini-2.5-flash", "meta-llama/llama-4-scout"], "env_var": "OPENROUTER_API_KEY", "desc": "Route across hosted and open models with one API.", "base_url": "https://openrouter.ai/api/v1"},
+    "google": {"name": "Google Gemini (OpenAI-compatible)", "models": ["gemini-3.7-flash", "gemini-3.1-pro", "gemini-3.1-flash-lite"], "env_var": "GEMINI_API_KEY", "desc": "Gemini through Google's OpenAI-compatible endpoint.", "base_url": "https://generativelanguage.googleapis.com/v1beta/openai", "model_env_var": "GEMINI_MODEL"},
+    "mistral": {"name": "Mistral (OpenAI-compatible)", "models": ["mistral-large-latest", "mistral-medium-latest", "mistral-small-latest", "codestral-latest"], "env_var": "MISTRAL_API_KEY", "desc": "Mistral hosted models, including coding-focused Codestral.", "base_url": "https://api.mistral.ai/v1", "model_env_var": "MISTRAL_MODEL"},
+    "openrouter": {"name": "OpenRouter", "models": ["openai/gpt-4.1-mini", "anthropic/claude-sonnet-4", "google/gemini-3.7-flash", "meta-llama/llama-4-scout"], "env_var": "OPENROUTER_API_KEY", "desc": "Route across hosted and open models with one API.", "base_url": "https://openrouter.ai/api/v1", "model_env_var": "OPENROUTER_MODEL"},
     "ollama": {"name": "Ollama (Local)", "models": ["llama3.1", "qwen2.5", "gemma3", "mistral"], "env_var": "OLLAMA_BASE_URL", "desc": "Run local models privately through Ollama."},
     "lmstudio": {"name": "LM Studio (Local)", "models": ["local-model"], "env_var": "LM_STUDIO_BASE_URL", "desc": "Use a model loaded in LM Studio's local OpenAI-compatible server."},
     "vllm": {"name": "vLLM (Local or Private)", "models": ["served-model"], "env_var": "VLLM_BASE_URL", "desc": "Connect to a self-hosted vLLM OpenAI-compatible server."},
     "hf": {"name": "Hugging Face Inference", "models": ["Qwen/Qwen2.5-7B-Instruct", "meta-llama/Llama-3.1-8B-Instruct", "mistralai/Mistral-7B-Instruct-v0.3"], "env_var": "HUGGINGFACE_TOKEN", "desc": "Open-weight models through the Hugging Face router."},
     "qwen": {"name": "Qwen Local (GPU)", "models": ["Qwen/Qwen2.5-7B-Instruct"], "env_var": None, "desc": "Optional in-process local Qwen runtime."},
-    "custom": {"name": "Custom OpenAI-Compatible", "models": ["custom-model"], "env_var": "AEON_CUSTOM_LLM_API_KEY", "base_url_env": "AEON_CUSTOM_LLM_BASE_URL", "desc": "Connect any hosted API or local server implementing /v1/chat/completions."},
+    "custom": {"name": "Custom OpenAI-Compatible", "models": ["custom-model"], "env_var": "AEON_CUSTOM_LLM_API_KEY", "base_url_env": "AEON_CUSTOM_LLM_BASE_URL", "model_env_var": "AEON_CUSTOM_LLM_MODEL", "desc": "Connect any hosted API or local server implementing /v1/chat/completions."},
     "stub": {"name": "Stub (No AI)", "models": ["deterministic stub"], "env_var": None, "desc": "Deterministic fallback for tests and offline development."},
 }
 
@@ -361,10 +361,16 @@ def list_providers() -> list[dict[str, Any]]:
 
 
 def list_models(provider: str | None = None) -> list[dict[str, Any]]:
-    """Return catalog entries; arbitrary IDs remain valid for custom providers."""
+    """Return static compatibility entries; arbitrary IDs remain valid.
+
+    These entries are intentionally only defaults. Hosted providers can expose
+    newer IDs at runtime through :func:`discover_models`, so AEON does not need
+    a release-coupled frontend update for every model launch.
+    """
     normalized = (provider or "").lower().strip()
     provider_ids = [normalized] if normalized in MODEL_REGISTRY else list(MODEL_REGISTRY)
     result = []
+    customizable = {"custom", "openrouter", "ollama", "lmstudio", "vllm", "hf"}
     for provider_id in provider_ids:
         models = list(MODEL_REGISTRY[provider_id]["models"])
         if provider_id == "custom":
@@ -372,8 +378,40 @@ def list_models(provider: str | None = None) -> list[dict[str, Any]]:
             if selected and selected not in models:
                 models.insert(0, selected)
         for model in models:
-            result.append({"provider": provider_id, "id": model, "customizable": provider_id in {"custom", "openrouter", "ollama", "lmstudio", "vllm", "hf"}})
+            result.append({"provider": provider_id, "id": model, "customizable": provider_id in customizable})
     return result
+
+
+def discover_models(provider_id: str | None = None, model: str | None = None) -> dict[str, Any]:
+    """Discover model IDs from a compatible provider without exposing secrets.
+
+    Providers that implement the conventional ``GET /v1/models`` contract are
+    queried server-side. The returned IDs are metadata only; API keys and
+    endpoint URLs never leave the backend.
+    """
+    health = provider_health(provider_id, model=model)
+    provider = health.get("provider") or (provider_id or "")
+    available = health.get("available_models") or []
+    if not health.get("checked"):
+        return {
+            "ok": False,
+            "provider": provider,
+            "status": health.get("status", "not_probeable"),
+            "models": [],
+            "source": "provider_api",
+        }
+    return {
+        "ok": bool(health.get("ok")),
+        "provider": provider,
+        "status": health.get("status", "unavailable"),
+        "models": [
+            {"provider": provider, "id": model_id, "customizable": True, "source": "provider_api"}
+            for model_id in available
+            if isinstance(model_id, str) and model_id.strip()
+        ],
+        "source": "provider_api",
+        **({"http_status": health["http_status"]} if health.get("http_status") is not None else {}),
+    }
 
 
 def _compatible_provider(provider_id: str, model: str | None) -> OpenAICompatibleProvider:
@@ -384,7 +422,15 @@ def _compatible_provider(provider_id: str, model: str | None) -> OpenAICompatibl
         "lmstudio": {"base_url": os.environ.get("LM_STUDIO_BASE_URL", "http://localhost:1234/v1")},
         "vllm": {"base_url": os.environ.get("VLLM_BASE_URL", "http://localhost:8000/v1"), "api_key": os.environ.get("VLLM_API_KEY")},
     }
-    return OpenAICompatibleProvider(model=model or os.environ.get("AEON_LLM_MODEL") or MODEL_REGISTRY[provider_id]["models"][0], provider_id=provider_id, default_model=MODEL_REGISTRY[provider_id]["models"][0], **configs[provider_id])
+    model_env = {
+        "google": "GEMINI_MODEL",
+        "mistral": "MISTRAL_MODEL",
+        "openrouter": "OPENROUTER_MODEL",
+        "lmstudio": "LM_STUDIO_MODEL",
+        "vllm": "VLLM_MODEL",
+    }.get(provider_id)
+    configured_model = os.environ.get(model_env) if model_env else None
+    return OpenAICompatibleProvider(model=model or configured_model or os.environ.get("AEON_LLM_MODEL") or MODEL_REGISTRY[provider_id]["models"][0], provider_id=provider_id, default_model=MODEL_REGISTRY[provider_id]["models"][0], **configs[provider_id])
 
 
 def get_llm_provider(provider: str | None = None, model: str | None = None) -> LLMProvider:
@@ -517,7 +563,7 @@ def test_provider(provider_id: str | None = None, prompt: str | None = None, mod
         return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
 
 
-__all__ = ["AnthropicProvider", "CustomLLMProvider", "HFInferenceProvider", "LLMProvider", "MODEL_REGISTRY", "OllamaProvider", "OpenAICompatibleProvider", "OpenAIProvider", "QwenLocalProvider", "StubProvider", "get_llm_provider", "list_models", "list_providers", "provider_health", "set_active_provider", "test_provider"]
+__all__ = ["AnthropicProvider", "CustomLLMProvider", "HFInferenceProvider", "LLMProvider", "MODEL_REGISTRY", "OllamaProvider", "OpenAICompatibleProvider", "OpenAIProvider", "QwenLocalProvider", "StubProvider", "discover_models", "get_llm_provider", "list_models", "list_providers", "provider_health", "set_active_provider", "test_provider"]
 
 
 if __name__ == "__main__":
