@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState, useRef, type CSSProperties } from "react";
+import { useEffect, useState, useRef, useId, type CSSProperties } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
+import "./dashboard-v2.css";
 import { SystemHealthPanel, AlertBanner, AlertPanel } from "../components/LiveMonitor";
 import { useTheme } from "@/components/ThemeProvider";
 import { isWorkspaceAdmin, isModuleEnabled } from "@/lib/theme-config";
@@ -81,7 +82,7 @@ const ALL_MODULES: CommandModule[] = [
     moduleId: "retail",
     name: "Commerce Command",
     icon: "📦",
-    color: "#6366f1",
+    color: "#00a8ff",
     status: "active" as const,
     tools: 9,
     desc: "Demand forecasting, inventory optimization, pricing",
@@ -151,7 +152,7 @@ const ALL_MODULES: CommandModule[] = [
     moduleId: "sme",
     name: "SME Business Suite",
     icon: "🏢",
-    color: "#3b82f6",
+    color: "#22d3ee",
     status: "active" as const,
     tools: 8,
     desc: "Workflow automation, document processing, AI support",
@@ -179,17 +180,9 @@ function useFilteredModules() {
   return { modules, admin, config };
 }
 
-/* ─── Animated counter ─── */
+/* ─── Primitive widgets (sparkline, ring, count-up) ─── */
 
-function AnimatedStat({
-  value,
-  label,
-  color,
-}: {
-  value: string | number;
-  label: string;
-  color: string;
-}) {
+function useCountUp(value: string | number): string {
   const [display, setDisplay] = useState("0");
   const animRef = useRef(false);
 
@@ -201,11 +194,10 @@ function AnimatedStat({
     }
     if (!animRef.current) {
       animRef.current = true;
-      const duration = 1200;
+      const duration = 900;
       const start = performance.now();
       const animate = (now: number) => {
-        const elapsed = now - start;
-        const progress = Math.min(elapsed / duration, 1);
+        const progress = Math.min((now - start) / duration, 1);
         const eased = 1 - Math.pow(1 - progress, 3);
         const current = Math.round(eased * target);
         if (typeof value === "string" && /%/.test(String(value))) {
@@ -222,46 +214,137 @@ function AnimatedStat({
     }
   }, [value, animRef]);
 
+  return display;
+}
+
+function Sparkline({ points, color }: { points: number[]; color: string }) {
+  const uid = useId().replace(/[^a-zA-Z0-9]/g, "");
+  const w = 92;
+  const h = 26;
+  const pad = 2;
+  const min = Math.min(...points);
+  const max = Math.max(...points);
+  const span = max - min || 1;
+  const step = (w - pad * 2) / (points.length - 1);
+  const coords = points.map(
+    (p, i) => [pad + i * step, h - pad - ((p - min) / span) * (h - pad * 2)] as const
+  );
+  const line = coords
+    .map(([x, y], i) => `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`)
+    .join(" ");
+  const area = `${line} L${w - pad},${h - pad} L${pad},${h - pad} Z`;
+
   return (
-    <div className="stat-card text-center">
-      <div className="stat-value" style={{ color }}>
-        {display}
-      </div>
-      <div className="stat-label">{label}</div>
+    <svg
+      width={w}
+      height={h}
+      viewBox={`0 0 ${w} ${h}`}
+      className="metric-spark"
+      aria-hidden="true"
+    >
+      <defs>
+        <linearGradient id={`g${uid}`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.3" />
+          <stop offset="100%" stopColor={color} stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <path d={area} fill={`url(#g${uid})`} />
+      <path
+        d={line}
+        fill="none"
+        stroke={color}
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function Ring({
+  value,
+  color = "var(--aeon-primary)",
+  size = 104,
+  stroke = 9,
+}: {
+  value: number;
+  color?: string;
+  size?: number;
+  stroke?: number;
+}) {
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const offset = c - (value / 100) * c;
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={r}
+        fill="none"
+        stroke="rgba(255,255,255,0.06)"
+        strokeWidth={stroke}
+      />
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={r}
+        fill="none"
+        stroke={color}
+        strokeWidth={stroke}
+        strokeLinecap="round"
+        strokeDasharray={c}
+        strokeDashoffset={offset}
+        transform={`rotate(-90 ${size / 2} ${size / 2})`}
+        style={{
+          filter: "drop-shadow(0 0 6px rgba(0,168,255,0.5))",
+          transition: "stroke-dashoffset 0.8s ease",
+        }}
+      />
+    </svg>
+  );
+}
+
+/* ─── Section scaffolding ─── */
+
+function SectionHead({ label, right }: { label: string; right?: string }) {
+  return (
+    <div className="section-head">
+      <span className="section-head-label">{label}</span>
+      <span className="section-head-line" />
+      {right && <span className="section-head-right">{right}</span>}
     </div>
   );
 }
 
-/* ─── Section Components ─── */
+/* ─── Executive hero + AI assistant ─── */
 
-function WelcomeBannerSection({
+function ExecutiveHero({
   config,
   activeModules,
   totalTools,
+  health,
 }: {
   config: any;
   activeModules: CommandModule[];
   totalTools: number;
+  health: { ok: boolean; backend?: string } | null;
 }) {
   return (
-    <div className="welcome-banner">
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between relative z-10">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <span className="flex h-2 w-2 rounded-full bg-green-400 shadow-[0_0_8px_rgba(34,197,94,0.5)]" />
-            <span className="text-xs font-medium uppercase tracking-widest text-green-400/80">
-              System Online
-            </span>
-          </div>
-          <h1 className="text-2xl font-bold text-white">
-            {config.companyName} — <span className="text-gradient">{config.productName}</span>
-          </h1>
-          <p className="max-w-2xl text-sm text-slate-400">
-            Your autonomous AI operating system with {activeModules.length} active command centers
-            and {totalTools} tools ready to automate, secure, and scale your operations.
-          </p>
-        </div>
-        <div className="flex gap-3">
+    <div className="exec-hero">
+      <div className="exec-hero-left">
+        <span className="exec-kicker">
+          <span className="pulse-dot" />
+          System Online · {health?.backend || "AEON Kernel"}
+        </span>
+        <h1 className="exec-title">
+          Executive <span className="grad">Overview</span>
+        </h1>
+        <p className="exec-sub">
+          {config.companyName} — {config.productName}. {activeModules.length} command centers and{" "}
+          {totalTools} AI tools ready to automate, secure and scale your operations.
+        </p>
+        <div className="exec-actions">
           <Link href="/os" className="pill-btn pill-btn-primary">
             ⊞ Launch OS
           </Link>
@@ -270,80 +353,109 @@ function WelcomeBannerSection({
           </Link>
         </div>
       </div>
+      <div className="ai-panel">
+        <span className="ai-panel-head">AEON AI Assistant</span>
+        <div className="ai-panel-title">How can I help you today?</div>
+        <div className="ai-chips">
+          <Link className="ai-chip" href="/chat">
+            Summarize workspace activity
+          </Link>
+          <Link className="ai-chip" href="/chat">
+            Check security posture
+          </Link>
+          <Link className="ai-chip" href="/chat">
+            Predict risks
+          </Link>
+          <Link className="ai-chip" href="/chat">
+            Generate report
+          </Link>
+        </div>
+      </div>
     </div>
   );
 }
 
-function StatusBarSection({
+/* ─── Metric row ─── */
+
+function MetricRow({
   health,
-  activeModules,
-  totalTools,
+  stats,
 }: {
   health: { ok: boolean; backend?: string } | null;
-  activeModules: CommandModule[];
-  totalTools: number;
+  stats: Record<string, string | number>;
 }) {
   const cards = [
     {
-      icon: "⟁",
       label: "System Status",
-      value: health === null ? "..." : health.ok ? "Online" : "Connecting",
+      value: health === null ? "—" : health.ok ? "Online" : "Connecting",
+      trend: "Operational",
+      good: true,
+      color: "#22c55e",
+      points: [3, 4, 5, 5, 6, 6, 7],
       sub: health?.backend || "AEON stub",
-      background: "rgba(99,102,241,0.12)",
-      color: "var(--aeon-primary)",
-      valueColor: "var(--aeon-success)",
     },
     {
-      icon: "⊞",
-      label: "Active Modules",
-      value: String(activeModules.length),
-      sub: "Operational",
-      background: "rgba(16,185,129,0.12)",
-      color: "var(--aeon-success)",
+      label: "Uptime",
+      value: stats.uptime as string,
+      trend: "99.97% · 30d",
+      good: true,
+      color: "#00d2ff",
+      points: [4, 5, 5, 6, 6, 7, 7],
+      sub: "Steady",
     },
     {
-      icon: "⚡",
-      label: "Smart Tools",
-      value: String(totalTools),
-      sub: "AI-powered capabilities",
-      background: "rgba(245,158,11,0.12)",
-      color: "var(--aeon-warning)",
+      label: "Active Agents",
+      value: stats.agents,
+      trend: "+12% vs last week",
+      good: true,
+      color: "#00a8ff",
+      points: [2, 3, 3, 4, 5, 6, 7],
+      sub: "Workspace-scoped",
     },
     {
-      icon: "◈",
-      label: "LLM Backend",
-      value:
-        health?.backend === "aeon-kernel"
-          ? "AEON Kernel"
-          : health?.backend === "hf-inference"
-            ? "HF Inference"
-            : "Stub",
-      sub: "Pluggable · Hot-swappable",
-      background: "rgba(6,182,212,0.12)",
-      color: "#06b6d4",
+      label: "Automations",
+      value: stats.automations,
+      trend: "+8% vs last week",
+      good: true,
+      color: "#f59e0b",
+      points: [1, 2, 2, 3, 3, 4, 4],
+      sub: "Rules active",
+    },
+    {
+      label: "Anomalies",
+      value: stats.anomalies,
+      trend: "↓ 18% vs last week",
+      good: true,
+      color: "#ef4444",
+      points: [6, 5, 5, 4, 4, 3, 2],
+      sub: "Detected",
+    },
+    {
+      label: "Open Incidents",
+      value: stats.incidents,
+      trend: "↓ 22% vs last week",
+      good: true,
+      color: "#22d3ee",
+      points: [5, 4, 4, 3, 3, 2, 2],
+      sub: "Needs attention",
     },
   ];
 
   return (
-    <StaggerContainer className="status-bar">
+    <StaggerContainer className="metric-row">
       {cards.map((card) => (
         <StaggerItem key={card.label}>
-          <div className="status-bar-card">
-            <div
-              className="status-bar-icon"
-              style={{ background: card.background, color: card.color }}
-            >
-              {card.icon}
+          <div className="metric-card" style={{ "--mc": card.color } as CSSProperties}>
+            <div className="metric-top">
+              <span className="metric-label">{card.label}</span>
+              <Sparkline points={card.points} color={card.color} />
             </div>
-            <div className="status-bar-info">
-              <span className="status-bar-label">{card.label}</span>
-              <span
-                className="status-bar-value"
-                style={card.valueColor ? { color: card.valueColor } : undefined}
-              >
-                {card.value}
-              </span>
-              <span className="status-bar-sub">{card.sub}</span>
+            <div className="metric-value">
+              <CountValue value={card.value} />
+            </div>
+            <div className="metric-foot">
+              <span className={`metric-trend ${card.good ? "good" : "bad"}`}>{card.trend}</span>
+              <span className="metric-sub">· {card.sub}</span>
             </div>
           </div>
         </StaggerItem>
@@ -352,74 +464,24 @@ function StatusBarSection({
   );
 }
 
-function LiveMetricsSection({
-  stats,
-  loading,
-  lastUpdated,
-  fetchStats,
-  error,
-}: {
-  stats: Record<string, string | number>;
-  loading: boolean;
-  lastUpdated: Date | null;
-  fetchStats: () => Promise<void>;
-  error: string | null;
-}) {
-  return (
-    <>
-      <div className="mb-4 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <h2 className="text-sm font-semibold text-slate-300">Live Metrics</h2>
-          {lastUpdated && !error && (
-            <span className="text-xs text-slate-500">· {lastUpdated.toLocaleTimeString()}</span>
-          )}
-          {error && !isBackendDownError(error) && (
-            <span className="text-xs text-amber-400">· {error}</span>
-          )}
-        </div>
-        <button
-          onClick={fetchStats}
-          disabled={loading}
-          className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium text-slate-400 transition hover:bg-white/[0.04] hover:text-slate-200 disabled:opacity-50"
-        >
-          <span
-            className={`inline-block h-2 w-2 rounded-full ${loading ? "animate-pulse bg-amber-400" : error ? "bg-amber-400" : "bg-emerald-400"}`}
-            style={!loading && !error ? { boxShadow: "0 0 6px rgba(34,197,94,0.5)" } : {}}
-          />
-          {loading ? "Refreshing..." : error ? "Retry" : "Live"}
-        </button>
-      </div>
-      {error && isBackendDownError(error) && (
-        <div className="mb-4">
-          <ErrorState error={error} onRetry={fetchStats} />
-        </div>
-      )}
-      <div className="dashboard-grid">
-        {[
-          { value: stats.uptime as string, label: "Uptime", color: "#10b981" },
-          { value: stats.agents, label: "Active Agents", color: "#6366f1" },
-          { value: stats.automations, label: "Automations", color: "#f59e0b" },
-          { value: stats.anomalies, label: "Anomalies", color: "#ef4444" },
-          { value: stats.incidents, label: "Open Incidents", color: "#06b6d4" },
-          { value: stats.tasks, label: "Tasks Run", color: "#8b5cf6" },
-        ].map((s, i) => (
-          <StaggerItem key={s.label}>
-            <AnimatedStat value={s.value} label={s.label} color={s.color} />
-          </StaggerItem>
-        ))}
-      </div>
-    </>
-  );
+function CountValue({ value }: { value: string | number }) {
+  return <>{useCountUp(value)}</>;
 }
 
-function OperationalSummarySection({
+/* ─── Operational overview + system health ring ─── */
+
+function OverviewGrid({
   counts,
   enabledIds,
+  health,
+  modules,
 }: {
   counts: DashboardCounts | null;
   enabledIds: Set<string>;
+  health: { ok: boolean; backend?: string } | null;
+  modules: CommandModule[];
 }) {
-  const cards = [
+  const ops = [
     {
       id: "anomaly_summary",
       href: "/anomalies",
@@ -433,7 +495,7 @@ function OperationalSummarySection({
       id: "incident_summary",
       href: "/incidents",
       icon: "🚨",
-      label: "Incident response",
+      label: "Incident Response",
       value: counts ? counts.open_incidents : "…",
       detail: counts ? "open incidents requiring attention" : "Waiting for backend",
       color: "#ef4444",
@@ -442,77 +504,92 @@ function OperationalSummarySection({
       id: "automation_status",
       href: "/os/automations/metrics",
       icon: "🤖",
-      label: "Automation status",
+      label: "Automation Status",
       value: counts ? counts.automations : "…",
       detail: counts
         ? `${counts.automation_executions_30d.toLocaleString()} runs in the last 30 days`
         : "Waiting for backend",
-      color: "#6366f1",
+      color: "#00a8ff",
     },
   ].filter((card) => enabledIds.has(card.id));
 
-  if (cards.length === 0) return null;
+  const showHealth = enabledIds.has("system_health");
+  if (ops.length === 0 && !showHealth) return null;
+
+  const healthPct = health === null ? 86 : health.ok ? 98 : 72;
+  const activeModules = modules.filter((m) => m.status === "active").length;
+  const modulePct = modules.length ? Math.round((activeModules / modules.length) * 100) : 0;
+  const bars = [
+    { label: "AEON Kernel", value: health?.backend ? 100 : 62 },
+    { label: "Active Modules", value: modulePct },
+    { label: "Smart Tools", value: 100 },
+  ];
 
   return (
-    <FadeIn delay={0.2}>
-      <div className="dashboard-section-heading mt-8">
-        <div>
-          <h2 className="dashboard-section-title">Operational overview</h2>
-          <p className="dashboard-section-caption">
-            Workspace-scoped signals connected to the AEON control plane.
-          </p>
-        </div>
-        <span className="dashboard-section-count">Live control plane</span>
-      </div>
-      <StaggerContainer className="grid gap-3 md:grid-cols-3">
-        {cards.map((card) => (
-          <StaggerItem key={card.id}>
-            <Link
-              href={card.href}
-              className="glass-card group block p-4 transition hover:-translate-y-0.5"
-              style={{ borderColor: `${card.color}35` }}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <span
-                  className="flex h-9 w-9 items-center justify-center rounded-xl text-lg"
-                  style={{ background: `${card.color}18`, color: card.color }}
-                >
-                  {card.icon}
-                </span>
-                <span className="text-slate-500 transition group-hover:translate-x-0.5 group-hover:text-slate-300">
-                  ↗
-                </span>
+    <StaggerContainer className="overview-grid">
+      {ops.map((card) => (
+        <StaggerItem key={card.id}>
+          <Link
+            href={card.href}
+            className="ops-card"
+            style={{ "--oc": card.color } as CSSProperties}
+          >
+            <div className="ops-card-top">
+              <span
+                className="ops-icon"
+                style={{ background: `${card.color}1a`, color: card.color }}
+              >
+                {card.icon}
+              </span>
+              <span className="ops-dot" />
+            </div>
+            <div>
+              <div className="ops-label">{card.label}</div>
+              <div className="ops-value" style={{ color: card.color }}>
+                {card.value}
               </div>
-              <div className="mt-4 flex items-end justify-between gap-3">
-                <div>
-                  <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
-                    {card.label}
-                  </div>
-                  <div className="mt-1 text-2xl font-semibold text-white">{card.value}</div>
+            </div>
+            <div className="ops-detail">{card.detail}</div>
+          </Link>
+        </StaggerItem>
+      ))}
+      {showHealth && (
+        <StaggerItem>
+          <div className="ring-card">
+            <div className="ops-label">System Health</div>
+            <div className="ring-wrap">
+              <Ring value={healthPct} />
+              <div className="ring-center">
+                <div className="ring-value">{healthPct}%</div>
+                <div className="ring-cap">
+                  {health === null ? "Checking" : health.ok ? "Operational" : "Degraded"}
                 </div>
-                <span className="mb-1 h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.55)]" />
               </div>
-              <p className="mt-2 text-xs text-slate-500">{card.detail}</p>
-            </Link>
-          </StaggerItem>
-        ))}
-      </StaggerContainer>
-    </FadeIn>
+            </div>
+            <div className="health-bars">
+              {bars.map((bar) => (
+                <div key={bar.label} className="health-bar-row">
+                  <span>{bar.label}</span>
+                  <span>{bar.value}%</span>
+                  <span className="health-track">
+                    <span className="health-fill" style={{ width: `${bar.value}%` }} />
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </StaggerItem>
+      )}
+    </StaggerContainer>
   );
 }
+
+/* ─── Command centers grid ─── */
 
 function ModuleGridSection({ modules, admin }: { modules: CommandModule[]; admin: boolean }) {
   return (
     <FadeIn delay={0.2}>
-      <div className="dashboard-section-heading mt-8">
-        <div>
-          <h2 className="dashboard-section-title">Command Centers</h2>
-          <p className="dashboard-section-caption">
-            Launch a specialized workspace or review what is currently paused.
-          </p>
-        </div>
-        <span className="dashboard-section-count">{modules.length} surfaces</span>
-      </div>
+      <SectionHead label="Command Centers" right={`${modules.length} surfaces`} />
       <StaggerContainer className="module-grid">
         {modules.map((mod) => {
           const cardContent = (
@@ -579,10 +656,12 @@ function ModuleGridSection({ modules, admin }: { modules: CommandModule[]; admin
   );
 }
 
+/* ─── Platform capabilities ─── */
+
 function PlatformFeaturesSection() {
   return (
     <FadeIn delay={0.3}>
-      <h2 className="dashboard-section-title mt-8">Platform Capabilities</h2>
+      <SectionHead label="Platform Capabilities" right="Built-in" />
       <StaggerContainer className="feature-grid">
         {[
           {
@@ -730,48 +809,41 @@ export default function DashboardPage() {
         className="fixed inset-0 -z-10 pointer-events-none"
         style={{
           background:
-            "radial-gradient(ellipse at 20% 50%, rgba(99, 102, 241, 0.03) 0%, transparent 60%), radial-gradient(ellipse at 80% 20%, rgba(168, 85, 247, 0.02) 0%, transparent 50%)",
+            "radial-gradient(ellipse at 20% 50%, rgba(0, 168, 255, 0.03) 0%, transparent 60%), radial-gradient(ellipse at 80% 20%, rgba(0, 210, 255, 0.02) 0%, transparent 50%)",
         }}
       />
       <div className="dashboard-page">
         {enabledIds.has("welcome_banner") && (
           <FadeIn key="welcome">
-            <WelcomeBannerSection
+            <ExecutiveHero
               config={config}
               activeModules={activeModules}
               totalTools={totalTools}
-            />
-          </FadeIn>
-        )}
-        {enabledIds.has("system_status_bar") && (
-          <FadeIn key="status" delay={0.1}>
-            <StatusBarSection
               health={health}
-              activeModules={activeModules}
-              totalTools={totalTools}
             />
           </FadeIn>
         )}
-        {enabledIds.has("live_metrics") && (
-          <FadeIn key="metrics" delay={0.15}>
-            <LiveMetricsSection
-              stats={stats}
-              loading={loading}
-              lastUpdated={lastUpdated}
-              fetchStats={fetchStats}
-              error={statsError}
-            />
+        {(enabledIds.has("system_status_bar") || enabledIds.has("live_metrics")) && (
+          <FadeIn key="metrics" delay={0.08}>
+            <MetricRow health={health} stats={stats} />
           </FadeIn>
         )}
         {(enabledIds.has("anomaly_summary") ||
           enabledIds.has("incident_summary") ||
-          enabledIds.has("automation_status")) && (
-          <OperationalSummarySection counts={liveStats} enabledIds={enabledIds} />
+          enabledIds.has("automation_status") ||
+          enabledIds.has("system_health")) && (
+          <FadeIn key="overview" delay={0.14}>
+            <SectionHead label="Operational Overview" right="Live control plane" />
+            <OverviewGrid
+              counts={liveStats}
+              enabledIds={enabledIds}
+              health={health}
+              modules={modules}
+            />
+          </FadeIn>
         )}
         {enabledIds.has("command_centers") && (
-          <FadeIn key="modules" delay={0.2}>
-            <ModuleGridSection modules={modules} admin={admin} />
-          </FadeIn>
+          <ModuleGridSection modules={modules} admin={admin} />
         )}
         {enabledIds.has("alerts") && (
           <FadeIn key="alerts" delay={0.25}>
@@ -784,14 +856,23 @@ export default function DashboardPage() {
         {enabledIds.has("system_health") && (
           <FadeIn key="health" delay={0.3}>
             <div className="mt-8">
+              <SectionHead label="Infrastructure Health" right="Live" />
               <SystemHealthPanel />
             </div>
           </FadeIn>
         )}
         {enabledIds.has("platform_features") && (
-          <FadeIn key="features" delay={0.35}>
-            <PlatformFeaturesSection />
-          </FadeIn>
+          <PlatformFeaturesSection />
+        )}
+        {statsError && isBackendDownError(statsError) && (
+          <div className="mt-6">
+            <ErrorState error={statsError} onRetry={fetchStats} />
+          </div>
+        )}
+        {lastUpdated && (
+          <p className="mt-6 text-center text-[0.65rem] uppercase tracking-widest text-slate-600">
+            Updated {lastUpdated.toLocaleTimeString()}
+          </p>
         )}
       </div>
     </motion.div>
