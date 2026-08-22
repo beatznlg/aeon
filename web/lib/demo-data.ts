@@ -401,6 +401,55 @@ export const demoWorkspaces = {
   ],
 };
 
+export const demoOperatingProfiles = {
+  ok: true,
+  demo: true,
+  profiles: [
+    { id: "profile-1", name: "Security Operations", description: "Hardened profile for SOC teams", kind: "security", color: "#ef4444", icon: "🛡️", enabled: true, created_at: iso(20) },
+    { id: "profile-2", name: "Standard Operations", description: "Balanced defaults for daily operations", kind: "general", color: "#6366f1", icon: "⚙️", enabled: true, created_at: iso(18) },
+    { id: "profile-3", name: "Finance & Compliance", description: "Regulatory-focused profile", kind: "finance", color: "#f59e0b", icon: "💰", enabled: false, created_at: iso(15) },
+  ],
+  active_profile: "profile-2",
+  current: {
+    profile_id: "profile-2",
+    name: "Standard Operations",
+    effective: { plugins: [], tools: [], settings: {} },
+  },
+  packs: [
+    { id: "pack-1", name: "Security", description: "Governance and risk controls", kind: "security", enabled: true },
+    { id: "pack-2", name: "Compliance", description: "Regulatory mapping and audits", kind: "compliance", enabled: true },
+  ],
+};
+
+export const demoSectorPacks = {
+  ok: true,
+  demo: true,
+  packs: [
+    { id: "cybersecurity", name: "Cybersecurity", icon: "🛡️", color: "#ef4444", description: "Threat intel, SIEM, vulnerability management", risk: "high", tasks: ["threat_intel", "vuln_scan", "compliance", "incident_response"] },
+    { id: "healthcare", name: "Healthcare", icon: "🏥", color: "#10b981", description: "HIPAA-aware diagnostics and triage", risk: "high", tasks: ["diagnostics", "triage", "records", "compliance"] },
+    { id: "finance", name: "Finance", icon: "💰", color: "#f59e0b", description: "Risk, fraud, and regulatory analysis", risk: "high", tasks: ["risk", "fraud", "forecast", "regulatory"] },
+    { id: "retail", name: "Retail", icon: "📦", color: "#6366f1", description: "Demand, inventory, and pricing", risk: "medium", tasks: ["demand", "inventory", "pricing", "analytics"] },
+    { id: "manufacturing", name: "Manufacturing", icon: "🏭", color: "#0ea5e9", description: "Factory floor analytics and QA", risk: "medium", tasks: ["quality", "maintenance", "supply", "analytics"] },
+    { id: "government", name: "Government", icon: "🏛️", color: "#8b5cf6", description: "Public sector compliance and services", risk: "critical", tasks: ["compliance", "audit", "reporting"] },
+  ],
+  summary: { total: 6, high_risk: 3, critical: 1 },
+};
+
+export const demoCapabilities = {
+  ok: true,
+  demo: true,
+  capabilities: [
+    { id: "cap-1", name: "Threat Intelligence", source: "builtin", category: "security", description: "Enrich indicators and correlate threats", requires_auth: true, risk: "medium" },
+    { id: "cap-2", name: "Vulnerability Scan", source: "builtin", category: "security", description: "Identify CVEs in deployed packages", requires_auth: true, risk: "high" },
+    { id: "cap-3", name: "Compliance Audit", source: "builtin", category: "governance", description: "Map evidence to frameworks", requires_auth: true, risk: "low" },
+    { id: "cap-4", name: "Document Summarizer", source: "builtin", category: "ai", description: "Summarize long documents", requires_auth: true, risk: "low" },
+    { id: "cap-5", name: "Slack Alert", source: "plugin:slack", category: "integrations", description: "Send alerts to a channel", requires_auth: true, risk: "low" },
+    { id: "cap-6", name: "GitHub PR Review", source: "plugin:github", category: "integrations", description: "Review pull requests", requires_auth: true, risk: "medium" },
+  ],
+  count: 6,
+  source_counts: { builtin: 4, "plugin:slack": 1, "plugin:github": 1 },
+};
+
 export const demoSwarm = {
   ok: true,
   demo: true,
@@ -409,6 +458,246 @@ export const demoSwarm = {
     { id: "swarm-2", name: "Quarterly Market Analysis", status: "running", agents: 3, started_at: iso(0, 2), finished_at: null, tasks: 8 },
     { id: "swarm-3", name: "Knowledge Base Audit", status: "completed", agents: 2, started_at: iso(3, 0), finished_at: iso(3, 0), tasks: 5 },
   ],
+};
+
+export const demoMarketplace = {
+  ok: true,
+  demo: true,
+  plugins: [
+    { id: "slack", name: "Slack", description: "Alerts, approvals, and notifications", category: "communication", verified: true, installed: true, version: "2.1.0", icon: "💬" },
+    { id: "github", name: "GitHub", description: "Repo events and PR automation", category: "devops", verified: true, installed: true, version: "1.8.2", icon: "🐙" },
+    { id: "stripe", name: "Stripe", description: "Billing and subscription sync", category: "billing", verified: true, installed: true, version: "3.0.1", icon: "💳" },
+    { id: "sentry", name: "Sentry", description: "Error tracking integration", category: "monitoring", verified: true, installed: false, version: "1.2.0", icon: "📈" },
+    { id: "pagerduty", name: "PagerDuty", description: "Incident response on-call", category: "oncall", verified: true, installed: false, version: "2.0.0", icon: "🚨" },
+    { id: "webhook", name: "Outbound Webhooks", description: "Deliver events to any endpoint", category: "webhooks", verified: true, installed: true, version: "1.5.0", icon: "🔗" },
+    { id: "tensorflow", name: "TensorFlow", description: "Run ML models in automations", category: "ai", verified: false, installed: false, version: "0.9.0", icon: "🧠" },
+  ],
+  summary: { plugins: 7, verified: 6, installed: 4 },
+};
+
+export const demoMcp = {
+  ok: true,
+  demo: true,
+  servers: [
+    { id: "mcp-1", name: "Filesystem Server", transport: "streamable-http", url: "http://localhost:3001/mcp", enabled: true, tools: ["read_file", "write_file", "list_dir"], status: "connected", last_sync_at: iso(0, 2) },
+    { id: "mcp-2", name: "GitHub MCP", transport: "streamable-http", url: "https://api.github.com/mcp", enabled: true, tools: ["list_repos", "create_issue", "get_pr"], status: "connected", last_sync_at: iso(0, 5) },
+    { id: "mcp-3", name: "Database MCP", transport: "streamable-http", url: "http://localhost:3002/mcp", enabled: false, tools: ["query", "schema"], status: "disconnected", last_sync_at: iso(5, 0) },
+  ],
+  agent_tools: [
+    { id: "tool-1", server: "mcp-1", name: "read_file", description: "Read a file from disk" },
+    { id: "tool-2", server: "mcp-2", name: "create_issue", description: "Create a GitHub issue" },
+  ],
+};
+
+export const demoWorkflows = {
+  ok: true,
+  demo: true,
+  workflows: [
+    { id: "wf-1", name: "Incident Triage Pipeline", description: "Classify and route incoming incidents", status: "active", steps: 5, last_run_at: iso(0, 3), created_at: iso(12) },
+    { id: "wf-2", name: "Nightly Data Sync", description: "Synchronize data between systems", status: "active", steps: 3, last_run_at: iso(0, 6), created_at: iso(10) },
+    { id: "wf-3", name: "Report Generation", description: "Generate weekly executive reports", status: "draft", steps: 4, last_run_at: null, created_at: iso(4) },
+    { id: "wf-4", name: "Onboarding Sequence", description: "Automate new workspace setup", status: "paused", steps: 8, last_run_at: iso(2, 0), created_at: iso(20) },
+  ],
+};
+
+export const demoAgents = {
+  ok: true,
+  demo: true,
+  agents: [
+    { id: "agent-1", name: "Researcher", role: "researcher", status: "idle", tasks_completed: 482, last_active_at: iso(0, 2), model: "gpt-5.6" },
+    { id: "agent-2", name: "Security Analyst", role: "analyst", status: "running", tasks_completed: 213, last_active_at: iso(0, 1), model: "claude-sonnet-4" },
+    { id: "agent-3", name: "Writer", role: "writer", status: "idle", tasks_completed: 156, last_active_at: iso(1, 0), model: "gemini-3.7-flash" },
+    { id: "agent-4", name: "Reviewer", role: "reviewer", status: "error", tasks_completed: 98, last_active_at: iso(0, 4), model: "gpt-5-mini" },
+  ],
+};
+
+export const demoSiemIntegrations = {
+  ok: true,
+  demo: true,
+  integrations: [
+    { id: "siem-1", name: "Splunk", type: "siem", status: "connected", config_summary: "prod-index · 48 events/min", last_sync_at: iso(0, 1) },
+    { id: "siem-2", name: "Elastic SIEM", type: "siem", status: "connected", config_summary: "security-events-* · 120 events/min", last_sync_at: iso(0, 2) },
+    { id: "siem-3", name: "CrowdStrike", type: "edr", status: "error", config_summary: "API token expiring in 3 days", last_sync_at: iso(1, 0) },
+    { id: "siem-4", name: "Datadog", type: "observability", status: "connected", config_summary: "all-host metrics", last_sync_at: iso(0, 4) },
+    { id: "siem-5", name: "Palo Alto XSOAR", type: "soar", status: "disconnected", config_summary: "needs re-auth", last_sync_at: iso(8, 0) },
+  ],
+  providers: [
+    { id: "splunk", name: "Splunk", description: "Enterprise SIEM platform" },
+    { id: "elastic", name: "Elastic", description: "Open search and SIEM" },
+    { id: "crowdstrike", name: "CrowdStrike", description: "Endpoint detection and response" },
+    { id: "datadog", name: "Datadog", description: "Cloud monitoring and observability" },
+  ],
+};
+
+export const demoBilling = {
+  ok: true,
+  demo: true,
+  billing: {
+    workspace_id: "demo",
+    plan: {
+      id: "team",
+      name: "Team",
+      limits: { requests: 100000, tokens: 5000000, workflows: 50, integrations: 25 },
+    },
+    credits: 8420,
+    usage: { requests: 48210, tokens: 1842000, workflows: 14, integrations: 6 },
+    estimated_cost: 49.0,
+    remaining_credits: 8420,
+    quota_usage_pct: { requests: 48.2, tokens: 36.8, workflows: 28, integrations: 24 },
+  },
+};
+
+export const demoRetentionPolicy = {
+  ok: true,
+  demo: true,
+  policy: {
+    workspace_id: "demo",
+    retention_days: 365,
+    action: "archive",
+    created_at: iso(30),
+    updated_at: iso(2),
+  },
+};
+
+export const demoAdminStats = {
+  ok: true,
+  demo: true,
+  stats: {
+    total_users: 3,
+    total_workspaces: 1,
+    total_memberships: 3,
+    role_distribution: { ADMIN: 1, OPERATOR: 1, VIEWER: 1 },
+    plan_distribution: { free: 0, team: 1, enterprise: 0 },
+    total_audit_entries: 1284,
+  },
+};
+
+export const demoApiKeyUsage = {
+  ok: true,
+  demo: true,
+  usage: {
+    total_calls: 148320,
+    errors: 623,
+    error_rate: 0.42,
+    total_keys: 4,
+    active_keys: 3,
+    by_key: [
+      { name: "Production Frontend", calls: 82100, errors: 210 },
+      { name: "CI Pipeline", calls: 38400, errors: 190 },
+      { name: "Analytics Export", calls: 27820, errors: 223 },
+    ],
+    by_endpoint: {
+      "/api/chat": { calls: 62100, errors: 210 },
+      "/api/automations/run": { calls: 38400, errors: 190 },
+      "/api/sector/data": { calls: 27820, errors: 223 },
+    },
+  },
+};
+
+export const demoExecutionsList = {
+  ok: true,
+  demo: true,
+  executions: demoAutomations.executions,
+};
+
+export const demoAuditRows = {
+  ok: true,
+  demo: true,
+  rows: demoGovernance.audit_events,
+  count: demoGovernance.audit_events.length,
+};
+
+export const demoMcpAgentTools = {
+  ok: true,
+  demo: true,
+  tools: demoMcp.agent_tools,
+};
+
+export const demoWebhookDeliveries = {
+  ok: true,
+  demo: true,
+  deliveries: [
+    { id: "del-1", integration_id: "webhook", timestamp: Date.now() - 3600_000, payload: { event: "automation.completed", rule: "siem-aggregation" }, response_status: 200 },
+    { id: "del-2", integration_id: "webhook", timestamp: Date.now() - 4 * 3600_000, payload: { event: "incident.created", incident_id: "inc-1" }, response_status: 200 },
+    { id: "del-3", integration_id: "webhook", timestamp: Date.now() - 8 * 3600_000, payload: { event: "usage.spike" }, response_status: 502, error_message: "upstream timeout" },
+    { id: "del-4", integration_id: "webhook", timestamp: Date.now() - 26 * 3600_000, payload: { event: "backup.completed" }, response_status: 200 },
+  ],
+};
+
+export const demoHealthDetailed = {
+  ok: true,
+  demo: true,
+  kernel: { status: "ok", backend: "demo (stub)" },
+  agents: [
+    { name: "aeon-core", status: "idle" },
+    { name: "security-analyst", status: "running" },
+    { name: "researcher", status: "idle" },
+  ],
+  queue: { size: 3, status: "healthy" },
+  integrations: [
+    { name: "slack", status: "connected" },
+    { name: "stripe", status: "connected" },
+    { name: "github", status: "connected" },
+  ],
+  storage: { usage_events_bytes: 1842000, usage_events_mb: 1.76 },
+};
+
+export const demoUsageSummary = {
+  ok: true,
+  demo: true,
+  summary: {
+    period_days: 30,
+    workspace_id: "demo",
+    total_events: 148320,
+    total_quantity: 1842000,
+    total_cost: 128.45,
+    by_action: {
+      "chat.completion": { count: 48210, cost: 61.2 },
+      "automation.run": { count: 42100, cost: 38.4 },
+      "knowledge.search": { count: 31110, cost: 14.2 },
+      "sector.tool": { count: 26900, cost: 14.65 },
+    },
+    by_module: {
+      chat: { count: 48210 },
+      automations: { count: 42100 },
+      knowledge: { count: 31110 },
+      sectors: { count: 26900 },
+    },
+    by_day: {
+      [iso(6).slice(0, 10)]: { count: 6100 },
+      [iso(5).slice(0, 10)]: { count: 7400 },
+      [iso(4).slice(0, 10)]: { count: 6800 },
+      [iso(3).slice(0, 10)]: { count: 9200 },
+      [iso(2).slice(0, 10)]: { count: 7900 },
+      [iso(1).slice(0, 10)]: { count: 8800 },
+      [iso(0).slice(0, 10)]: { count: 8400 },
+    },
+  },
+};
+
+export const demoMetricsSummary = {
+  ok: true,
+  demo: true,
+  metrics: {
+    period_days: 30,
+    total_events: 148320,
+    total_cost: 128.45,
+    by_action: {
+      "chat.completion": { count: 48210, cost: 61.2 },
+      "automation.run": { count: 42100, cost: 38.4 },
+      "knowledge.search": { count: 31110, cost: 14.2 },
+      "sector.tool": { count: 26900, cost: 14.65 },
+    },
+    by_day: {
+      [iso(6).slice(0, 10)]: { count: 6100 },
+      [iso(5).slice(0, 10)]: { count: 7400 },
+      [iso(4).slice(0, 10)]: { count: 6800 },
+      [iso(3).slice(0, 10)]: { count: 9200 },
+      [iso(2).slice(0, 10)]: { count: 7900 },
+      [iso(1).slice(0, 10)]: { count: 8800 },
+      [iso(0).slice(0, 10)]: { count: 8400 },
+    },
+  },
 };
 
 /**
@@ -426,25 +715,27 @@ export function demoResponseForPath(path: string): { body: unknown; status: numb
     "dashboard/stats": demoDashboard,
     "automations": demoAutomations,
     "automations/metrics": demoAutomations.metrics,
+    "automations/executions": demoExecutionsList,
     "anomalies": demoAnomalies,
     "incidents": demoIncidents,
     "api-keys": demoApiKeys,
-    "api-keys/usage/summary": demoApiKeys.usage,
+    "api-keys/usage/summary": demoApiKeyUsage,
     "os/integrations": demoIntegrations,
     "os/integrations/catalog": demoIntegrations.catalog,
-    "os/observability/metrics": demoObservability.metrics,
-    "os/observability/usage": demoObservability.usage,
-    "os/observability/health": { ok: true, demo: true, status: "healthy", services: [{ name: "api", status: "up", latency_ms: 84 }, { name: "database", status: "up", latency_ms: 12 }, { name: "queue", status: "up", latency_ms: 3 }] },
+    "os/observability/metrics": demoMetricsSummary,
+    "metrics": demoMetricsSummary,
+    "os/observability/usage": demoUsageSummary,
+    "usage/summary": demoUsageSummary,
+    "os/observability/health": demoHealthDetailed,
+    "health/detailed": demoHealthDetailed,
     "os/observability/snapshot": { ok: true, demo: true, workers: 4, memory_mb: 186, queue_depth: 3, uptime_s: 86400 * 12 },
     "os/ai/knowledge-bases": demoKnowledgeBases,
     "os/ai/prompts": demoPrompts,
     "activity": demoActivity,
     "notifications": demoNotifications,
     "governance/compliance": demoGovernance.frameworks,
-    "governance/audit": demoGovernance.audit_events,
+    "governance/audit": demoAuditRows,
     "os/swarm": demoSwarm,
-    "os/capabilities": { ok: true, demo: true, capabilities: [] },
-    "os/marketplace": { ok: true, demo: true, plugins: [] },
     "os/apps": {
       ok: true,
       demo: true,
@@ -456,21 +747,40 @@ export function demoResponseForPath(path: string): { body: unknown; status: numb
       ],
     },
     "os/agent-plugins": { ok: true, demo: true, plugins: [] },
-    "os/mcp": { ok: true, demo: true, servers: [] },
-    "os/mcp/agent-tools": { ok: true, demo: true, tools: [] },
-    "os/workflows": { ok: true, demo: true, workflows: [] },
-    "os/operating-profiles": { ok: true, demo: true, profiles: [] },
-    "os/sector-packs": { ok: true, demo: true, packs: [] },
-    "os/webhooks/deliveries": { ok: true, demo: true, deliveries: [] },
-    "siem/integrations": { ok: true, demo: true, integrations: [] },
-    "siem/providers": { ok: true, demo: true, providers: [] },
+    "os/operating-profiles": demoOperatingProfiles,
+    "operating-profiles": demoOperatingProfiles,
+    "workspace/operating-profile": { ok: true, demo: true, ...demoOperatingProfiles.current },
+    "os/sector-packs": demoSectorPacks,
+    "sector-packs": demoSectorPacks,
+    "os/capabilities": demoCapabilities,
+    "capabilities": demoCapabilities,
+    "os/marketplace": demoMarketplace,
+    "marketplace/plugins": demoMarketplace,
+    "os/mcp": demoMcp,
+    "mcp/servers": demoMcp,
+    "os/mcp/agent-tools": demoMcpAgentTools,
+    "mcp/agent-tools": demoMcpAgentTools,
+    "os/workflows": demoWorkflows,
+    "workflows": demoWorkflows,
+    "agents": demoAgents,
+    "siem/integrations": demoSiemIntegrations,
+    "siem/providers": demoSiemIntegrations.providers,
+    "governance/retention": demoRetentionPolicy,
+    "os/webhooks/deliveries": demoWebhookDeliveries,
+    "webhooks/deliveries": demoWebhookDeliveries,
     "runbooks": { ok: true, demo: true, runbooks: [] },
     "approvals": { ok: true, demo: true, approvals: [{ id: "appr-1", event_type: "usage.spike", status: "pending", created_at: iso(0, 7), requested_by: "automation" }] },
     "inbound-webhooks": { ok: true, demo: true, webhooks: [] },
     "stripe/config": { ok: true, demo: true, configured: false },
     "events/broadcast": { ok: true },
     "workspaces": demoWorkspaces,
+    "admin/stats": demoAdminStats,
   };
+
+  // Workspace-scoped paths that vary by id still get a demo response.
+  if (key.startsWith("billing/")) {
+    return { body: demoBilling, status: 200 };
+  }
 
   const hit = demoMap[key];
   if (hit === undefined) return null;

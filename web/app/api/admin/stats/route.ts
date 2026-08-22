@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { requireRole } from "@/lib/auth";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { pythonUrl } from "@/lib/kernel";
+import { demoAdminStats } from "@/lib/demo-data";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +17,8 @@ export async function GET() {
 
   const sb = getSupabaseServerClient();
   if (!sb) {
-    return NextResponse.json({ ok: false, error: "Supabase not configured" }, { status: 503 });
+    // Supabase not configured — serve demo stats so the admin page renders.
+    return NextResponse.json(demoAdminStats);
   }
 
   try {
@@ -77,6 +79,7 @@ export async function GET() {
       },
     });
   } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message || String(e) }, { status: 500 });
+    // Supabase unreachable — serve demo stats so the admin page renders.
+    return NextResponse.json(demoAdminStats);
   }
 }

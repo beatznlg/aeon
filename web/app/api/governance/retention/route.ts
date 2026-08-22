@@ -1,35 +1,12 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { pythonUrl } from "@/lib/kernel";
+import { backendFetch } from "@/lib/backend-fetch";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(req: Request) {
-  const session = await auth();
-  const { searchParams } = new URL(req.url);
-  const workspaceId =
-    searchParams.get("workspace_id") ||
-    ((session?.user as any)?.workspaceId as string) ||
-    "default";
-
-  const url = pythonUrl();
-  if (!url) {
-    return NextResponse.json({
-      ok: true,
-      policy: { workspace_id: workspaceId, retention_days: 365, action: "archive" },
-    });
-  }
-
-  try {
-    const res = await fetch(
-      `${url}/governance/retention?workspace_id=${encodeURIComponent(workspaceId)}`,
-      { cache: "no-store" }
-    );
-    const data = await res.json();
-    return NextResponse.json(data);
-  } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message || String(e) }, { status: 503 });
-  }
+export async function GET(req: NextRequest) {
+  return backendFetch(req, "/governance/retention");
 }
 
 export async function POST(req: Request) {
