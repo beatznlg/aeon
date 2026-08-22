@@ -401,6 +401,131 @@ export const demoWorkspaces = {
   ],
 };
 
+// ── Platform Foundation (Module/Connector/Tenant engines) ───────────────────
+// AG Group is the reference engineering tenant: a configuration, not a fork.
+export const demoPlatformConfig = {
+  ok: true,
+  demo: true,
+  config: {
+    tenant_id: "ws-1",
+    company: "AG Group",
+    industry: "engineering-construction",
+    currency: "EUR",
+    country: "MT",
+    modules: ["identity", "permissions", "audit", "notifications", "ai", "documents", "workflows", "finance", "projects", "hr", "procurement", "analytics", "ai-assistant", "risk-engine"],
+    connectors: ["sage", "microsoft365", "indigo"],
+    deployment_mode: "cloud",
+    pack: {
+      id: "engineering-construction",
+      name: "Engineering & Construction",
+      icon: "🏗️",
+      industry: "engineering",
+      description: "Projects, contracts, labour, equipment, materials, site management, margins, safety and procurement.",
+      modules: ["finance", "projects", "hr", "procurement", "documents", "analytics", "ai-assistant", "risk-engine"],
+      connectors: ["sage", "microsoft365", "indigo"],
+      currency: "EUR",
+      country: "MT",
+      profile: "regulated-enterprise",
+      reference_tenant: "AG Group — the first enterprise implementation of the AEON platform.",
+    },
+  },
+};
+
+export const demoPlatformModules = {
+  ok: true,
+  demo: true,
+  version: 1,
+  modules: [
+    { id: "identity", name: "Identity", icon: "👤", category: "core", required: true, enabled: true, description: "Users, roles, sessions and tenant-scoped access control." },
+    { id: "permissions", name: "Permissions", icon: "🔐", category: "core", required: true, enabled: true, description: "Granular RBAC and per-tenant permission grants." },
+    { id: "audit", name: "Audit", icon: "📜", category: "core", required: true, enabled: true, description: "Immutable audit trail of every action per tenant." },
+    { id: "notifications", name: "Notifications", icon: "🔔", category: "core", required: true, enabled: true, description: "In-app, email and webhook notifications." },
+    { id: "ai", name: "AI", icon: "🧠", category: "core", required: true, enabled: true, description: "The AEON Brain: model gateway, AI ledger and tool framework." },
+    { id: "documents", name: "Documents", icon: "📄", category: "core", required: true, enabled: true, description: "Universal document store with RAG-ready knowledge bases." },
+    { id: "workflows", name: "Workflows", icon: "🔀", category: "core", required: true, enabled: true, description: "Visual workflow engine for tenant automations." },
+    { id: "finance", name: "Finance", icon: "💰", category: "business", required: false, enabled: true, description: "Invoices, payments, budgets and financial analytics." },
+    { id: "hr", name: "HR", icon: "👥", category: "business", required: false, enabled: true, description: "Employees, contracts, timesheets and workforce data." },
+    { id: "projects", name: "Projects", icon: "📋", category: "business", required: false, enabled: true, description: "Projects, tasks, milestones, budgets and margins." },
+    { id: "crm", name: "CRM", icon: "🤝", category: "business", required: false, enabled: false, description: "Customers, leads, deals and pipelines." },
+    { id: "procurement", name: "Procurement", icon: "🛒", category: "business", required: false, enabled: true, description: "Suppliers, purchase orders and sourcing." },
+    { id: "inventory", name: "Inventory", icon: "📦", category: "business", required: false, enabled: false, description: "Stock, warehouses, reorder points and valuation." },
+    { id: "sales", name: "Sales", icon: "🛍️", category: "business", required: false, enabled: false, description: "Orders, quotes and revenue operations." },
+    { id: "operations", name: "Operations", icon: "⚙️", category: "business", required: false, enabled: false, description: "Day-to-day operational tasks and checklists." },
+    { id: "analytics", name: "Analytics", icon: "📊", category: "business", required: false, enabled: true, description: "Dashboards, reports and tenant KPIs." },
+    { id: "ai-assistant", name: "AI Assistant", icon: "💬", category: "ai", required: false, enabled: true, description: "Tenant-aware chat with access to its modules and data." },
+    { id: "ai-agents", name: "AI Agents", icon: "🤖", category: "ai", required: false, enabled: false, description: "Autonomous agents with tenant-scoped tools." },
+    { id: "forecasting", name: "Forecasting", icon: "📈", category: "ai", required: false, enabled: false, description: "Predictive analytics for demand, revenue and capacity." },
+    { id: "risk-engine", name: "Risk Engine", icon: "⚠️", category: "ai", required: false, enabled: true, description: "Risk scoring, alerts and mitigation workflows." },
+    { id: "automation", name: "Automation", icon: "🤖", category: "ai", required: false, enabled: false, description: "AI-triggered automations and intelligent actions." },
+  ],
+};
+
+export const demoPlatformConnectors = {
+  ok: true,
+  demo: true,
+  version: 1,
+  contract: ["authenticate", "connect", "discover", "fetch", "normalize", "sync", "webhook", "health_check", "disconnect"],
+  connectors: [
+    { id: "sage", name: "Sage", icon: "🧮", category: "Accounting / ERP", enabled: true, description: "Invoicing, accounting and financials (Sage 50 / Sage Intacct).", required_secrets: ["SAGE_CLIENT_ID", "SAGE_CLIENT_SECRET", "SAGE_REALM_ID"] },
+    { id: "microsoft365", name: "Microsoft 365", icon: "🟦", category: "Productivity", enabled: true, description: "Outlook, SharePoint, Teams, OneDrive and Calendar via Microsoft Graph.", required_secrets: ["MS_GRAPH_TENANT_ID", "MS_GRAPH_CLIENT_ID", "MS_GRAPH_CLIENT_SECRET"] },
+    { id: "indigo", name: "Indigo", icon: "🟧", category: "Project / PMIS", enabled: true, description: "Project management and control data from Indigo.", required_secrets: ["INDIGO_API_KEY", "INDIGO_BASE_URL"] },
+    { id: "xero", name: "Xero", icon: "⬛", category: "Accounting / ERP", enabled: false, description: "Cloud accounting: invoices, bank feeds and reconciliation.", required_secrets: ["XERO_CLIENT_ID", "XERO_CLIENT_SECRET", "XERO_TENANT_ID"] },
+    { id: "sap", name: "SAP", icon: "🟩", category: "Accounting / ERP", enabled: false, description: "SAP ERP and S/4HANA financial and supply chain data.", required_secrets: ["SAP_BASE_URL", "SAP_CLIENT_ID", "SAP_CLIENT_SECRET"] },
+    { id: "quickbooks", name: "QuickBooks", icon: "🟢", category: "Accounting / ERP", enabled: false, description: "QuickBooks Online invoices, expenses and reports.", required_secrets: ["QUICKBOOKS_CLIENT_ID", "QUICKBOOKS_CLIENT_SECRET", "QUICKBOOKS_COMPANY_ID"] },
+    { id: "salesforce", name: "Salesforce", icon: "☁️", category: "CRM", enabled: false, description: "Accounts, contacts, opportunities and sales pipelines.", required_secrets: ["SALESFORCE_CLIENT_ID", "SALESFORCE_CLIENT_SECRET", "SALESFORCE_INSTANCE_URL"] },
+    { id: "hubspot", name: "HubSpot", icon: "🟠", category: "CRM", enabled: false, description: "Contacts, deals, marketing and sales engagement.", required_secrets: ["HUBSPOT_API_KEY"] },
+    { id: "workday", name: "Workday", icon: "🟣", category: "HR", enabled: false, description: "Workforce, payroll and human capital data.", required_secrets: ["WORKDAY_BASE_URL", "WORKDAY_CLIENT_ID", "WORKDAY_CLIENT_SECRET"] },
+    { id: "pos", name: "POS", icon: "🏪", category: "Retail / POS", enabled: false, description: "Point-of-sale sales, refunds and daily reconciliation.", required_secrets: ["POS_API_KEY", "POS_BASE_URL"] },
+  ],
+};
+
+export const demoIndustryPacks = {
+  ok: true,
+  demo: true,
+  version: 1,
+  packs: [
+    { id: "core", name: "AEON Core", icon: "🧬", industry: "universal", required: true, description: "The universal foundation every tenant gets: identity, permissions, audit, notifications, AI, documents, workflows.", modules: ["identity", "permissions", "audit", "notifications", "ai", "documents", "workflows"], connectors: [], currency: "EUR", country: "", profile: "general-business" },
+    { id: "engineering-construction", name: "Engineering & Construction", icon: "🏗️", industry: "engineering", description: "Projects, contracts, labour, equipment, materials, site management, margins, safety and procurement.", modules: ["finance", "projects", "hr", "procurement", "documents", "analytics", "ai-assistant", "risk-engine"], connectors: ["sage", "microsoft365", "indigo"], currency: "EUR", country: "MT", profile: "regulated-enterprise", reference_tenant: "AG Group — the first enterprise implementation of the AEON platform." },
+    { id: "restaurant", name: "Restaurant & Hospitality", icon: "🍽️", industry: "restaurant", description: "POS, reservations, inventory, food cost, recipes, labour, purchasing, sales, margins and staff.", modules: ["finance", "hr", "inventory", "sales", "procurement", "analytics", "ai-assistant"], connectors: ["xero", "microsoft365", "pos"], currency: "EUR", country: "", profile: "general-business" },
+    { id: "professional-services", name: "Professional Services", icon: "🧑‍💼", industry: "services", description: "Clients, projects, timesheets, billing, expenses, employees, documents and CRM.", modules: ["crm", "projects", "hr", "documents", "analytics", "ai-assistant"], connectors: ["microsoft365", "xero", "salesforce"], currency: "EUR", country: "", profile: "general-business" },
+    { id: "retail", name: "Retail", icon: "🛍️", industry: "retail", description: "Sales, inventory, suppliers, pricing, promotions and customer loyalty.", modules: ["finance", "inventory", "sales", "crm", "procurement", "analytics", "ai-assistant"], connectors: ["xero", "quickbooks", "salesforce", "pos"], currency: "EUR", country: "", profile: "general-business" },
+  ],
+};
+
+export const demoUniversalModel = {
+  ok: true,
+  demo: true,
+  version: 1,
+  entities: [
+    { id: "person", name: "Person", icon: "👤", domain: "people", fields: ["id", "name", "email", "phone", "address"], sources: ["Sage", "Microsoft 365", "Salesforce", "HubSpot", "Workday"] },
+    { id: "organization", name: "Organization", icon: "🏢", domain: "people", fields: ["id", "name", "legal_name", "vat_number", "address", "country"], sources: ["Sage", "Salesforce", "HubSpot", "Xero"] },
+    { id: "employee", name: "Employee", icon: "🪪", domain: "people", fields: ["id", "person_id", "employee_no", "department", "job_title", "start_date", "status"], sources: ["Workday", "Microsoft 365", "HR systems"] },
+    { id: "customer", name: "Customer", icon: "🤝", domain: "people", fields: ["id", "person_id", "organization_id", "segment", "credit_limit"], sources: ["Salesforce", "HubSpot", "Sage", "Xero", "POS"] },
+    { id: "supplier", name: "Supplier", icon: "🚚", domain: "people", fields: ["id", "organization_id", "category", "payment_terms", "rating"], sources: ["Sage", "SAP", "Procurement systems"] },
+    { id: "financial-account", name: "Financial Account", icon: "🏦", domain: "finance", fields: ["id", "code", "name", "type", "currency", "balance"], sources: ["Sage", "Xero", "QuickBooks", "SAP"] },
+    { id: "invoice", name: "Invoice", icon: "🧾", domain: "finance", fields: ["id", "number", "organization_id", "customer_id", "issued_at", "due_at", "total", "currency", "status"], sources: ["Sage", "Xero", "QuickBooks", "SAP"] },
+    { id: "payment", name: "Payment", icon: "💳", domain: "finance", fields: ["id", "invoice_id", "amount", "method", "paid_at", "reference"], sources: ["Sage", "Xero", "QuickBooks", "POS"] },
+    { id: "transaction", name: "Transaction", icon: "🔁", domain: "finance", fields: ["id", "account_id", "amount", "direction", "occurred_at", "description"], sources: ["Sage", "Xero", "QuickBooks", "SAP", "POS"] },
+    { id: "project", name: "Project", icon: "📋", domain: "projects", fields: ["id", "name", "code", "customer_id", "start_date", "end_date", "budget", "status"], sources: ["Indigo", "Sage", "Engineering PMIS"] },
+    { id: "task", name: "Task", icon: "✅", domain: "projects", fields: ["id", "project_id", "title", "assignee_id", "due_at", "status"], sources: ["Indigo", "Microsoft 365 (Planner)", "Engineering PMIS"] },
+    { id: "milestone", name: "Milestone", icon: "🚩", domain: "projects", fields: ["id", "project_id", "name", "target_date", "achieved_at"], sources: ["Indigo", "Engineering PMIS"] },
+    { id: "budget", name: "Budget", icon: "🎯", domain: "projects", fields: ["id", "project_id", "amount", "spent", "committed", "forecast", "currency"], sources: ["Sage", "SAP", "Indigo"] },
+    { id: "cost", name: "Cost", icon: "💸", domain: "projects", fields: ["id", "project_id", "category", "amount", "incurred_at", "reference"], sources: ["Sage", "SAP", "Indigo"] },
+    { id: "document", name: "Document", icon: "📄", domain: "documents", fields: ["id", "title", "kind", "owner_id", "stored_at", "uri", "content_hash"], sources: ["Microsoft 365 (SharePoint/OneDrive)", "Sage", "Indigo"] },
+    { id: "email", name: "Email", icon: "✉️", domain: "documents", fields: ["id", "thread_id", "from", "to", "subject", "sent_at", "body"], sources: ["Microsoft 365 (Outlook)"] },
+    { id: "meeting", name: "Meeting", icon: "📅", domain: "documents", fields: ["id", "title", "organizer_id", "starts_at", "ends_at", "attendees"], sources: ["Microsoft 365 (Calendar)", "Microsoft Teams"] },
+    { id: "message", name: "Message", icon: "💬", domain: "documents", fields: ["id", "channel", "sender_id", "sent_at", "content"], sources: ["Microsoft Teams", "Slack"] },
+    { id: "asset", name: "Asset", icon: "🏗️", domain: "commerce", fields: ["id", "name", "category", "location", "value", "condition"], sources: ["Sage", "SAP", "Indigo (equipment)", "CMMS"] },
+    { id: "product", name: "Product", icon: "📦", domain: "commerce", fields: ["id", "name", "sku", "unit", "cost_price", "sale_price"], sources: ["POS", "Sage", "Xero", "QuickBooks"] },
+    { id: "order", name: "Order", icon: "🛒", domain: "commerce", fields: ["id", "number", "customer_id", "placed_at", "total", "status"], sources: ["POS", "Salesforce", "Sage", "Xero"] },
+    { id: "inventory-item", name: "Inventory Item", icon: "📊", domain: "commerce", fields: ["id", "product_id", "warehouse", "quantity", "reorder_point"], sources: ["POS", "Sage", "SAP"] },
+    { id: "event", name: "Event", icon: "📡", domain: "intelligence", fields: ["id", "type", "source", "occurred_at", "payload"], sources: ["All connectors", "Webhooks"] },
+    { id: "alert", name: "Alert", icon: "🔔", domain: "intelligence", fields: ["id", "severity", "title", "entity_id", "raised_at", "status"], sources: ["Risk Engine", "Monitoring", "Connectors"] },
+    { id: "risk", name: "Risk", icon: "⚠️", domain: "intelligence", fields: ["id", "project_id", "category", "likelihood", "impact", "score", "mitigation"], sources: ["Risk Engine", "Indigo", "Engineering PMIS"] },
+    { id: "decision", name: "Decision", icon: "🧭", domain: "intelligence", fields: ["id", "title", "made_by", "made_at", "rationale", "status"], sources: ["AI ledger", "Approvals", "Workflows"] },
+  ],
+};
+
 export const demoOperatingProfiles = {
   ok: true,
   demo: true,
@@ -722,6 +847,11 @@ export function demoResponseForPath(path: string): { body: unknown; status: numb
     "api-keys/usage/summary": demoApiKeyUsage,
     "os/integrations": demoIntegrations,
     "os/integrations/catalog": demoIntegrations.catalog,
+    "platform/config": demoPlatformConfig,
+    "platform/modules": demoPlatformModules,
+    "platform/connectors": demoPlatformConnectors,
+    "platform/industry-packs": demoIndustryPacks,
+    "platform/universal-model": demoUniversalModel,
     "os/observability/metrics": demoMetricsSummary,
     "metrics": demoMetricsSummary,
     "os/observability/usage": demoUsageSummary,

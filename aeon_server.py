@@ -101,6 +101,7 @@ from aeon_marketplace_routes import register_marketplace_routes
 from aeon_mcp_routes import register_mcp_routes
 from aeon_model_registry_routes import register_model_registry_routes
 from aeon_operating_profile_routes import register_operating_profile_routes
+from aeon_platform_routes import register_platform_routes
 from aeon_policies import (
     PolicyEffect,
     evaluate_automation_policy,
@@ -238,6 +239,7 @@ register_marketplace_routes(app)
 register_capability_routes(app)
 register_llm_routes(app)
 register_operating_profile_routes(app)
+register_platform_routes(app)
 register_trace_routes(app)
 register_mcp_routes(app)
 register_model_registry_routes(app)

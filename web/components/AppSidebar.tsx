@@ -34,6 +34,7 @@ const CORE_LINKS: SidebarLinkDef[] = [
   { href: "/showcase", label: "Showcase", icon: "✨", moduleId: "dashboard" },
   { href: "/chat", label: "Chat", icon: "💬", moduleId: "chat" },
   { href: "/os", label: "OS Modules", icon: "⊞", moduleId: "os" },
+  { href: "/os/platform", label: "Platform", icon: "🧬", moduleId: "os" },
   { href: "/os/automations/metrics", label: "Automations", icon: "🤖", moduleId: "automations" },
   { href: "/swarms", label: "Swarms", icon: "🐝", moduleId: "swarms" },
   { href: "/llm", label: "LLM Brain", icon: "🧠", moduleId: "llm" },
