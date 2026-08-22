@@ -75,13 +75,15 @@ On container startup, the backend runs `alembic upgrade head` before seeding the
 | Variable | Value | Required |
 |---|---|---|
 | `AEON_DATABASE_URL` | `postgresql://user:pass@host:5432/db` | ✅ Yes |
-| `NEXTAUTH_SECRET` | Same secret used by the frontend | ✅ Yes |
+| `AEON_JWT_SECRET` | Strong backend JWT signing secret | ✅ Yes |
+| `AEON_ENV` | `production` | ✅ Yes |
 | `AEON_PYTHON_HOST` | `0.0.0.0` | No (default) |
 | `AEON_PYTHON_PORT` | Railway injects `PORT` | No (default 5000) |
 | `AEON_ROOT` | `/app/state` | No (Docker default) |
 | `AEON_LLM_PROVIDER` | `stub`, `openai`, `anthropic` | No (default `stub`) |
-| `AEON_ADMIN_EMAIL` | `admin@aeon.local` | No (first-run seed) |
-| `AEON_ADMIN_PASSWORD` | strong password | No (first-run seed) |
+| `ADMIN_EMAIL` | Your production admin email | ✅ Yes for admin seed |
+| `ADMIN_PASSWORD_HASH` | Werkzeug password hash | ✅ Yes for admin seed |
+| `ADMIN_NAME` | Admin display name | No |
 
 ### 1.4 Optional Provider Keys
 
@@ -90,9 +92,9 @@ On container startup, the backend runs `alembic upgrade head` before seeding the
 | `OPENAI_API_KEY` | OpenAI LLM provider |
 | `ANTHROPIC_API_KEY` | Anthropic Claude provider |
 | `HUGGINGFACE_TOKEN` | Hugging Face model downloads |
-| `SUPABASE_URL` | Supabase project URL |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase admin key |
-| `SUPABASE_ANON_KEY` | Supabase anon key |
+| `SUPABASE_URL` | Supabase project URL (server-only) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase admin key (server-only; never expose to browser) |
+| `SUPABASE_ANON_KEY` | Supabase anon key for server-side RLS-aware access |
 
 ### 1.5 Optional Stripe Keys
 
@@ -135,7 +137,7 @@ Set these in **Project Settings → Environment Variables**:
 | Variable | Value | Required |
 |---|---|---|
 | `AEON_DATABASE_URL` | `postgresql://...` | ✅ Yes |
-| `NEXTAUTH_SECRET` | Same secret used by the frontend | ✅ Yes |
+| `AEON_JWT_SECRET` | Strong backend JWT signing secret | ✅ Yes |
 | `AEON_ROOT` | `/tmp/aeon_state` | ✅ Yes (ephemeral writable path) |
 | `AEON_LLM_PROVIDER` | `stub`, `openai`, or `anthropic` | No (default `stub`) |
 | `OPENAI_API_KEY` | OpenAI key | Only if provider is `openai` |
@@ -169,7 +171,7 @@ Copy the backend's Vercel URL (e.g. `https://aeon-backend.vercel.app`) and set i
 |---|---|
 | `AEON_PYTHON_URL` | `https://aeon-backend.vercel.app` |
 
-Use the same `NEXTAUTH_SECRET` on both projects.
+Use a stable `AUTH_SECRET` for the frontend and a separate strong `AEON_JWT_SECRET` for the Flask backend.
 
 ---
 
@@ -189,16 +191,19 @@ Use the same `NEXTAUTH_SECRET` on both projects.
 
 | Variable | Value | Required |
 |---|---|---|
-| `NEXTAUTH_SECRET` | Strong random string (match backend) | ✅ Yes |
+| `AUTH_SECRET` | Stable random Auth.js session secret | ✅ Yes |
+| `NEXTAUTH_SECRET` | Legacy alias; use the same value if configured | No |
 | `NEXTAUTH_URL` | `https://your-project.vercel.app` | ✅ Yes |
 | `AEON_PYTHON_URL` | Backend public URL (e.g. `https://aeon-backend.up.railway.app`) | ✅ Yes |
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL | If using Supabase |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase public anon key; RLS applies | If using Supabase |
+| `SUPABASE_URL` | Server-side Supabase project URL | If server auth uses Supabase |
+| `SUPABASE_SERVICE_ROLE_KEY` | Server-only Supabase service-role key | If admin/server queries use Supabase |
 
 ### 3.3 Optional Variables
 
 | Variable | Purpose |
 |---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon key |
 | `AEON_HF_SPACE_URL` | Hugging Face Gradio fallback |
 
 ---
@@ -234,8 +239,10 @@ You should see `OK` for both.
 
 ### Login fails / JWT errors
 
-- `NEXTAUTH_SECRET` must be identical on backend and frontend.
+- `AUTH_SECRET` (or `NEXTAUTH_SECRET`) must be stable in Vercel across deployments.
 - `NEXTAUTH_URL` must match the frontend public URL.
+- `AEON_PYTHON_URL` must point to the reachable Railway backend.
+- `SUPABASE_SERVICE_ROLE_KEY` must never be prefixed with `NEXT_PUBLIC_` or exposed to client code.
 
 ---
 
@@ -296,8 +303,8 @@ When deploying, verify the following security settings:
 
 - Set `AEON_CORS_ALLOWED_ORIGINS` to the production frontend domain (e.g. `https://app.aeon.ai`).
 - Enable HSTS by setting `AEON_HSTS=true` when running behind a TLS-terminating proxy.
-- Set `AEON_ENV=production`; production readiness fails without a strong `AEON_JWT_SECRET`/`NEXTAUTH_SECRET` and `AEON_MASTER_KMS_KEY`.
-- Keep `AEON_JWT_SECRET` and `NEXTAUTH_SECRET` strong and rotate them via `POST /auth/jwt/rotate`.
+- Set `AEON_ENV=production`; production readiness fails without a strong `AEON_JWT_SECRET`/`AUTH_SECRET` and `AEON_MASTER_KMS_KEY`.
+- Keep `AEON_JWT_SECRET` and `AUTH_SECRET` strong; rotate the backend JWT secret via `POST /auth/jwt/rotate`.
 - Never disable encryption or replace it with a base64/plaintext fallback; `cryptography` is a required dependency.
 - Rotate API keys regularly with `POST /api-keys/<id>/rotate`.
 - Review `Bandit` and `pip-audit` reports in the `quality-gate.yml` CI output before merging.

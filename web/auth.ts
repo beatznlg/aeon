@@ -13,7 +13,9 @@ interface AeonUser {
   workspaceId?: string;
 }
 
-const AEON_PYTHON_URL = process.env.AEON_PYTHON_URL || "http://127.0.0.1:5000";
+const AEON_PYTHON_URL = (process.env.AEON_PYTHON_URL || "http://127.0.0.1:5000").replace(/\/$/, "");
+const AUTH_SECRET = process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET;
+const TRUST_HOST = process.env.VERCEL === "1" || process.env.AUTH_TRUST_HOST === "true";
 
 /**
  * Fallback admin user that works when Supabase is not configured.
@@ -21,7 +23,9 @@ const AEON_PYTHON_URL = process.env.AEON_PYTHON_URL || "http://127.0.0.1:5000";
  */
 function getFallbackAdmin(): AeonUser | null {
   const email = process.env.ADMIN_EMAIL;
-  const password = process.env.ADMIN_PASSWORD || process.env.ADMIN_PASSWORD_HASH;
+  // Plain ADMIN_PASSWORD is a development-only fallback. Production admin
+  // passwords are verified by the Flask backend from ADMIN_PASSWORD_HASH.
+  const password = process.env.ADMIN_PASSWORD;
   if (!email || !password) return null;
   return {
     id: "admin-fallback",
@@ -32,14 +36,11 @@ function getFallbackAdmin(): AeonUser | null {
 }
 
 async function verifyFallbackPassword(password: string): Promise<boolean> {
-  const passwordHash = process.env.ADMIN_PASSWORD_HASH;
-  if (passwordHash) return bcrypt.compare(password, passwordHash);
-
   const configuredPassword = process.env.ADMIN_PASSWORD;
   if (!configuredPassword) return false;
 
-  // API Keys commonly stores ADMIN_PASSWORD as a plain value. Keep this
-  // fallback Edge-runtime compatible; hashed values should use the hash key.
+  // This fallback is intentionally limited to a plain development password;
+  // production hashes are handled by the Flask backend.
   return password === configuredPassword;
 }
 
@@ -74,6 +75,8 @@ async function loginViaFlask(email: string, password: string): Promise<AeonUser 
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
+  secret: AUTH_SECRET,
+  trustHost: TRUST_HOST,
   session: { strategy: "jwt" },
   pages: {
     signIn: "/login",

@@ -7,11 +7,5 @@
     "web/app/api/**/*.ts": {
       "maxDuration": 120
     }
-  },
-  "rewrites": [
-    {
-      "source": "/api/:path*",
-      "destination": "https://aeon-backend.up.railway.app/:path*"
-    }
-  ]
+  }
 }

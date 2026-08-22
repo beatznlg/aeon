@@ -36,7 +36,6 @@ Set these in Railway's dashboard under **Variables**:
 # ── Required ────────────────────────────────────────────────────────────────
 AEON_DATABASE_URL=postgresql://user:pass@host:5432/aeon
 AEON_JWT_SECRET=<random-64-char-string>    # openssl rand -base64 48
-NEXTAUTH_SECRET=<same-as-frontend>          # Must match frontend
 AEON_ENV=production
 
 # ── Auth ────────────────────────────────────────────────────────────────────
@@ -57,9 +56,10 @@ STRIPE_WEBHOOK_SECRET=whsec_...
 STRIPE_PRICE_TEAM=price_...                 # Team plan price ID
 STRIPE_PRICE_ENTERPRISE=price_...           # Enterprise plan price ID
 
-# ── Supabase (optional, for automation rules) ───────────────────────────────
+# ── Supabase (optional, for users/automation rules) ─────────────────────────
 SUPABASE_URL=https://xxx.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=eyJ...
+SUPABASE_ANON_KEY=<server-side anon key, if needed>
+SUPABASE_SERVICE_ROLE_KEY=<server-only service-role key>
 
 # ── Rate Limiting ───────────────────────────────────────────────────────────
 AEON_RATE_LIMIT_USER=600                    # Per-user requests/min
@@ -129,9 +129,18 @@ Set these in Vercel's dashboard under **Settings → Environment Variables**:
 
 ```bash
 # ── Required ────────────────────────────────────────────────────────────────
-NEXTAUTH_SECRET=<same-as-backend>           # Must match backend JWT secret
+AUTH_SECRET=<strong random value>            # Auth.js v5 session signing secret
+NEXTAUTH_SECRET=<same value, if used>        # Legacy alias supported by AEON
 NEXTAUTH_URL=https://app.aeonos.com
-AEON_PYTHON_URL=https://api.aeonos.com     # Backend API URL
+AEON_PYTHON_URL=https://api.aeonos.com        # Railway backend URL
+
+# ── Supabase public values (safe for browser use; RLS applies) ──────────────
+NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=<public anon key>
+
+# ── Supabase server-only values (never expose or prefix NEXT_PUBLIC_) ───────
+SUPABASE_URL=https://xxx.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=<service-role secret>
 
 # ── Optional ────────────────────────────────────────────────────────────────
 NEXT_PUBLIC_APP_NAME=AEON OS
@@ -153,7 +162,7 @@ vercel --prod
 
 The `vercel.json` at the project root configures:
 - Build command: `cd web && npm install && npm run build`
-- Output directory: `web/.next`
+- Next.js output discovery (the output directory is intentionally not overridden)
 - API function timeout: 120s
 
 ---
@@ -191,7 +200,7 @@ Create these in the Stripe Dashboard:
 
 ### Authentication
 - [ ] `AEON_JWT_SECRET` is a strong random string (≥32 chars)
-- [ ] `NEXTAUTH_SECRET` matches between frontend and backend
+- [ ] `AUTH_SECRET` (or `NEXTAUTH_SECRET`) is stable and set in Vercel
 - [ ] `AEON_ENV=production` (disables dev fallbacks)
 - [ ] Admin password is hashed with `werkzeug.security.generate_password_hash`
 
@@ -253,6 +262,8 @@ Create these in the Stripe Dashboard:
 | `Stripe webhook 400` | `STRIPE_WEBHOOK_SECRET` wrong or missing |
 | `Migration errors` | Run `python3 -m alembic upgrade head` manually |
 | `Blank preview` | Frontend env vars missing — check `AEON_PYTHON_URL` |
+| `Auth.js server configuration error` | Set stable `AUTH_SECRET` (or `NEXTAUTH_SECRET`) and `NEXTAUTH_URL` in Vercel, then redeploy |
+| `Supabase auth/database failure` | Set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`; keep `SUPABASE_SERVICE_ROLE_KEY` server-only |
 | `Rate limited` | Increase `AEON_RATE_LIMIT_USER` or check for loops |
 
 ### Logs
@@ -292,7 +303,7 @@ python3 aeon_server.py  # Logs to stdout
 |----------|----------|---------|-------------|
 | `AEON_DATABASE_URL` | ✅ | — | PostgreSQL connection string |
 | `AEON_JWT_SECRET` | ✅ | — | JWT signing secret (≥32 chars) |
-| `NEXTAUTH_SECRET` | ✅ | — | Must match frontend |
+| `AUTH_SECRET` / `NEXTAUTH_SECRET` | ✅ | — | Stable Auth.js session secret; set `AUTH_SECRET` for v5 |
 | `AEON_ENV` | ✅ | `development` | Set to `production` |
 | `AEON_CORS_ALLOWED_ORIGINS` | ✅ | — | Comma-separated allowed origins |
 | `ADMIN_EMAIL` | ✅ | — | Initial admin email |
