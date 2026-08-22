@@ -32,7 +32,8 @@ const STATUS_OPTIONS = [
   "healthy",
 ];
 
-export async function GET(req: Request, { params }: { params: { id: string } }) {
+export async function GET(req: Request, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params;
   const id = params.id;
   const session = await auth();
   const userId = (session?.user as any)?.id;

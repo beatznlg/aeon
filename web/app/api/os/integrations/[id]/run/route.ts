@@ -6,7 +6,8 @@ export const dynamic = "force-dynamic";
 
 const PYTHON_URL = process.env.AEON_PYTHON_URL;
 
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params;
   const session = await auth();
   const userId = (session?.user as any)?.id;
   const workspaceId = (session?.user as any)?.workspaceId;

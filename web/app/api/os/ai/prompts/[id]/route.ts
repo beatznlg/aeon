@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 
 const PYTHON_URL = process.env.AEON_PYTHON_URL;
 
-export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(_req: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params;
   if (!PYTHON_URL) {
     return NextResponse.json({ ok: false, error: "AEON_PYTHON_URL not set" });
   }
@@ -15,7 +16,8 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   }
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(_req: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params;
   if (!PYTHON_URL) {
     return NextResponse.json({ ok: false, error: "AEON_PYTHON_URL not set" });
   }

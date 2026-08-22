@@ -6,7 +6,8 @@ export const dynamic = "force-dynamic";
  * Vercel-compatible mock vitals for an AEON OS app.
  * Returns deterministic, realistic data without spawning Python.
  */
-export async function GET(_req: Request, { params }: { params: { id: string } }) {
+export async function GET(_req: Request, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params;
   const id = params.id;
   const now = Date.now();
   const seed = id.split("").reduce((s, c) => s + c.charCodeAt(0), 0);

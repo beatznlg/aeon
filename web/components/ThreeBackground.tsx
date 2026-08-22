@@ -86,12 +86,7 @@ function Network({ mouse, primaryColor }: { mouse: { x: number; y: number }; pri
     <group ref={group}>
       <lineSegments>
         <bufferGeometry>
-          <bufferAttribute
-            attach="attributes-position"
-            array={edgePositions}
-            count={edgePositions.length / 3}
-            itemSize={3}
-          />
+          <bufferAttribute attach="attributes-position" args={[edgePositions, 3]} />
         </bufferGeometry>
         <lineBasicMaterial color={primaryColor} transparent opacity={0.16} depthWrite={false} />
       </lineSegments>
@@ -153,8 +148,8 @@ function Particles({ primaryColor }: { primaryColor: string }) {
   return (
     <points ref={ref}>
       <bufferGeometry>
-        <bufferAttribute attach="attributes-position" count={count} array={positions} itemSize={3} />
-        <bufferAttribute attach="attributes-color" count={count} array={colors} itemSize={3} />
+        <bufferAttribute attach="attributes-position" args={[positions, 3]} />
+        <bufferAttribute attach="attributes-color" args={[colors, 3]} />
       </bufferGeometry>
       <pointsMaterial
         size={0.025}

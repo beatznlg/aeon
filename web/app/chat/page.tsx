@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { getFlaskToken, getFlaskUser, getAuthHeaders } from "@/lib/flask-auth";
@@ -396,7 +397,7 @@ export default function ChatPage() {
             {!pluginsLoading && !pluginsError && plugins.length === 0 && (
               <div className="chat-plugins-status">
                 No plugin tools installed in this workspace yet.{" "}
-                <a href="/os/marketplace">Browse the Marketplace →</a>
+                <Link href="/os/marketplace">Browse the Marketplace →</Link>
               </div>
             )}
 

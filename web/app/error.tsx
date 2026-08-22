@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 /**
  * Root error boundary — catches errors in the route tree and shows a
  * themed error UI with retry capability.
@@ -53,9 +55,9 @@ export default function RootError({
             <button onClick={reset} className="pill-btn pill-btn-primary">
               🔄 Try Again
             </button>
-            <a href="/" className="pill-btn">
+            <Link href="/" className="pill-btn">
               ◈ Dashboard
-            </a>
+            </Link>
           </div>
         </div>
 

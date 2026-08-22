@@ -29,4 +29,7 @@ export default auth((req) => {
 
 export const config = {
   matcher: ["/((?!api|_next/static|_next/image|favicon.ico).*)"],
+  // Next.js 15.5+: run middleware on the Node.js runtime instead of the
+  // deprecated Edge runtime (Vercel deprecated Edge for anonymous deployments).
+  runtime: "nodejs",
 };

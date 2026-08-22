@@ -4,7 +4,7 @@ import { auth } from "@/auth";
 const AEON_PYTHON_URL = process.env.AEON_PYTHON_URL || "http://127.0.0.1:5000";
 
 interface RouteContext {
-  params: { workspaceId: string };
+  params: Promise<{ workspaceId: string }>;
 }
 
 function backendUrl(workspaceId: string) {
@@ -16,7 +16,7 @@ function backendUrl(workspaceId: string) {
  * Public endpoint so login/landing pages can load per-tenant branding.
  */
 export async function GET(request: NextRequest, context: RouteContext) {
-  const workspaceId = context.params.workspaceId;
+  const { workspaceId } = await context.params;
   const upstream = await fetch(backendUrl(workspaceId), {
     method: "GET",
     headers: { Accept: "application/json" },
@@ -39,7 +39,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
  * user context headers.
  */
 export async function POST(request: NextRequest, context: RouteContext) {
-  const workspaceId = context.params.workspaceId;
+  const { workspaceId } = await context.params;
 
   const session = await auth();
   if (!session?.user) {

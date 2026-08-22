@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 
 const AEON_URL = process.env.AEON_PYTHON_URL || "http://127.0.0.1:5000";
 
-export async function GET(req: NextRequest, { params }: { params: { workspaceId: string } }) {
+export async function GET(req: NextRequest, context: { params: Promise<{ workspaceId: string }> }) {
+  const params = await context.params;
   try {
     const authHeader = req.headers.get("authorization");
     const headers: Record<string, string> = { "Content-Type": "application/json" };

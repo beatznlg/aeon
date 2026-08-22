@@ -4,7 +4,8 @@ import { pythonUrl } from "@/lib/kernel";
 
 export const dynamic = "force-dynamic";
 
-export async function POST(req: NextRequest, { params }: { params: { workspaceId: string } }) {
+export async function POST(req: NextRequest, context: { params: Promise<{ workspaceId: string }> }) {
+  const params = await context.params;
   const session = await auth();
   const url = pythonUrl();
   if (!url) {

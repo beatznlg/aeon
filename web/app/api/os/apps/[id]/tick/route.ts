@@ -308,7 +308,8 @@ function mockTick(appId: string, query: string): object {
   return fallback;
 }
 
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params;
   const id = params.id;
   const body = await req.json().catch(() => ({}));
   const query = String(body.query || "").trim();

@@ -88,7 +88,8 @@ function streamResponse(text: string, backend: string): Response {
   });
 }
 
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params;
   const appId = params.id;
   const { messages } = (await req.json().catch(() => ({ messages: [] }))) as {
     messages?: { role: string; content: string }[];

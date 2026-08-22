@@ -3,7 +3,8 @@ import { pythonUrl } from "@/lib/kernel";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(req: NextRequest, { params }: { params: { workspaceId: string } }) {
+export async function GET(req: NextRequest, context: { params: Promise<{ workspaceId: string }> }) {
+  const params = await context.params;
   const url = pythonUrl();
   if (!url) {
     return NextResponse.json({ ok: false, error: "AEON_PYTHON_URL not set" }, { status: 503 });

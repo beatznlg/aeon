@@ -961,7 +961,8 @@ function transformLiveData(id: string, live: Record<string, unknown>): Record<st
   return transformed;
 }
 
-export async function GET(req: Request, { params }: { params: { id: string } }) {
+export async function GET(req: Request, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params;
   const id = params.id;
   const session = await auth();
   const userId = (session?.user as any)?.id;

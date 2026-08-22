@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef, forwardRef } from "react";
+import type { JSX } from "react";
 import ErrorState from "@/components/ui/ErrorState";
 import { isBackendDownError } from "@/lib/backend-status";
 

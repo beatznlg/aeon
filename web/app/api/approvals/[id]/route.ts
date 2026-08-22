@@ -5,7 +5,8 @@ const AEON_URL = process.env.AEON_PYTHON_URL || "http://127.0.0.1:5000";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(req: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params;
   try {
     const headers: Record<string, string> = {};
     const authHeader = req.headers.get("authorization");

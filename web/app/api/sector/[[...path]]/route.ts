@@ -11,7 +11,8 @@ export const dynamic = "force-dynamic";
  * 1. Tries to proxy to the Python backend first (/sectors/data/<sector>/<tool>)
  * 2. Falls back to generating time-varying local mock data (for live-updating charts)
  */
-export async function GET(request: NextRequest, { params }: { params: { path?: string[] } }) {
+export async function GET(request: NextRequest, context: { params: Promise<{ path?: string[] }> }) {
+  const params = await context.params;
   const path = params.path || [];
   const [sector, ...rest] = path;
   const tool = rest.join("-");
@@ -48,17 +49,20 @@ export async function GET(request: NextRequest, { params }: { params: { path?: s
   return proxyApiRequest(request, { backendPath });
 }
 
-export async function POST(request: NextRequest, { params }: { params: { path?: string[] } }) {
+export async function POST(request: NextRequest, context: { params: Promise<{ path?: string[] }> }) {
+  const params = await context.params;
   const backendPath = `/sectors/data/${(params.path || []).join("/")}`;
   return proxyApiRequest(request, { backendPath });
 }
 
-export async function PATCH(request: NextRequest, { params }: { params: { path?: string[] } }) {
+export async function PATCH(request: NextRequest, context: { params: Promise<{ path?: string[] }> }) {
+  const params = await context.params;
   const backendPath = `/sectors/data/${(params.path || []).join("/")}`;
   return proxyApiRequest(request, { backendPath });
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: { path?: string[] } }) {
+export async function DELETE(request: NextRequest, context: { params: Promise<{ path?: string[] }> }) {
+  const params = await context.params;
   const backendPath = `/sectors/data/${(params.path || []).join("/")}`;
   return proxyApiRequest(request, { backendPath });
 }
