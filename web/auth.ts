@@ -14,8 +14,10 @@ interface AeonUser {
 }
 
 const AEON_PYTHON_URL = (process.env.AEON_PYTHON_URL || "http://127.0.0.1:5000").replace(/\/$/, "");
-const AUTH_SECRET = process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET;
-const TRUST_HOST = process.env.VERCEL === "1" || process.env.AUTH_TRUST_HOST === "true";
+// Always provide a fallback so NextAuth boots without explicit configuration.
+// In production, override with a strong random value via AUTH_SECRET.
+const AUTH_SECRET = process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || "aeon-dev-fallback-do-not-use-in-production";
+const TRUST_HOST = process.env.VERCEL === "1" || process.env.AUTH_TRUST_HOST === "true" || process.env.NODE_ENV !== "production";
 
 /**
  * Fallback admin user that works when Supabase is not configured.
