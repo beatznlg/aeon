@@ -17,9 +17,12 @@ export type LLMProvider =
   | "lmstudio"
   | "vllm"
   | "custom"
-  | "stub";
+  | "stub"
+  | "pollinations";
 
-export const DEFAULT_PROVIDER: LLMProvider = "openrouter";
+// Free hosted AI — no API key required. Lets a fresh deployment answer
+// out of the box; configure a paid provider to upgrade.
+export const DEFAULT_PROVIDER: LLMProvider = "pollinations";
 
 function isValidProvider(value: string): value is LLMProvider {
   return [
@@ -34,6 +37,7 @@ function isValidProvider(value: string): value is LLMProvider {
     "vllm",
     "custom",
     "stub",
+    "pollinations",
   ].includes(value);
 }
 
@@ -51,6 +55,7 @@ function getModel(provider: LLMProvider, override?: string): string {
     mistral: process.env.MISTRAL_MODEL || process.env.AEON_LLM_MODEL || "mistral-small-latest",
     hf: process.env.HF_MODEL || process.env.AEON_LLM_MODEL || "Qwen/Qwen2.5-7B-Instruct",
     openrouter: process.env.OPENROUTER_MODEL || process.env.AEON_LLM_MODEL || "openai/gpt-4.1-mini",
+    pollinations: "openai-fast",
     ollama: process.env.OLLAMA_MODEL || process.env.AEON_LLM_MODEL || "llama3.1",
     lmstudio: process.env.LM_STUDIO_MODEL || process.env.AEON_LLM_MODEL || "local-model",
     vllm: process.env.VLLM_MODEL || process.env.AEON_LLM_MODEL || "served-model",
@@ -71,6 +76,7 @@ function compatibleBaseUrl(provider: LLMProvider): string {
     mistral: process.env.MISTRAL_BASE_URL || "https://api.mistral.ai/v1",
     hf: process.env.HF_OPENAI_BASE_URL || "https://router.huggingface.co/v1",
     openrouter: process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1",
+    pollinations: "https://text.pollinations.ai/openai",
     ollama: process.env.OLLAMA_OPENAI_BASE_URL || `${(process.env.OLLAMA_BASE_URL || "http://127.0.0.1:11434").replace(/\/$/, "")}/v1`,
     lmstudio: process.env.LM_STUDIO_BASE_URL || "http://127.0.0.1:1234/v1",
     vllm: process.env.VLLM_BASE_URL || "http://127.0.0.1:8000/v1",

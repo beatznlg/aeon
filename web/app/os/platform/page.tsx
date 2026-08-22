@@ -38,6 +38,13 @@ interface PackDef {
   required?: boolean;
 }
 
+interface ConnectorStatus {
+  ready: boolean;
+  configured: string[];
+  missing: string[];
+  required_secrets: string[];
+}
+
 interface EntityDef {
   id: string;
   name: string;
@@ -80,6 +87,7 @@ export default function PlatformPage() {
   const [connectors, setConnectors] = useState<ConnectorDef[]>([]);
   const [packs, setPacks] = useState<PackDef[]>([]);
   const [entities, setEntities] = useState<EntityDef[]>([]);
+  const [connectorStatus, setConnectorStatus] = useState<Record<string, ConnectorStatus>>({});
   const [enabledModules, setEnabledModules] = useState<Set<string>>(new Set());
   const [enabledConnectors, setEnabledConnectors] = useState<Set<string>>(new Set());
   const [health, setHealth] = useState<Record<string, string>>({});
@@ -94,8 +102,9 @@ export default function PlatformPage() {
       fetch("/api/platform/connectors", { cache: "no-store" }).then((r) => r.json()),
       fetch("/api/platform/industry-packs", { cache: "no-store" }).then((r) => r.json()),
       fetch("/api/platform/universal-model", { cache: "no-store" }).then((r) => r.json()),
+      fetch("/api/platform/connectors/status", { cache: "no-store" }).then((r) => r.json()),
     ])
-      .then(([cfg, mods, cons, pks, um]) => {
+      .then(([cfg, mods, cons, pks, um, cst]) => {
         if (cfg.ok && cfg.config) setConfig(cfg.config);
         if (mods.ok && mods.modules) {
           setModules(mods.modules);
@@ -107,6 +116,7 @@ export default function PlatformPage() {
         }
         if (pks.ok && pks.packs) setPacks(pks.packs);
         if (um.ok && um.entities) setEntities(um.entities);
+        if (cst.ok && cst.status) setConnectorStatus(cst.status);
       })
       .catch(() => setError("Failed to load platform configuration"));
   }, []);
@@ -425,6 +435,29 @@ export default function PlatformPage() {
                     </span>
                   )}
                   {!on && <span style={s.connOff}>DISABLED</span>}
+                  {on && connectorStatus[c.id] && (
+                    connectorStatus[c.id].ready ? (
+                      <span style={{ ...s.statusChip, color: "#34d399", borderColor: "rgba(52,211,153,0.4)" }}>
+                        ✓ keys ready
+                      </span>
+                    ) : (
+                      <span
+                        style={{
+                          ...s.statusChip,
+                          color: "#fbbf24",
+                          borderColor: "rgba(251,191,36,0.4)",
+                          maxWidth: "160px",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                        title={connectorStatus[c.id].missing.join(", ")}
+                      >
+                        needs: {connectorStatus[c.id].missing.slice(0, 1).join("")}
+                        {connectorStatus[c.id].missing.length > 1 ? " +…" : ""}
+                      </span>
+                    )
+                  )}
                 </div>
               </div>
             );

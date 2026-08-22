@@ -20,6 +20,7 @@ from flask import g, jsonify, request
 
 from aeon_auth import has_role, require_auth, require_workspace_role
 from aeon_platform import (
+    connector_credential_status,
     connector_health,
     get_tenant_config_manager,
     list_connectors,
@@ -133,6 +134,16 @@ def register_platform_routes(app: Any) -> None:
             return jsonify({"ok": False, "error": str(exc)}), 400
         _audit("TENANT_CONNECTORS_UPDATED", workspace_id, {"connectors": list(config.get("connectors", ()))})
         return jsonify({"ok": True, "config": config, "connectors": list_connectors(workspace_id)})
+
+    @app.route("/platform/connectors/status", methods=["GET"])
+    @require_auth
+    @require_workspace_role("VIEWER")
+    def platform_connector_status():
+        """Masked credential readiness per connector (booleans only)."""
+        workspace_id = _workspace_id()
+        if not workspace_id:
+            return jsonify({"ok": False, "error": "workspace not selected"}), 400
+        return jsonify({"ok": True, "status": connector_credential_status()})
 
     @app.route("/platform/connectors/<connector_id>/health", methods=["POST"])
     @require_auth

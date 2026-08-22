@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import pytest
 
+import json
+
 from aeon_platform import (
     CONNECTOR_CATALOG,
     CONNECTOR_CONTRACT,
@@ -105,6 +107,20 @@ def test_universal_normalization_sage_and_xero_to_same_entity():
 def test_universal_normalization_unknown_entity_rejected():
     with pytest.raises(ValueError, match="unknown universal entity"):
         normalize_entity("spaceship", {}, "x")
+
+
+def test_connector_credential_status_is_masked(manager, monkeypatch):
+    from aeon_platform import connector_credential_status
+
+    monkeypatch.setenv("SAGE_CLIENT_ID", "secret-value")
+    status = connector_credential_status()
+    sage = status["sage"]
+    assert sage["ready"] is False  # not all 3 secrets present
+    assert "SAGE_CLIENT_ID" in sage["configured"]
+    # Values never leak — only names.
+    serialized = json.dumps(status)
+    assert "secret-value" not in serialized
+    assert all(c["ready"] is False or c["ready"] is True for c in status.values())
 
 
 def test_connector_health_reports_contract(manager):

@@ -4,6 +4,8 @@ import { auth } from "@/auth";
 import { logAudit } from "@/lib/audit";
 import { kernelAppChat, pythonUrl } from "@/lib/kernel";
 import { logUsage } from "@/lib/usage";
+import { extractUserText, uiMessageError, uiMessageStream } from "@/lib/chat-stream";
+import type { ChatRequestBody } from "@/lib/chat-stream";
 
 export const maxDuration = 120;
 
@@ -34,78 +36,24 @@ ${goals}
 Respond as a helpful, concise AI agent. Whenever useful, reference the module's tools and goals in your answer.`;
 }
 
-/**
- * Split text into small word-group chunks while preserving whitespace and
- * line breaks. This lets the browser render text as if it were being typed
- * in real time.
- */
-function chunkText(text: string, wordsPerChunk = 2): string[] {
-  const tokens = text.split(/(\s+)/).filter(Boolean);
-  const chunks: string[] = [];
-  let buffer = "";
-  let wordCount = 0;
-
-  for (const token of tokens) {
-    buffer += token;
-    if (/\S/.test(token)) {
-      wordCount += 1;
-    }
-    if (wordCount >= wordsPerChunk) {
-      chunks.push(buffer);
-      buffer = "";
-      wordCount = 0;
-    }
-  }
-
-  if (buffer) chunks.push(buffer);
-  return chunks;
-}
-
-/**
- * Stream a full text response as a Vercel AI Data Stream.
- * Each chunk is emitted as: 0:<JSON-string>
- */
-function streamResponse(text: string, backend: string): Response {
-  const encoder = new TextEncoder();
-  const chunks = chunkText(text, 2);
-
-  const readable = new ReadableStream<Uint8Array>({
-    async start(controller) {
-      for (const chunk of chunks) {
-        controller.enqueue(encoder.encode(`0:${JSON.stringify(chunk)}\n`));
-        await new Promise((resolve) => setTimeout(resolve, 10));
-      }
-      controller.close();
-    },
-  });
-
-  return new Response(readable, {
-    headers: {
-      "Content-Type": "text/plain; charset=utf-8",
-      "x-vercel-ai-data-stream": "v1",
-      "x-aeon-backend": backend,
-    },
-  });
-}
-
 export async function POST(req: Request, context: { params: Promise<{ id: string }> }) {
   const params = await context.params;
   const appId = params.id;
-  const { messages } = (await req.json().catch(() => ({ messages: [] }))) as {
-    messages?: { role: string; content: string }[];
-  };
-  const last = messages?.[messages.length - 1];
-  const prompt = last?.content ?? "";
+  let body: ChatRequestBody = {};
+  try {
+    body = (await req.json()) as ChatRequestBody;
+  } catch {
+    return uiMessageError("Invalid request body");
+  }
+  const prompt = extractUserText(body);
+  const messageId = typeof body.id === "string" ? body.id : undefined;
   // Allow clients to request a specific provider at runtime. Falls back to
   // the AEON_LLM_PROVIDER env default (which is OpenRouter by default).
   const providerOverride = req.headers.get("x-aeon-provider") || undefined;
   const session = await auth();
 
-  if (!prompt.trim()) {
-    return new Response(JSON.stringify({ ok: false, error: "empty prompt" }), {
-      status: 400,
-      headers: { "Content-Type": "application/json" },
-    });
+  if (!prompt) {
+    return uiMessageError("No message text found", messageId);
   }
 
   const system = buildSystemPrompt(appId);
@@ -133,22 +81,20 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
     if (pythonUrl()) {
       const kernelRes = await kernelAppChat(appId, prompt, system);
       if (kernelRes) {
-        return streamResponse(
+        return uiMessageStream(
           kernelRes.data?.answer ?? "",
-          kernelRes.data?.backend ?? "aeon_python"
+          messageId,
+          { "x-aeon-backend": kernelRes.data?.backend ?? "aeon_python" }
         );
       }
     }
 
     // --- Fallback: TypeScript LLM bridge ---
     const { text, backend } = await callLLM(prompt, system, providerOverride);
-    return streamResponse(text, backend);
+    return uiMessageStream(text, messageId, { "x-aeon-backend": backend });
   } catch (err: any) {
     const message = err?.message || String(err);
     console.error(`[module-chat ${appId}]`, message);
-    return new Response(JSON.stringify({ ok: false, error: message }), {
-      status: 503,
-      headers: { "Content-Type": "application/json" },
-    });
+    return uiMessageError(`AEON backend unreachable — ${message}`, messageId);
   }
 }

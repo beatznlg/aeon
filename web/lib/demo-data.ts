@@ -479,6 +479,23 @@ export const demoPlatformConnectors = {
   ],
 };
 
+export const demoConnectorStatus = {
+  ok: true,
+  demo: true,
+  status: {
+    sage: { required_secrets: ["SAGE_CLIENT_ID", "SAGE_CLIENT_SECRET", "SAGE_REALM_ID"], configured: ["SAGE_CLIENT_ID", "SAGE_CLIENT_SECRET", "SAGE_REALM_ID"], missing: [], ready: true },
+    microsoft365: { required_secrets: ["MS_GRAPH_TENANT_ID", "MS_GRAPH_CLIENT_ID", "MS_GRAPH_CLIENT_SECRET"], configured: ["MS_GRAPH_TENANT_ID", "MS_GRAPH_CLIENT_ID", "MS_GRAPH_CLIENT_SECRET"], missing: [], ready: true },
+    indigo: { required_secrets: ["INDIGO_API_KEY", "INDIGO_BASE_URL"], configured: ["INDIGO_API_KEY", "INDIGO_BASE_URL"], missing: [], ready: true },
+    xero: { required_secrets: ["XERO_CLIENT_ID", "XERO_CLIENT_SECRET", "XERO_TENANT_ID"], configured: [], missing: ["XERO_CLIENT_ID", "XERO_CLIENT_SECRET", "XERO_TENANT_ID"], ready: false },
+    sap: { required_secrets: ["SAP_BASE_URL", "SAP_CLIENT_ID", "SAP_CLIENT_SECRET"], configured: [], missing: ["SAP_BASE_URL", "SAP_CLIENT_ID", "SAP_CLIENT_SECRET"], ready: false },
+    quickbooks: { required_secrets: ["QUICKBOOKS_CLIENT_ID", "QUICKBOOKS_CLIENT_SECRET", "QUICKBOOKS_COMPANY_ID"], configured: [], missing: ["QUICKBOOKS_CLIENT_ID", "QUICKBOOKS_CLIENT_SECRET", "QUICKBOOKS_COMPANY_ID"], ready: false },
+    salesforce: { required_secrets: ["SALESFORCE_CLIENT_ID", "SALESFORCE_CLIENT_SECRET", "SALESFORCE_INSTANCE_URL"], configured: [], missing: ["SALESFORCE_CLIENT_ID", "SALESFORCE_CLIENT_SECRET", "SALESFORCE_INSTANCE_URL"], ready: false },
+    hubspot: { required_secrets: ["HUBSPOT_API_KEY"], configured: [], missing: ["HUBSPOT_API_KEY"], ready: false },
+    workday: { required_secrets: ["WORKDAY_BASE_URL", "WORKDAY_CLIENT_ID", "WORKDAY_CLIENT_SECRET"], configured: [], missing: ["WORKDAY_BASE_URL", "WORKDAY_CLIENT_ID", "WORKDAY_CLIENT_SECRET"], ready: false },
+    pos: { required_secrets: ["POS_API_KEY", "POS_BASE_URL"], configured: [], missing: ["POS_API_KEY", "POS_BASE_URL"], ready: false },
+  },
+};
+
 export const demoIndustryPacks = {
   ok: true,
   demo: true,
@@ -850,6 +867,7 @@ export function demoResponseForPath(path: string): { body: unknown; status: numb
     "platform/config": demoPlatformConfig,
     "platform/modules": demoPlatformModules,
     "platform/connectors": demoPlatformConnectors,
+    "platform/connectors/status": demoConnectorStatus,
     "platform/industry-packs": demoIndustryPacks,
     "platform/universal-model": demoUniversalModel,
     "os/observability/metrics": demoMetricsSummary,

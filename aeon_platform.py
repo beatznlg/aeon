@@ -50,6 +50,7 @@ on top of this universal core, not a fork.
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -491,6 +492,24 @@ def normalize_entity(entity_id: str, source_data: Mapping[str, Any], source: str
 # ──────────────────────────────────────────────────────────────────────
 # Connector health (simulated contract execution)
 # ──────────────────────────────────────────────────────────────────────
+def connector_credential_status() -> dict[str, dict[str, Any]]:
+    """Report which required secrets exist in the environment (masked).
+
+    Only booleans are exposed — secret values never leave the server.
+    """
+    status: dict[str, dict[str, Any]] = {}
+    for connector in CONNECTOR_CATALOG:
+        secrets = list(connector["required_secrets"])
+        present = [name for name in secrets if os.environ.get(name)]
+        status[connector["id"]] = {
+            "required_secrets": secrets,
+            "configured": present,
+            "missing": [name for name in secrets if name not in present],
+            "ready": bool(secrets) and len(present) == len(secrets),
+        }
+    return status
+
+
 def connector_health(connector_id: str) -> dict[str, Any]:
     """Run the connector contract's ``health_check`` step.
 
@@ -599,6 +618,7 @@ __all__ = [
     "TenantConfigManager",
     "UNIVERSAL_ENTITIES",
     "build_tenant_context_prompt",
+    "connector_credential_status",
     "connector_health",
     "get_tenant_config_manager",
     "list_connectors",
