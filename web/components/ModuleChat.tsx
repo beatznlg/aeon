@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useChat, type Message } from "@ai-sdk/react";
+import { useChat, type UIMessage } from "@ai-sdk/react";
+import { DefaultChatTransport } from "ai";
 import { getStoredProvider, type StoredProvider } from "@/lib/provider";
+import { messageText } from "@/lib/chat-message";
 
 interface ModuleChatProps {
   appId: string;
@@ -22,19 +24,38 @@ export function ModuleChat({ appId, appName }: ModuleChatProps) {
     return () => window.removeEventListener("storage", onStorage);
   }, []);
 
-  const { messages, input, handleInputChange, handleSubmit, isLoading, error } = useChat({
-    api: `/api/os/apps/${appId}/chat`,
-    id: `module-chat-${appId}`,
-    body: { appId },
-    headers: { "x-aeon-provider": provider },
-    initialMessages: [
+  const [input, setInput] = useState("");
+
+  const welcomeMessage: UIMessage = {
+    id: "welcome",
+    role: "assistant",
+    parts: [
       {
-        id: "welcome",
-        role: "assistant",
-        content: `Welcome to the ${appName ?? appId} command center. I'm AEON, your autonomous agent for this vertical. Ask me anything — I can analyze live data, run tools, and help you make decisions.`,
-      } as Message,
+        type: "text",
+        text: `Welcome to the ${appName ?? appId} command center. I'm AEON, your autonomous agent for this vertical. Ask me anything — I can analyze live data, run tools, and help you make decisions.`,
+      },
     ],
+  };
+
+  const { messages, sendMessage, status, error } = useChat({
+    id: `module-chat-${appId}`,
+    transport: new DefaultChatTransport({
+      api: `/api/os/apps/${appId}/chat`,
+      body: { appId },
+      headers: { "x-aeon-provider": provider },
+    }),
+    messages: [welcomeMessage],
   });
+
+  const isLoading = status === "submitted" || status === "streaming";
+
+  const onSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const text = input.trim();
+    if (!text) return;
+    sendMessage({ text });
+    setInput("");
+  };
 
   return (
     <div className="os-chat">
@@ -52,7 +73,7 @@ export function ModuleChat({ appId, appName }: ModuleChatProps) {
             <div className="chat-message-avatar">{message.role === "user" ? "👤" : "🤖"}</div>
             <div className="chat-message-content">
               <div className="chat-message-text">
-                {message.content || <span className="chat-empty-content">…</span>}
+                {messageText(message) || <span className="chat-empty-content">…</span>}
               </div>
             </div>
           </div>
@@ -76,11 +97,11 @@ export function ModuleChat({ appId, appName }: ModuleChatProps) {
         )}
       </div>
 
-      <form onSubmit={handleSubmit} className="os-chat-input">
+      <form onSubmit={onSubmit} className="os-chat-input">
         <input
           name="prompt"
           value={input}
-          onChange={handleInputChange}
+          onChange={(e) => setInput(e.target.value)}
           placeholder={`Ask ${appName ?? "the agent"} anything...`}
           disabled={isLoading}
           autoComplete="off"

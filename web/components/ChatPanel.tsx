@@ -1,9 +1,11 @@
 "use client";
 
 import { useChat } from "@ai-sdk/react";
+import { DefaultChatTransport } from "ai";
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { getStoredProvider, type StoredProvider } from "@/lib/provider";
+import { messageText } from "@/lib/chat-message";
 
 type Episode = {
   id: number;
@@ -145,18 +147,26 @@ export default function ChatPanel({
     return () => window.removeEventListener("storage", onStorage);
   }, []);
 
-  const { messages, input, handleInputChange, handleSubmit, status, setMessages } = useChat({
-    api: "/api/chat",
-    body: { backend },
-    headers: { "x-aeon-provider": provider },
-    onFinish: (msg) => onMemoryWrite("bot", msg.content),
+  const [input, setInput] = useState("");
+
+  const { messages, sendMessage, status, setMessages } = useChat({
+    transport: new DefaultChatTransport({
+      api: "/api/chat",
+      body: { backend },
+      headers: { "x-aeon-provider": provider },
+    }),
+    onFinish: ({ message }) => onMemoryWrite("bot", messageText(message)),
   });
 
   const resetChat = () => setMessages([]);
 
   const onSubmit = (e: React.FormEvent<HTMLFormElement>) => {
-    if (input.trim()) onMemoryWrite("user", input.trim());
-    handleSubmit(e);
+    e.preventDefault();
+    const text = input.trim();
+    if (!text) return;
+    onMemoryWrite("user", text);
+    sendMessage({ text });
+    setInput("");
   };
 
   const isEmpty = messages.length === 0;
@@ -187,9 +197,9 @@ export default function ChatPanel({
             >
               <div className={"role " + (m.role === "user" ? "" : "bot")}>{m.role}</div>
               {m.role === "user" ? (
-                <div style={{ whiteSpace: "pre-wrap" }}>{m.content}</div>
+                <div style={{ whiteSpace: "pre-wrap" }}>{messageText(m)}</div>
               ) : (
-                <Markdown text={m.content} />
+                <Markdown text={messageText(m)} />
               )}
             </div>
           ))
@@ -218,7 +228,7 @@ export default function ChatPanel({
           <input
             name="prompt"
             value={input}
-            onChange={handleInputChange}
+            onChange={(e) => setInput(e.target.value)}
             placeholder="Ask AEON anything..."
             autoComplete="off"
             autoFocus
