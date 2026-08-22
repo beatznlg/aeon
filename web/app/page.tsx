@@ -323,20 +323,14 @@ function ExecutiveHero({
   config,
   activeModules,
   totalTools,
-  health,
 }: {
   config: any;
   activeModules: CommandModule[];
   totalTools: number;
-  health: { ok: boolean; backend?: string } | null;
 }) {
   return (
     <div className="exec-hero">
       <div className="exec-hero-left">
-        <span className="exec-kicker">
-          <span className="pulse-dot" />
-          System Online · {health?.backend || "AEON Kernel"}
-        </span>
         <h1 className="exec-title">
           Executive <span className="grad">Overview</span>
         </h1>
@@ -392,7 +386,7 @@ function MetricRow({
       good: true,
       color: "#22c55e",
       points: [3, 4, 5, 5, 6, 6, 7],
-      sub: health?.backend || "AEON stub",
+      sub: "All systems operational",
     },
     {
       label: "Uptime",
@@ -819,7 +813,6 @@ export default function DashboardPage() {
               config={config}
               activeModules={activeModules}
               totalTools={totalTools}
-              health={health}
             />
           </FadeIn>
         )}
