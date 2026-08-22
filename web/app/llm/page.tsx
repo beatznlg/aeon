@@ -98,6 +98,17 @@ const PROVIDERS: ProviderMeta[] = [
     desc: "Connect any OpenAI-compatible API.",
   },
   {
+    id: "pollinations",
+    name: "Free (Pollinations)",
+    icon: "✦",
+    color: "#00a8ff",
+    models: ["openai-fast"],
+    configured: true,
+    active: false,
+    env_var: null,
+    desc: "Genuinely free hosted AI — no API key required. Rate-limited.",
+  },
+  {
     id: "stub",
     name: "Stub (No AI)",
     icon: "◇",
@@ -317,6 +328,13 @@ export default function LLMPage() {
           {current.id === "ollama" && (
             <div style={s.infoBox}>
               ✓ No API key needed. Make sure Ollama is running locally on <code>http://localhost:11434</code>
+            </div>
+          )}
+
+          {current.id === "pollinations" && (
+            <div style={s.infoBox}>
+              ✓ No API key needed — free hosted AI (openai-fast, GPT-OSS 20B). Free tier is rate-limited;
+              if a request is throttled, just try again in a few seconds.
             </div>
           )}
 

@@ -123,6 +123,17 @@ export async function GET() {
           desc: "Connect to a self-hosted vLLM server.",
         },
         {
+          id: "pollinations",
+          name: "Free (Pollinations)",
+          icon: "✦",
+          color: "#00a8ff",
+          models: ["openai-fast"],
+          configured: true,
+          active: false,
+          env_var: null,
+          desc: "Genuinely free hosted AI — no API key required. Rate-limited.",
+        },
+        {
           id: "custom",
           name: "Custom OpenAI-Compatible",
           icon: "✚",

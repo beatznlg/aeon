@@ -158,6 +158,7 @@ class OpenAICompatibleProvider(LLMProvider):
         provider_id: str = "custom",
         default_model: str = "custom-model",
         timeout: float | None = None,
+        retry_transient: bool = False,
     ) -> None:
         if not base_url:
             raise ValueError(f"{provider_id} base URL is required")
@@ -166,6 +167,7 @@ class OpenAICompatibleProvider(LLMProvider):
         self.base_url = _normalize_base_url(base_url)
         self.api_key = api_key
         self.timeout = timeout or _timeout(120.0)
+        self.retry_transient = retry_transient
 
     def generate(self, prompt: str, system: str | None = None, max_new_tokens: int = 512) -> dict[str, Any]:
         started = time.time()
@@ -174,30 +176,45 @@ class OpenAICompatibleProvider(LLMProvider):
         headers = {"Content-Type": "application/json", "Accept": "application/json"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
-        try:
-            response = _SESSION.post(
-                self.base_url,
-                headers=headers,
-                json={
-                    "model": self.model,
-                    "messages": _messages(prompt, system),
-                    "max_tokens": max_new_tokens,
-                    "temperature": 0.4,
-                    "top_p": 0.9,
-                },
-                timeout=self.timeout,
-            )
-            response.raise_for_status()
-            data = response.json()
-            if not isinstance(data, Mapping):
-                raise ValueError("endpoint returned a non-object response")
-            return _result(_messages_text(data), _usage_tokens(data), started, f"{self.provider_id}:{self.model}")
-        except requests.RequestException as exc:
-            status = getattr(getattr(exc, "response", None), "status_code", None)
-            suffix = f" (HTTP {status})" if status else ""
-            return _error_result(self.provider_id, f"request failed{suffix}", f"{self.provider_id}_error")
-        except (TypeError, ValueError, KeyError) as exc:
-            return _error_result(self.provider_id, f"invalid response ({type(exc).__name__})", f"{self.provider_id}_error")
+        attempts = 3 if self.retry_transient else 1
+        last_status: int | None = None
+        for attempt in range(attempts):
+            try:
+                response = _SESSION.post(
+                    self.base_url,
+                    headers=headers,
+                    json={
+                        "model": self.model,
+                        "messages": _messages(prompt, system),
+                        "max_tokens": max_new_tokens,
+                        "temperature": 0.4,
+                        "top_p": 0.9,
+                    },
+                    timeout=self.timeout,
+                )
+                status = getattr(response, "status_code", None)
+                if status in {402, 429, 500, 502, 503, 504} and attempt < attempts - 1:
+                    last_status = status
+                    time.sleep(3 + attempt * 3)
+                    continue
+                response.raise_for_status()
+                data = response.json()
+                if not isinstance(data, Mapping):
+                    raise ValueError("endpoint returned a non-object response")
+                return _result(_messages_text(data), _usage_tokens(data), started, f"{self.provider_id}:{self.model}")
+            except requests.RequestException as exc:
+                status = getattr(getattr(exc, "response", None), "status_code", None) or last_status
+                if status in {402, 429, 500, 502, 503, 504} and attempt < attempts - 1:
+                    last_status = status
+                    time.sleep(3 + attempt * 3)
+                    continue
+                suffix = f" (HTTP {status})" if status else ""
+                if self.provider_id == "pollinations":
+                    hint = ". Free tier is rate-limited — try again in a few seconds" if status in {402, 429} else ""
+                    return _error_result(self.provider_id, f"request failed{suffix}{hint}", f"{self.provider_id}_error")
+                return _error_result(self.provider_id, f"request failed{suffix}", f"{self.provider_id}_error")
+            except (TypeError, ValueError, KeyError) as exc:
+                return _error_result(self.provider_id, f"invalid response ({type(exc).__name__})", f"{self.provider_id}_error")
 
 
 class CustomLLMProvider(OpenAICompatibleProvider):
@@ -334,13 +351,14 @@ MODEL_REGISTRY: dict[str, dict[str, Any]] = {
     "qwen": {"name": "Qwen Local (GPU)", "models": ["Qwen/Qwen2.5-7B-Instruct"], "env_var": None, "desc": "Optional in-process local Qwen runtime."},
     "custom": {"name": "Custom OpenAI-Compatible", "models": ["custom-model"], "env_var": "AEON_CUSTOM_LLM_API_KEY", "base_url_env": "AEON_CUSTOM_LLM_BASE_URL", "model_env_var": "AEON_CUSTOM_LLM_MODEL", "desc": "Connect any hosted API or local server implementing /v1/chat/completions."},
     "stub": {"name": "Stub (No AI)", "models": ["deterministic stub"], "env_var": None, "desc": "Deterministic fallback for tests and offline development."},
+    "pollinations": {"name": "Free (Pollinations)", "models": ["openai-fast"], "env_var": None, "base_url": "https://text.pollinations.ai/openai", "desc": "Genuinely free hosted AI — no API key required. Rate-limited anonymous tier."},
 }
 
-_PROVIDER_STYLE = {"stub": ("◇", "#71717a"), "openai": ("⚡", "#10a37f"), "anthropic": ("✦", "#d97706"), "google": ("✦", "#4285f4"), "mistral": ("◆", "#f97316"), "openrouter": ("◈", "#7c3aed"), "ollama": ("🦙", "#8b5cf6"), "lmstudio": ("⌘", "#14b8a6"), "vllm": ("▣", "#0ea5e9"), "hf": ("🤗", "#fbbf24"), "qwen": ("🧠", "#6366f1"), "custom": ("✚", "#22c55e")}
+_PROVIDER_STYLE = {"stub": ("◇", "#71717a"), "openai": ("⚡", "#10a37f"), "anthropic": ("✦", "#d97706"), "google": ("✦", "#4285f4"), "mistral": ("◆", "#f97316"), "openrouter": ("◈", "#7c3aed"), "ollama": ("🦙", "#8b5cf6"), "lmstudio": ("⌘", "#14b8a6"), "vllm": ("▣", "#0ea5e9"), "hf": ("🤗", "#fbbf24"), "qwen": ("🧠", "#6366f1"), "custom": ("✚", "#22c55e"), "pollinations": ("✦", "#00a8ff")}
 
 
 def _configured(provider_id: str, metadata: Mapping[str, Any]) -> bool:
-    if provider_id in {"stub", "qwen", "ollama", "lmstudio", "vllm"}:
+    if provider_id in {"stub", "qwen", "ollama", "lmstudio", "vllm", "pollinations"}:
         return True
     if provider_id == "custom":
         return bool(os.environ.get("AEON_CUSTOM_LLM_BASE_URL") or os.environ.get("AEON_LLM_BASE_URL"))
@@ -421,6 +439,7 @@ def _compatible_provider(provider_id: str, model: str | None) -> OpenAICompatibl
         "openrouter": {"base_url": MODEL_REGISTRY["openrouter"]["base_url"], "api_key": os.environ.get("OPENROUTER_API_KEY")},
         "lmstudio": {"base_url": os.environ.get("LM_STUDIO_BASE_URL", "http://localhost:1234/v1")},
         "vllm": {"base_url": os.environ.get("VLLM_BASE_URL", "http://localhost:8000/v1"), "api_key": os.environ.get("VLLM_API_KEY")},
+        "pollinations": {"base_url": MODEL_REGISTRY["pollinations"]["base_url"], "api_key": None, "retry_transient": True},
     }
     model_env = {
         "google": "GEMINI_MODEL",
@@ -430,7 +449,9 @@ def _compatible_provider(provider_id: str, model: str | None) -> OpenAICompatibl
         "vllm": "VLLM_MODEL",
     }.get(provider_id)
     configured_model = os.environ.get(model_env) if model_env else None
-    return OpenAICompatibleProvider(model=model or configured_model or os.environ.get("AEON_LLM_MODEL") or MODEL_REGISTRY[provider_id]["models"][0], provider_id=provider_id, default_model=MODEL_REGISTRY[provider_id]["models"][0], **configs[provider_id])
+    config = dict(configs[provider_id])
+    retry_transient = config.pop("retry_transient", False)
+    return OpenAICompatibleProvider(model=model or configured_model or os.environ.get("AEON_LLM_MODEL") or MODEL_REGISTRY[provider_id]["models"][0], provider_id=provider_id, default_model=MODEL_REGISTRY[provider_id]["models"][0], retry_transient=retry_transient, **config)
 
 
 def get_llm_provider(provider: str | None = None, model: str | None = None) -> LLMProvider:
@@ -450,7 +471,7 @@ def get_llm_provider(provider: str | None = None, model: str | None = None) -> L
         return HFInferenceProvider(selected_model)
     if provider_id == "custom":
         return CustomLLMProvider(selected_model)
-    if provider_id in {"google", "mistral", "openrouter", "lmstudio", "vllm"}:
+    if provider_id in {"google", "mistral", "openrouter", "lmstudio", "vllm", "pollinations"}:
         return _compatible_provider(provider_id, selected_model)
     return StubProvider()
 

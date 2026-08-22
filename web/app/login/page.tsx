@@ -79,7 +79,8 @@ function LoginForm() {
       if (result?.ok) {
         const flask = await loginToFlask(data.email || DEMO_EMAIL, data.password || DEMO_PASSWORD);
         if (flask) storeFlaskSession(flask.token, flask.user);
-        router.push(callbackUrl);
+        // Demo accounts land on the sector showcase so new users see everything AEON OS can do.
+        router.push("/showcase");
       } else {
         setError("Demo sign-in failed");
         setLoading(false);
