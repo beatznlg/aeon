@@ -29,13 +29,11 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import os
 import threading
-import time
 import uuid
+from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -307,8 +305,9 @@ class EventRelay:
 
     def _tick(self) -> int:
         """Process one batch of pending events. Returns count processed."""
-        from aeon_db import get_db, OutboxEvent, EventConsumption
         from sqlalchemy import and_
+
+        from aeon_db import EventConsumption, OutboxEvent, get_db
 
         db = get_db()
         now = datetime.now(timezone.utc)
@@ -368,7 +367,7 @@ class EventRelay:
 
         return processed
 
-    def _dispatch_event(self, session: Any, event: Any, EventConsumption: Any) -> None:
+    def _dispatch_event(self, session: Any, event: Any, event_consumption: Any) -> None:
         """Dispatch a single event to all registered consumers with idempotency."""
         event_type = event.event_type
         payload = event.payload or {}
@@ -383,10 +382,10 @@ class EventRelay:
 
             # Idempotency check: has this consumer already processed this event?
             existing = (
-                session.query(EventConsumption)
+                session.query(event_consumption)
                 .filter(
-                    EventConsumption.consumer_name == consumer_name,
-                    EventConsumption.event_id == event.id,
+                    event_consumption.consumer_name == consumer_name,
+                    event_consumption.event_id == event.id,
                 )
                 .first()
             )
@@ -401,7 +400,7 @@ class EventRelay:
                     existing.processed_at = datetime.now(timezone.utc)
                     existing.attempt_count += 1
                 else:
-                    session.add(EventConsumption(
+                    session.add(event_consumption(
                         consumer_name=consumer_name,
                         event_id=event.id,
                         status="completed",
@@ -417,7 +416,7 @@ class EventRelay:
                     existing.last_error_code = "HANDLER_FAILED"
                     existing.last_error_message = error_msg
                 else:
-                    session.add(EventConsumption(
+                    session.add(event_consumption(
                         consumer_name=consumer_name,
                         event_id=event.id,
                         status="error",
@@ -544,7 +543,7 @@ def query_outbox(
     limit: int = 50,
 ) -> list[dict[str, Any]]:
     """Query recent outbox events."""
-    from aeon_db import get_db, OutboxEvent
+    from aeon_db import OutboxEvent, get_db
 
     db = get_db()
     with db.session() as s:
@@ -577,7 +576,7 @@ def query_outbox(
 
 def outbox_stats() -> dict[str, Any]:
     """Return aggregate outbox statistics."""
-    from aeon_db import get_db, OutboxEvent
+    from aeon_db import OutboxEvent, get_db
 
     db = get_db()
     with db.session() as s:

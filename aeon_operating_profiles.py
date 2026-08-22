@@ -19,7 +19,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 from aeon_marketplace import BUILTIN_PLUGIN_CATALOG
 

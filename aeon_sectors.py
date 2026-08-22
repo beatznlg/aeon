@@ -1133,7 +1133,8 @@ def sector_data_upsert(sector: str, tool: str):
 
     try:
         from aeon_db import upsert_sector_data
-        from aeon_events import emit as _emit_event, SECTOR_DATA_CHANGED
+        from aeon_events import SECTOR_DATA_CHANGED
+        from aeon_events import emit as _emit_event
         record = upsert_sector_data(str(ws_id), canonical_sector, normalized_tool, body)
         try:
             _emit_event(SECTOR_DATA_CHANGED, tenant_id="", workspace_id=str(ws_id), payload={"sector": canonical_sector, "tool": normalized_tool, "version": record.version})

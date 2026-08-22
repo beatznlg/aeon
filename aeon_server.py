@@ -71,7 +71,6 @@ from aeon_api_keys import ApiKeyManager
 from aeon_auth import (
     get_current_user_context,
     require_auth,
-    require_permission,
     require_role,
     require_workspace_access,
     require_workspace_role,
@@ -246,14 +245,20 @@ register_compliance_routes(app)
 
 from aeon_anomalies_routes import anomalies_bp
 from aeon_dr_routes import dr_bp
-from aeon_sectors import sectors_bp
-from aeon_siem_routes import siem_bp
+from aeon_events import (
+    AUTOMATION_COMPLETED,
+    AUTOMATION_FAILED,
+    BILLING_CHECKOUT_COMPLETED,
+    MEMBERSHIP_CREATED,
+    SUBSCRIPTION_UPDATED,
+    USER_REGISTERED,
+    WORKSPACE_CREATED,
+)
 from aeon_events import (
     emit as emit_event,
-    USER_REGISTERED, WORKSPACE_CREATED, MEMBERSHIP_CREATED,
-    SUBSCRIPTION_UPDATED, BILLING_CHECKOUT_COMPLETED,
-    AUTOMATION_TRIGGERED, AUTOMATION_COMPLETED, AUTOMATION_FAILED,
 )
+from aeon_sectors import sectors_bp
+from aeon_siem_routes import siem_bp
 
 app.register_blueprint(anomalies_bp)
 app.register_blueprint(dr_bp)
@@ -1197,8 +1202,9 @@ def health():
     dependencies = {}
     # Database connectivity
     try:
-        from aeon_db import get_db as _health_db
         from sqlalchemy import text as _sa_text
+
+        from aeon_db import get_db as _health_db
         db = _health_db()
         with db.session() as s:
             s.execute(_sa_text("SELECT 1"))
@@ -1677,8 +1683,7 @@ def auth_jwt_status():
 @require_role("ADMIN")
 def auth_jwt_rotate():
     """Rotate the primary JWT signing secret. Accepts an optional explicit secret."""
-    from aeon_auth import rotate_jwt_secret
-    from aeon_auth import get_current_user_context
+    from aeon_auth import get_current_user_context, rotate_jwt_secret
     data = request.get_json(silent=True) or {}
     new_secret = data.get("secret")
     result = rotate_jwt_secret(new_secret)
@@ -2360,8 +2365,9 @@ def ready():
     # Check Alembic migration status
     migration_status = "unknown"
     try:
-        from aeon_db import get_db as _ready_db
         from sqlalchemy import text as _ready_text
+
+        from aeon_db import get_db as _ready_db
         _db = _ready_db()
         with _db.session() as _s:
             result = _s.execute(_ready_text("SELECT version_num FROM alembic_version LIMIT 1"))
@@ -5902,8 +5908,10 @@ def slack_interactions():
 @require_auth
 def events_outbox():
     """Query the domain event outbox for observability."""
-    from aeon_events import query_outbox, outbox_stats
-    ws_id = _resolve_workspace_id()
+    from aeon_events import outbox_stats, query_outbox
+    workspace_id = str(getattr(g, "workspace_id", None) or g.user.get("workspace_id") or "")
+    if not workspace_id:
+        return _error_response("workspace not selected", "WORKSPACE_NOT_SELECTED", 400)
     status_filter = request.args.get("status")
     type_filter = request.args.get("type")
     limit = min(int(request.args.get("limit", 50)), 200)
@@ -5911,7 +5919,7 @@ def events_outbox():
     events = query_outbox(
         status=status_filter,
         event_type=type_filter,
-        workspace_id=ws_id,
+        workspace_id=workspace_id,
         limit=limit,
     )
     return jsonify({"ok": True, "stats": stats, "events": events})

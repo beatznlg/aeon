@@ -19,9 +19,10 @@ from typing import Any
 from flask import g, jsonify, request
 
 from aeon_auth import require_auth, require_permission
+from aeon_events import PLUGIN_INSTALLED, PLUGIN_REMOVED
+from aeon_events import emit as _emit_event
 from aeon_marketplace import MarketplaceManager
 from aeon_marketplace import get_marketplace_manager as _get_shared_manager
-from aeon_events import emit as _emit_event, PLUGIN_INSTALLED, PLUGIN_REMOVED
 
 
 def get_marketplace_manager() -> MarketplaceManager:

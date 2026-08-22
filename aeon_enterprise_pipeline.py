@@ -21,7 +21,6 @@ from aeon_inference import (
 )
 from aeon_sector_packs import get_sector_pack, task_allowed
 
-
 EvidenceResolver = Callable[[str], Sequence[EvidenceItem]]
 OutputValidator = Callable[[str], tuple[bool, str | None]]
 

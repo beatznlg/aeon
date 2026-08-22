@@ -30,7 +30,7 @@ interface HeaderLink {
 
 const HEADER_LINKS: HeaderLink[] = [
   { href: "/os/integrations", label: "🔗 API Gateway", moduleId: "integrations" },
-  { href: "/os/workflows", label: "️ Workflow Builder", moduleId: "automations" },
+  { href: "/os/workflows", label: "⚙️ Workflow Builder", moduleId: "automations" },
   { href: "/os/observability", label: "📊 Observability", moduleId: "observability" },
   { href: "/anomalies", label: "⚠️ Anomalies", moduleId: "security" },
   { href: "/incidents", label: "🚨 Incidents", moduleId: "security" },

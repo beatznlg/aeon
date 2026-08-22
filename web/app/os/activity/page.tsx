@@ -19,7 +19,7 @@ const EVENT_LABELS: Record<string, { label: string; icon: string; color: string 
   workflow_status: { label: "Workflow", icon: "⚡", color: "#a855f7" },
   audit_log: { label: "Audit", icon: "📋", color: "#3b82f6" },
   workspace_activity: { label: "Workspace", icon: "🏢", color: "#10b981" },
-  system: { label: "System", icon: "️", color: "#94a3b8" },
+  system: { label: "System", icon: "🖥️", color: "#94a3b8" },
 };
 
 function formatTime(iso: string): string {
