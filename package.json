@@ -7,9 +7,14 @@
     "install": "npm --prefix web install",
     "build": "npm --prefix web run build",
     "start": "npm --prefix web run start",
-    "lint": "npm --prefix web run lint"
+    "lint": "npm --prefix web run lint",
+    "opencode": "opencode",
+    "opencode:doctor": "opencode doctor"
   },
   "dependencies": {
     "next": "^14.2.15"
+  },
+  "devDependencies": {
+    "opencode-ai": "^1.18.21"
   }
 }

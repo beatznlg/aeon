@@ -186,6 +186,25 @@ AEON ships with first-class developer tooling and auto-generated multi-language 
   ```
 - **Quickstarts**: See [`examples`](examples) for runnable Python, TypeScript, and Go examples.
 
+### 🤖 OpenCode — AI coding agent
+
+AEON ships an [OpenCode](https://opencode.ai) project config so the open-source AI coding agent works across the whole monorepo (Flask backend + Next.js frontend):
+
+```bash
+# Install the CLI (one time)
+npm install -g opencode-ai
+
+# Or use the repo dev dependency
+npm install && npm run opencode
+
+# Verify the install and provider connection
+npm run opencode:doctor
+```
+
+- Project config lives in [`opencode.json`](opencode.json) (Anthropic provider).
+- Agent instructions live in [`AGENTS.md`](AGENTS.md) — layout, commands, and conventions for the monorepo.
+- OpenCode reads `ANTHROPIC_API_KEY` from the environment — the same key the AEON backend uses for its Anthropic provider.
+
 ## 🔧 SDK Reference
 
 ### Python
