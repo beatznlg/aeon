@@ -11,6 +11,11 @@
     "opencode": "opencode",
     "opencode:doctor": "opencode doctor"
   },
+  "dependencies": {
+    "next": "^15.5.23",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
   "devDependencies": {
     "opencode-ai": "^1.18.21"
   }
