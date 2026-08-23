@@ -2,7 +2,7 @@
   "name": "aeon-os",
   "version": "1.0.0",
   "private": true,
-  "description": "AEON OS monorepo root. The Next.js frontend lives in web/.",
+  "description": "AEON OS monorepo root. The Next.js frontend lives in web/, but the root declares the same dependencies so serverless builds resolve every module when tracing runs from the repo root.",
   "scripts": {
     "install": "npm --prefix web install",
     "build": "npm --prefix web run build && rm -rf .next && cp -R web/.next .next",
@@ -12,11 +12,36 @@
     "opencode:doctor": "opencode doctor"
   },
   "dependencies": {
+    "@ai-sdk/react": "^4.0.79",
+    "@react-three/drei": "^10.7.8",
+    "@react-three/fiber": "^9.7.0",
+    "@supabase/supabase-js": "^2.45.0",
+    "ai": "^7.0.76",
+    "bcryptjs": "^3.0.3",
+    "framer-motion": "^12.43.0",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^4.2.1",
     "next": "^15.5.23",
+    "next-auth": "^5.0.0-beta.32",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "recharts": "^3.10.1",
+    "three": "^0.170.0",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
-    "opencode-ai": "^1.18.21"
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^20.16.10",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "autoprefixer": "^10.5.4",
+    "concurrently": "^8.2.2",
+    "eslint": "^8.57.1",
+    "eslint-config-next": "^15.5.23",
+    "opencode-ai": "^1.18.21",
+    "postcss": "^8.5.26",
+    "prettier": "^3.9.6",
+    "tailwindcss": "^3.4.19",
+    "typescript": "^5.6.2"
   }
 }
