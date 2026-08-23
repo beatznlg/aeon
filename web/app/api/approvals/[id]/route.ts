@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { withBackendSessionHeaders } from "@/lib/backend-session";
 import { sanitizeApprovalResponse } from "@/lib/approval-response";
 
 const AEON_URL = process.env.AEON_PYTHON_URL || "http://127.0.0.1:5000";
@@ -9,6 +10,7 @@ export async function GET(req: NextRequest, context: { params: Promise<{ id: str
   const params = await context.params;
   try {
     const headers: Record<string, string> = {};
+    await withBackendSessionHeaders(headers);
     const authHeader = req.headers.get("authorization");
     if (authHeader) headers.Authorization = authHeader;
     const res = await fetch(`${AEON_URL}/approvals/${encodeURIComponent(params.id)}`, { method: "GET", headers, cache: "no-store" });

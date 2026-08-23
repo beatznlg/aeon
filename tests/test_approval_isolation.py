@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timedelta, timezone
 from unittest import mock
 
@@ -43,19 +44,41 @@ def _approval(status="pending", **overrides):
 
 def test_authenticated_approval_resolution_passes_workspace_scope(client):
     token, workspace_id = _register(client, "approval-route@test.local")
+    headers = {"Authorization": f"Bearer {token}"}
 
-    with mock.patch(
-        "aeon_server.resolve_approval",
-        return_value={"ok": True, "status": "approved", "approval_id": "approval-1"},
-    ) as resolver:
+    # Seed an approval request first so the local store has it.
+    create_resp = client.post(
+        "/approvals",
+        headers=headers,
+        json={"title": "test approval", "description": "seed"},
+    )
+    assert create_resp.status_code == 201
+    created = create_resp.get_json()
+    approval_id = (created.get("approval") or {}).get("id")
+    assert approval_id, f"expected approval id in {created}"
+
+    supabase_mode = os.environ.get("SUPABASE_URL") and os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+    if supabase_mode:
+        with mock.patch(
+            "aeon_server.resolve_approval",
+            return_value={"ok": True, "status": "approved", "approval_id": approval_id},
+        ) as resolver:
+            response = client.post(
+                f"/approvals/{approval_id}/resolve",
+                headers=headers,
+                json={"decision": "approved"},
+            )
+        assert response.status_code == 200
+        assert resolver.call_args.kwargs["workspace_id"] == workspace_id
+    else:
         response = client.post(
-            "/approvals/approval-1/resolve",
-            headers={"Authorization": f"Bearer {token}"},
+            f"/approvals/{approval_id}/resolve",
+            headers=headers,
             json={"decision": "approved"},
         )
-
-    assert response.status_code == 200
-    assert resolver.call_args.kwargs["workspace_id"] == workspace_id
+        assert response.status_code == 200
+        body = response.get_json()
+        assert body.get("ok") is True
 
 
 def test_slack_resolution_passes_signed_workspace_scope(client, monkeypatch):

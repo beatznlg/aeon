@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { backendSessionHeaders } from "@/lib/backend-session";
 import { demoResponseForPath } from "@/lib/demo-data";
 
 const AEON_URL = (process.env.AEON_PYTHON_URL || "http://127.0.0.1:5000").replace(/\/$/, "");
@@ -27,6 +28,12 @@ export async function backendFetch(
   const authHeader = req.headers.get("Authorization");
   if (authHeader && !headers.has("Authorization")) {
     headers.set("Authorization", authHeader);
+  }
+  // Carry the authenticated NextAuth identity to the Python backend, which
+  // resolves the tenant/workspace from X-User-* headers (or a service token).
+  const sessionHeaders = await backendSessionHeaders();
+  for (const [key, value] of Object.entries(sessionHeaders)) {
+    if (!headers.has(key)) headers.set(key, value);
   }
   if (!headers.has("Accept")) {
     headers.set("Accept", "application/json");

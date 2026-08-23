@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { withBackendSessionHeaders } from "@/lib/backend-session";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +14,7 @@ export async function GET(_req: NextRequest, context: { params: Promise<{ id: st
     const { id } = params;
     const res = await fetch(`${PYTHON_URL}/workflows/${encodeURIComponent(id)}`, {
       cache: "no-store",
+      headers: await withBackendSessionHeaders({}),
     });
     const data = await res.json();
     return NextResponse.json(data);
@@ -30,6 +32,7 @@ export async function DELETE(_req: NextRequest, context: { params: Promise<{ id:
     const { id } = params;
     const res = await fetch(`${PYTHON_URL}/workflows/${encodeURIComponent(id)}`, {
       method: "DELETE",
+      headers: await withBackendSessionHeaders({}),
     });
     const data = await res.json();
     return NextResponse.json(data);

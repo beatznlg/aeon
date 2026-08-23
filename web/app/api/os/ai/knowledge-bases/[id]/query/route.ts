@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { withBackendSessionHeaders } from "@/lib/backend-session";
 
 const PYTHON_URL = process.env.AEON_PYTHON_URL;
 
@@ -11,7 +12,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
     const body = await req.json();
     const res = await fetch(`${PYTHON_URL}/knowledge-bases/${params.id}/query`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: await withBackendSessionHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify(body),
     });
     const data = await res.json();
@@ -29,6 +30,7 @@ export async function GET(_req: NextRequest, context: { params: Promise<{ id: st
   try {
     const res = await fetch(`${PYTHON_URL}/knowledge-bases/${params.id}/stats`, {
       cache: "no-store",
+      headers: await withBackendSessionHeaders({}),
     });
     const data = await res.json();
     return NextResponse.json(data);

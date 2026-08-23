@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { withBackendSessionHeaders } from "@/lib/backend-session";
 
 const PYTHON_URL = process.env.AEON_PYTHON_URL;
 
@@ -10,7 +11,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const res = await fetch(`${PYTHON_URL}/rag/chat`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: await withBackendSessionHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify(body),
     });
     const data = await res.json();

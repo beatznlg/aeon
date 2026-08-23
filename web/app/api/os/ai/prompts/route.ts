@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { withBackendSessionHeaders } from "@/lib/backend-session";
 import { demoPrompts } from "@/lib/demo-data";
 
 const PYTHON_URL = process.env.AEON_PYTHON_URL;
@@ -8,7 +9,10 @@ export async function GET() {
     return NextResponse.json(demoPrompts);
   }
   try {
-    const res = await fetch(`${PYTHON_URL}/prompts`, { cache: "no-store" });
+    const res = await fetch(`${PYTHON_URL}/prompts`, {
+      cache: "no-store",
+      headers: await withBackendSessionHeaders({}),
+    });
     const data = await res.json();
     return NextResponse.json(data);
   } catch {
@@ -24,7 +28,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const res = await fetch(`${PYTHON_URL}/prompts`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: await withBackendSessionHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify(body),
     });
     const data = await res.json();

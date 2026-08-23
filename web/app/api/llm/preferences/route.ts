@@ -1,16 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { withBackendSessionHeaders } from "@/lib/backend-session";
 
 const AEON_URL = process.env.AEON_PYTHON_URL || "http://127.0.0.1:5000";
 
 export const dynamic = "force-dynamic";
 
 async function backendHeaders(): Promise<Record<string, string>> {
-  const session = await auth();
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (session?.user && (session.user as any)?.token) {
-    headers.Authorization = `Bearer ${(session.user as any).token}`;
-  }
+  await withBackendSessionHeaders(headers);
   return headers;
 }
 

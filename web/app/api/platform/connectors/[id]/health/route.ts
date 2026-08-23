@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
+import { withBackendSessionHeaders } from "@/lib/backend-session";
 import { demoPlatformConnectors } from "@/lib/demo-data";
-import { getAuthHeaders } from "@/lib/flask-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +17,7 @@ export async function POST(_request: Request, context: RouteContext) {
   try {
     const res = await fetch(`${PYTHON_URL}/platform/connectors/${id}/health`, {
       method: "POST",
-      headers: getAuthHeaders(),
+      headers: await withBackendSessionHeaders({ "Content-Type": "application/json" }),
       cache: "no-store",
     });
     const data = await res.json();

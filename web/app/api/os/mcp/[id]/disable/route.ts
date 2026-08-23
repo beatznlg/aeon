@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { withBackendSessionHeaders } from "@/lib/backend-session";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +15,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     const auth = req.headers.get("authorization");
     if (auth) headers["Authorization"] = auth;
+    await withBackendSessionHeaders(headers);
 
     const res = await fetch(`${PYTHON_URL}/mcp/servers/${encodeURIComponent(id)}/disable`, {
       method: "POST",

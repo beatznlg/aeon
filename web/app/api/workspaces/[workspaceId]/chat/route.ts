@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { withBackendSessionHeaders } from "@/lib/backend-session";
 
 const AEON_URL = process.env.AEON_PYTHON_URL || "http://127.0.0.1:5000";
 
@@ -19,6 +20,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ worksp
     if (authHeader) {
       headers["Authorization"] = authHeader;
     }
+    await withBackendSessionHeaders(headers);
 
     const res = await fetch(`${AEON_URL}/workspaces/${params.workspaceId}/chat`, {
       method: "POST",

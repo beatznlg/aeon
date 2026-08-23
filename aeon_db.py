@@ -226,6 +226,38 @@ class AutomationBudget(Base):
     updated_at = Column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
 
 
+class AutomationRule(Base):
+    """An automation rule persisted in the local SQLite/Postgres store.
+
+    Mirrors the Supabase ``automation_rules`` table so the Flask backend can
+    serve the full automations surface without external services. Rules stored
+    here survive restarts and reboots on any writable filesystem.
+    """
+
+    __tablename__ = "automation_rules"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    workspace_id = Column(String(36), nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    event_type = Column(String(100), nullable=False, default="system")
+    condition = Column(JSON, nullable=False, default=dict)
+    action_type = Column(String(100), nullable=True)
+    action_config = Column(JSON, nullable=True, default=dict)
+    actions = Column(JSON, nullable=False, default=list)
+    schedule_type = Column(String(20), nullable=False, default="event")  # event, cron
+    cron_expression = Column(String(255), nullable=True)
+    enabled = Column(Boolean, nullable=False, default=True)
+    approval_required = Column(Boolean, nullable=False, default=False)
+    approver_message = Column(Text, nullable=True)
+    cooldown_minutes = Column(Integer, nullable=False, default=0)
+    last_run_at = Column(DateTime(timezone=True), nullable=True)
+    next_run_at = Column(DateTime(timezone=True), nullable=True)
+    created_by = Column(String(36), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_now)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
+
+
 # === SSO / SCIM models ========================================================
 class SsoProvider(Base):
     __tablename__ = "sso_providers"
@@ -757,12 +789,23 @@ def get_workspace_theme_config(workspace_id: str) -> dict[str, Any]:
 
 
 def update_workspace_theme_config(workspace_id: str, config: dict[str, Any]) -> dict[str, Any]:
-    """Merge *config* into the workspace's existing theme_config and return it."""
+    """Merge *config* into the workspace's existing theme_config and return it.
+
+    If the workspace row does not exist yet (e.g. a platform admin bootstrapping
+    a fresh tenant through the onboarding wizard), the workspace is created
+    lazily so the branding/theme write still persists.
+    """
     db = get_db()
     with db.session() as s:
         ws = s.query(Workspace).filter_by(id=str(workspace_id)).first()
         if not ws:
-            raise ValueError("workspace not found")
+            ws = Workspace(
+                id=str(workspace_id),
+                slug=f"ws-{str(workspace_id)[:12]}",
+                name=f"Workspace {str(workspace_id)[:8]}",
+                plan="team",
+            )
+            s.add(ws)
         existing = ws.theme_config if isinstance(ws.theme_config, dict) else {}
         updated = {**existing, **config}
         ws.theme_config = updated
@@ -1496,6 +1539,169 @@ def delete_automation_budget(budget_id: str, workspace_id: str | None = None) ->
         deleted = q.delete()
         s.commit()
         return bool(deleted)
+
+
+def _automation_rule_to_dict(rule: AutomationRule) -> dict[str, Any]:
+    """Serialize an AutomationRule row into the API shape the frontend expects."""
+    return {
+        "id": rule.id,
+        "workspace_id": rule.workspace_id,
+        "name": rule.name,
+        "description": rule.description,
+        "event_type": rule.event_type,
+        "condition": rule.condition or {},
+        "action_type": rule.action_type,
+        "action_config": rule.action_config or {},
+        "actions": rule.actions or [],
+        "schedule_type": rule.schedule_type,
+        "cron_expression": rule.cron_expression,
+        "enabled": rule.enabled,
+        "approval_required": rule.approval_required,
+        "approver_message": rule.approver_message,
+        "cooldown_minutes": rule.cooldown_minutes,
+        "last_run_at": rule.last_run_at.isoformat() if rule.last_run_at else None,
+        "next_run_at": rule.next_run_at.isoformat() if rule.next_run_at else None,
+        "created_by": rule.created_by,
+        "created_at": rule.created_at.isoformat() if rule.created_at else None,
+        "updated_at": rule.updated_at.isoformat() if rule.updated_at else None,
+    }
+
+
+def add_automation_rule(
+    workspace_id: str,
+    *,
+    name: str,
+    event_type: str = "system",
+    description: str | None = None,
+    condition: dict[str, Any] | None = None,
+    action_type: str | None = None,
+    action_config: dict[str, Any] | None = None,
+    actions: list[Any] | None = None,
+    schedule_type: str = "event",
+    cron_expression: str | None = None,
+    enabled: bool = True,
+    approval_required: bool = False,
+    approver_message: str | None = None,
+    cooldown_minutes: int = 0,
+    created_by: str | None = None,
+) -> dict[str, Any]:
+    """Create and persist an automation rule, returning its serialized form."""
+    db = get_db()
+    with db.session() as s:
+        rule = AutomationRule(
+            workspace_id=str(workspace_id),
+            name=name,
+            description=description,
+            event_type=event_type,
+            condition=condition or {},
+            action_type=action_type,
+            action_config=action_config or {},
+            actions=actions or [],
+            schedule_type=schedule_type,
+            cron_expression=cron_expression,
+            enabled=enabled,
+            approval_required=approval_required,
+            approver_message=approver_message,
+            cooldown_minutes=cooldown_minutes,
+            created_by=created_by,
+        )
+        s.add(rule)
+        s.commit()
+        return _automation_rule_to_dict(rule)
+
+
+def list_automation_rules(workspace_id: str) -> list[dict[str, Any]]:
+    """Return all automation rules for a workspace, newest first."""
+    db = get_db()
+    with db.session() as s:
+        rows = (
+            s.query(AutomationRule)
+            .filter_by(workspace_id=str(workspace_id))
+            .order_by(AutomationRule.created_at.desc())
+            .all()
+        )
+        return [_automation_rule_to_dict(r) for r in rows]
+
+
+def get_automation_rule(workspace_id: str, rule_id: str) -> dict[str, Any] | None:
+    """Fetch a single automation rule scoped to a workspace."""
+    db = get_db()
+    with db.session() as s:
+        row = (
+            s.query(AutomationRule)
+            .filter_by(id=str(rule_id), workspace_id=str(workspace_id))
+            .first()
+        )
+        return _automation_rule_to_dict(row) if row else None
+
+
+def update_automation_rule(
+    workspace_id: str,
+    rule_id: str,
+    updates: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Apply allowed field updates to a rule and return the updated serialized form."""
+    allowed = {
+        "name",
+        "description",
+        "event_type",
+        "condition",
+        "action_type",
+        "action_config",
+        "actions",
+        "schedule_type",
+        "cron_expression",
+        "enabled",
+        "approval_required",
+        "approver_message",
+        "cooldown_minutes",
+        "last_run_at",
+        "next_run_at",
+    }
+    db = get_db()
+    with db.session() as s:
+        row = (
+            s.query(AutomationRule)
+            .filter_by(id=str(rule_id), workspace_id=str(workspace_id))
+            .first()
+        )
+        if not row:
+            return None
+        for field in allowed:
+            if field in updates:
+                setattr(row, field, updates[field])
+        s.add(row)
+        s.commit()
+        return _automation_rule_to_dict(row)
+
+
+def delete_automation_rule(workspace_id: str, rule_id: str) -> bool:
+    """Delete a rule from a workspace; True when a row was removed."""
+    db = get_db()
+    with db.session() as s:
+        q = s.query(AutomationRule).filter_by(id=str(rule_id), workspace_id=str(workspace_id))
+        deleted = q.delete()
+        s.commit()
+        return bool(deleted)
+
+
+def record_automation_rule_run(workspace_id: str, rule_id: str, result: dict[str, Any]) -> None:
+    """Update last_run_at after a manual/scheduled execution."""
+    db = get_db()
+    with db.session() as s:
+        row = (
+            s.query(AutomationRule)
+            .filter_by(id=str(rule_id), workspace_id=str(workspace_id))
+            .first()
+        )
+        if not row:
+            return
+        from datetime import datetime as _dt
+
+        row.last_run_at = _dt.now(timezone.utc)
+        row.enabled = bool(result.get("ok", True))
+        s.add(row)
+        s.commit()
 
 
 def count_automation_executions(

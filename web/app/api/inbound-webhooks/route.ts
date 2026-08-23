@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { backendFetch } from "@/lib/backend-fetch";
+import { withBackendSessionHeaders } from "@/lib/backend-session";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +14,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const headers: Record<string, string> = { "Content-Type": "application/json" };
+    await withBackendSessionHeaders(headers);
     const authHeader = req.headers.get("authorization");
     if (authHeader) headers["Authorization"] = authHeader;
 

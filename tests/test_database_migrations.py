@@ -11,7 +11,7 @@ from aeon_db import Base, migrate_database
 from alembic import command
 
 
-ALEMBIC_HEAD = "a1b2c3d4e5f6"
+ALEMBIC_HEAD = "b2c3d4e5f6a7"
 
 
 def _alembic_config(database_url: str) -> Config:

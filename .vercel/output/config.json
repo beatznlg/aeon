@@ -1,0 +1,933 @@
+{
+  "version": 3,
+  "routes": [
+    {
+      "src": "^(?:/((?:[^/]+?)(?:/(?:[^/]+?))*))/$",
+      "headers": {
+        "Location": "/$1"
+      },
+      "status": 308,
+      "continue": true
+    },
+    {
+      "src": "/_next/__private/trace",
+      "dest": "/404",
+      "status": 404,
+      "continue": true
+    },
+    {
+      "src": "/(?!_next/data(?:/|$))(.*)",
+      "has": [
+        {
+          "type": "header",
+          "key": "x-nextjs-data"
+        }
+      ],
+      "transforms": [
+        {
+          "type": "request.headers",
+          "op": "delete",
+          "target": {
+            "key": "x-nextjs-data"
+          }
+        }
+      ],
+      "continue": true
+    },
+    {
+      "src": "/_next/data/(.*)",
+      "missing": [
+        {
+          "type": "header",
+          "key": "x-nextjs-data"
+        }
+      ],
+      "transforms": [
+        {
+          "type": "request.headers",
+          "op": "append",
+          "target": {
+            "key": "x-nextjs-data"
+          },
+          "args": "1"
+        }
+      ],
+      "continue": true
+    },
+    {
+      "src": "/404/?",
+      "status": 404,
+      "continue": true,
+      "missing": [
+        {
+          "type": "header",
+          "key": "x-prerender-revalidate"
+        }
+      ]
+    },
+    {
+      "src": "/500",
+      "status": 500,
+      "continue": true
+    },
+    {
+      "src": "^/_next/data/pWApYoo6tZZr5xHFSfWKU/(.*).json",
+      "dest": "/$1",
+      "override": true,
+      "continue": true,
+      "has": [
+        {
+          "type": "header",
+          "key": "x-nextjs-data"
+        }
+      ]
+    },
+    {
+      "src": "^/index(?:/)?",
+      "has": [
+        {
+          "type": "header",
+          "key": "x-nextjs-data"
+        }
+      ],
+      "dest": "/",
+      "override": true,
+      "continue": true
+    },
+    {
+      "continue": true,
+      "src": "^(?:\\/(_next\\/data\\/[^/]{1,}))?(?:\\/((?!api|_next\\/static|_next\\/image|favicon.ico).*))(\\.json|\\.rsc|\\.segments\\/.+\\.segment\\.rsc)?[\\/#\\?]?$",
+      "missing": [
+        {
+          "type": "header",
+          "key": "x-prerender-revalidate",
+          "value": "722c407d186c148ac8a76db2b83112d8"
+        }
+      ],
+      "middlewarePath": "/_middleware",
+      "middlewareRawSrc": [
+        "/((?!api|_next/static|_next/image|favicon.ico).*)"
+      ],
+      "override": true
+    },
+    {
+      "src": "^/$",
+      "has": [
+        {
+          "type": "header",
+          "key": "x-nextjs-data"
+        }
+      ],
+      "dest": "/_next/data/pWApYoo6tZZr5xHFSfWKU/index.json",
+      "continue": true,
+      "override": true
+    },
+    {
+      "src": "^/((?!_next/)(?:.*[^/]|.*))/?$",
+      "has": [
+        {
+          "type": "header",
+          "key": "x-nextjs-data"
+        }
+      ],
+      "dest": "/_next/data/pWApYoo6tZZr5xHFSfWKU/$1.json",
+      "continue": true,
+      "override": true
+    },
+    {
+      "src": "^/?",
+      "has": [
+        {
+          "type": "header",
+          "key": "rsc",
+          "value": "1"
+        }
+      ],
+      "dest": "/index.rsc",
+      "headers": {
+        "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch"
+      },
+      "continue": true,
+      "override": true
+    },
+    {
+      "src": "^/((?!.+\\.rsc).+?)(?:/)?$",
+      "has": [
+        {
+          "type": "header",
+          "key": "rsc",
+          "value": "1"
+        }
+      ],
+      "dest": "/$1.rsc",
+      "headers": {
+        "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch"
+      },
+      "continue": true,
+      "override": true
+    },
+    {
+      "handle": "filesystem"
+    },
+    {
+      "src": "^/_next/data/pWApYoo6tZZr5xHFSfWKU/(.*).json",
+      "dest": "/$1",
+      "continue": true,
+      "has": [
+        {
+          "type": "header",
+          "key": "x-nextjs-data"
+        }
+      ]
+    },
+    {
+      "src": "^/index(?:/)?",
+      "has": [
+        {
+          "type": "header",
+          "key": "x-nextjs-data"
+        }
+      ],
+      "dest": "/",
+      "continue": true
+    },
+    {
+      "src": "/index(\\.action|\\.rsc)",
+      "dest": "/",
+      "continue": true
+    },
+    {
+      "src": "/\\.prefetch\\.rsc$",
+      "dest": "/__index.prefetch.rsc",
+      "check": true
+    },
+    {
+      "src": "/(.+)/\\.prefetch\\.rsc$",
+      "dest": "/$1.prefetch.rsc",
+      "check": true
+    },
+    {
+      "src": "/\\.rsc$",
+      "dest": "/index.rsc",
+      "check": true
+    },
+    {
+      "src": "/(.+)/\\.rsc$",
+      "dest": "/$1.rsc",
+      "check": true
+    },
+    {
+      "handle": "resource"
+    },
+    {
+      "src": "/.*",
+      "status": 404
+    },
+    {
+      "handle": "miss"
+    },
+    {
+      "src": "/_next/static/.+",
+      "status": 404,
+      "check": true,
+      "dest": "/_next/static/not-found.txt",
+      "headers": {
+        "content-type": "text/plain; charset=utf-8"
+      }
+    },
+    {
+      "handle": "rewrite"
+    },
+    {
+      "src": "^/$",
+      "has": [
+        {
+          "type": "header",
+          "key": "x-nextjs-data"
+        }
+      ],
+      "dest": "/_next/data/pWApYoo6tZZr5xHFSfWKU/index.json",
+      "continue": true
+    },
+    {
+      "src": "^/((?!_next/)(?:.*[^/]|.*))/?$",
+      "has": [
+        {
+          "type": "header",
+          "key": "x-nextjs-data"
+        }
+      ],
+      "dest": "/_next/data/pWApYoo6tZZr5xHFSfWKU/$1.json",
+      "continue": true
+    },
+    {
+      "src": "^/_next/data/pWApYoo6tZZr5xHFSfWKU/api/admin/users/(?<nxtPid>[^/]+?)(?:/)?.json$",
+      "dest": "/api/admin/users/[id]?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/_next/data/pWApYoo6tZZr5xHFSfWKU/api/admin/workspaces/(?<nxtPid>[^/]+?)(?:/)?.json$",
+      "dest": "/api/admin/workspaces/[id]?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/_next/data/pWApYoo6tZZr5xHFSfWKU/api/anomalies(?:/(?<nxtPslug>.+?))?(?:/)?.json$",
+      "dest": "/api/anomalies/[[...slug]]?nxtPslug=$nxtPslug"
+    },
+    {
+      "src": "^/_next/data/pWApYoo6tZZr5xHFSfWKU/api/api\\-keys/(?<nxtPkeyId>[^/]+?)(?:/)?.json$",
+      "dest": "/api/api-keys/[keyId]?nxtPkeyId=$nxtPkeyId"
+    },
+    {
+      "src": "^/_next/data/pWApYoo6tZZr5xHFSfWKU/api/api\\-keys/(?<nxtPkeyId>[^/]+?)/usage(?:/)?.json$",
+      "dest": "/api/api-keys/[keyId]/usage?nxtPkeyId=$nxtPkeyId"
+    },
+    {
+      "src": "^/_next/data/pWApYoo6tZZr5xHFSfWKU/api/approvals/(?<nxtPid>[^/]+?)(?:/)?.json$",
+      "dest": "/api/approvals/[id]?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/_next/data/pWApYoo6tZZr5xHFSfWKU/api/approvals/(?<nxtPid>[^/]+?)/resolve(?:/)?.json$",
+      "dest": "/api/approvals/[id]/resolve?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/_next/data/pWApYoo6tZZr5xHFSfWKU/api/auth/(?<nxtPnextauth>.+?)(?:/)?.json$",
+      "dest": "/api/auth/[...nextauth]?nxtPnextauth=$nxtPnextauth"
+    },
+    {
+      "src": "^/_next/data/pWApYoo6tZZr5xHFSfWKU/api/automations/executions/(?<nxtPid>[^/]+?)(?:/)?.json$",
+      "dest": "/api/automations/executions/[id]?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/_next/data/pWApYoo6tZZr5xHFSfWKU/api/automations/(?<nxtPid>[^/]+?)(?:/)?.json$",
+      "dest": "/api/automations/[id]?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/_next/data/pWApYoo6tZZr5xHFSfWKU/api/automations/(?<nxtPid>[^/]+?)/executions(?:/)?.json$",
+      "dest": "/api/automations/[id]/executions?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/_next/data/pWApYoo6tZZr5xHFSfWKU/api/automations/(?<nxtPid>[^/]+?)/metrics(?:/)?.json$",
+      "dest": "/api/automations/[id]/metrics?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/_next/data/pWApYoo6tZZr5xHFSfWKU/api/automations/(?<nxtPid>[^/]+?)/run(?:/)?.json$",
+      "dest": "/api/automations/[id]/run?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/_next/data/pWApYoo6tZZr5xHFSfWKU/api/dr(?:/(?<nxtPslug>.+?))?(?:/)?.json$",
+      "dest": "/api/dr/[[...slug]]?nxtPslug=$nxtPslug"
+    },
+    {
+      "src": "^/_next/data/pWApYoo6tZZr5xHFSfWKU/api/inbound\\-webhooks/(?<nxtPid>[^/]+?)(?:/)?.json$",
+      "dest": "/api/inbound-webhooks/[id]?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/_next/data/pWApYoo6tZZr5xHFSfWKU/api/incidents(?:/(?<nxtPslug>.+?))?(?:/)?.json$",
+      "dest": "/api/incidents/[[...slug]]?nxtPslug=$nxtPslug"
+    },
+    {
+      "src": "^/_next/data/pWApYoo6tZZr5xHFSfWKU/api/os/ai/knowledge\\-bases/(?<nxtPid>[^/]+?)(?:/)?.json$",
+      "dest": "/api/os/ai/knowledge-bases/[id]?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/_next/data/pWApYoo6tZZr5xHFSfWKU/api/os/ai/knowledge\\-bases/(?<nxtPid>[^/]+?)/documents(?:/)?.json$",
+      "dest": "/api/os/ai/knowledge-bases/[id]/documents?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/_next/data/pWApYoo6tZZr5xHFSfWKU/api/os/ai/knowledge\\-bases/(?<nxtPid>[^/]+?)/query(?:/)?.json$",
+      "dest": "/api/os/ai/knowledge-bases/[id]/query?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/_next/data/pWApYoo6tZZr5xHFSfWKU/api/os/ai/prompts/(?<nxtPid>[^/]+?)(?:/)?.json$",
+      "dest": "/api/os/ai/prompts/[id]?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/_next/data/pWApYoo6tZZr5xHFSfWKU/api/os/apps/(?<nxtPid>[^/]+?)/chat(?:/)?.json$",
+      "dest": "/api/os/apps/[id]/chat?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/_next/data/pWApYoo6tZZr5xHFSfWKU/api/os/apps/(?<nxtPid>[^/]+?)/dashboard(?:/)?.json$",
+      "dest": "/api/os/apps/[id]/dashboard?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/_next/data/pWApYoo6tZZr5xHFSfWKU/api/os/apps/(?<nxtPid>[^/]+?)/live(?:/)?.json$",
+      "dest": "/api/os/apps/[id]/live?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/_next/data/pWApYoo6tZZr5xHFSfWKU/api/os/apps/(?<nxtPid>[^/]+?)/tick(?:/)?.json$",
+      "dest": "/api/os/apps/[id]/tick?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/_next/data/pWApYoo6tZZr5xHFSfWKU/api/os/apps/(?<nxtPid>[^/]+?)/vitals(?:/)?.json$",
+      "dest": "/api/os/apps/[id]/vitals?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/_next/data/pWApYoo6tZZr5xHFSfWKU/api/os/integrations/(?<nxtPid>[^/]+?)(?:/)?.json$",
+      "dest": "/api/os/integrations/[id]?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/_next/data/pWApYoo6tZZr5xHFSfWKU/api/os/integrations/(?<nxtPid>[^/]+?)/run(?:/)?.json$",
+      "dest": "/api/os/integrations/[id]/run?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/_next/data/pWApYoo6tZZr5xHFSfWKU/api/os/mcp/(?<nxtPid>[^/]+?)(?:/)?.json$",
+      "dest": "/api/os/mcp/[id]?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/_next/data/pWApYoo6tZZr5xHFSfWKU/api/os/mcp/(?<nxtPid>[^/]+?)/disable(?:/)?.json$",
+      "dest": "/api/os/mcp/[id]/disable?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/_next/data/pWApYoo6tZZr5xHFSfWKU/api/os/mcp/(?<nxtPid>[^/]+?)/enable(?:/)?.json$",
+      "dest": "/api/os/mcp/[id]/enable?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/_next/data/pWApYoo6tZZr5xHFSfWKU/api/os/mcp/(?<nxtPid>[^/]+?)/refresh(?:/)?.json$",
+      "dest": "/api/os/mcp/[id]/refresh?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/_next/data/pWApYoo6tZZr5xHFSfWKU/api/os/observability/billing/(?<nxtPworkspaceId>[^/]+?)/credits(?:/)?.json$",
+      "dest": "/api/os/observability/billing/[workspaceId]/credits?nxtPworkspaceId=$nxtPworkspaceId"
+    },
+    {
+      "src": "^/_next/data/pWApYoo6tZZr5xHFSfWKU/api/os/observability/billing/(?<nxtPworkspaceId>[^/]+?)/plan(?:/)?.json$",
+      "dest": "/api/os/observability/billing/[workspaceId]/plan?nxtPworkspaceId=$nxtPworkspaceId"
+    },
+    {
+      "src": "^/_next/data/pWApYoo6tZZr5xHFSfWKU/api/os/workflows/(?<nxtPid>[^/]+?)(?:/)?.json$",
+      "dest": "/api/os/workflows/[id]?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/_next/data/pWApYoo6tZZr5xHFSfWKU/api/os/workflows/(?<nxtPid>[^/]+?)/run(?:/)?.json$",
+      "dest": "/api/os/workflows/[id]/run?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/_next/data/pWApYoo6tZZr5xHFSfWKU/api/platform/connectors/(?<nxtPid>[^/]+?)/health(?:/)?.json$",
+      "dest": "/api/platform/connectors/[id]/health?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/_next/data/pWApYoo6tZZr5xHFSfWKU/api/runbooks(?:/(?<nxtPslug>.+?))?(?:/)?.json$",
+      "dest": "/api/runbooks/[[...slug]]?nxtPslug=$nxtPslug"
+    },
+    {
+      "src": "^/_next/data/pWApYoo6tZZr5xHFSfWKU/api/sector(?:/(?<nxtPpath>.+?))?(?:/)?.json$",
+      "dest": "/api/sector/[[...path]]?nxtPpath=$nxtPpath"
+    },
+    {
+      "src": "^/_next/data/pWApYoo6tZZr5xHFSfWKU/api/siem/integrations/(?<nxtPid>[^/]+?)(?:/)?.json$",
+      "dest": "/api/siem/integrations/[id]?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/_next/data/pWApYoo6tZZr5xHFSfWKU/api/siem/integrations/(?<nxtPid>[^/]+?)/test(?:/)?.json$",
+      "dest": "/api/siem/integrations/[id]/test?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/_next/data/pWApYoo6tZZr5xHFSfWKU/api/stripe/subscription/(?<nxtPworkspaceId>[^/]+?)(?:/)?.json$",
+      "dest": "/api/stripe/subscription/[workspaceId]?nxtPworkspaceId=$nxtPworkspaceId"
+    },
+    {
+      "src": "^/_next/data/pWApYoo6tZZr5xHFSfWKU/api/workspaces/(?<nxtPworkspaceId>[^/]+?)/branding(?:/)?.json$",
+      "dest": "/api/workspaces/[workspaceId]/branding?nxtPworkspaceId=$nxtPworkspaceId"
+    },
+    {
+      "src": "^/_next/data/pWApYoo6tZZr5xHFSfWKU/api/workspaces/(?<nxtPworkspaceId>[^/]+?)/chat(?:/)?.json$",
+      "dest": "/api/workspaces/[workspaceId]/chat?nxtPworkspaceId=$nxtPworkspaceId"
+    },
+    {
+      "src": "^/_next/data/pWApYoo6tZZr5xHFSfWKU/api/workspaces/(?<nxtPworkspaceId>[^/]+?)/history(?:/)?.json$",
+      "dest": "/api/workspaces/[workspaceId]/history?nxtPworkspaceId=$nxtPworkspaceId"
+    },
+    {
+      "src": "^/_next/data/pWApYoo6tZZr5xHFSfWKU/os/(?<nxtPappId>[^/]+?)(?:/)?.json$",
+      "dest": "/os/[appId]?nxtPappId=$nxtPappId"
+    },
+    {
+      "src": "^/_next/data/pWApYoo6tZZr5xHFSfWKU/swarms/report/(?<nxtPid>[^/]+?)(?:/)?.json$",
+      "dest": "/swarms/report/[id]?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/admin/users/(?<nxtPid>[^/]+?)(?:\\.rsc)(?:/)?$",
+      "dest": "/api/admin/users/[id].rsc?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/admin/users/(?<nxtPid>[^/]+?)(?:/)?$",
+      "dest": "/api/admin/users/[id]?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/admin/workspaces/(?<nxtPid>[^/]+?)(?:\\.rsc)(?:/)?$",
+      "dest": "/api/admin/workspaces/[id].rsc?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/admin/workspaces/(?<nxtPid>[^/]+?)(?:/)?$",
+      "dest": "/api/admin/workspaces/[id]?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/anomalies(?:/(?<nxtPslug>.+?))?(?:\\.rsc)(?:/)?$",
+      "dest": "/api/anomalies/[[...slug]].rsc?nxtPslug=$nxtPslug"
+    },
+    {
+      "src": "^/api/anomalies(?:/(?<nxtPslug>.+?))?(?:/)?$",
+      "dest": "/api/anomalies/[[...slug]]?nxtPslug=$nxtPslug"
+    },
+    {
+      "src": "^/api/api\\-keys/(?<nxtPkeyId>[^/]+?)(?:\\.rsc)(?:/)?$",
+      "dest": "/api/api-keys/[keyId].rsc?nxtPkeyId=$nxtPkeyId"
+    },
+    {
+      "src": "^/api/api\\-keys/(?<nxtPkeyId>[^/]+?)(?:/)?$",
+      "dest": "/api/api-keys/[keyId]?nxtPkeyId=$nxtPkeyId"
+    },
+    {
+      "src": "^/api/api\\-keys/(?<nxtPkeyId>[^/]+?)/usage(?:\\.rsc)(?:/)?$",
+      "dest": "/api/api-keys/[keyId]/usage.rsc?nxtPkeyId=$nxtPkeyId"
+    },
+    {
+      "src": "^/api/api\\-keys/(?<nxtPkeyId>[^/]+?)/usage(?:/)?$",
+      "dest": "/api/api-keys/[keyId]/usage?nxtPkeyId=$nxtPkeyId"
+    },
+    {
+      "src": "^/api/approvals/(?<nxtPid>[^/]+?)(?:\\.rsc)(?:/)?$",
+      "dest": "/api/approvals/[id].rsc?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/approvals/(?<nxtPid>[^/]+?)(?:/)?$",
+      "dest": "/api/approvals/[id]?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/approvals/(?<nxtPid>[^/]+?)/resolve(?:\\.rsc)(?:/)?$",
+      "dest": "/api/approvals/[id]/resolve.rsc?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/approvals/(?<nxtPid>[^/]+?)/resolve(?:/)?$",
+      "dest": "/api/approvals/[id]/resolve?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/auth/(?<nxtPnextauth>.+?)(?:\\.rsc)(?:/)?$",
+      "dest": "/api/auth/[...nextauth].rsc?nxtPnextauth=$nxtPnextauth"
+    },
+    {
+      "src": "^/api/auth/(?<nxtPnextauth>.+?)(?:/)?$",
+      "dest": "/api/auth/[...nextauth]?nxtPnextauth=$nxtPnextauth"
+    },
+    {
+      "src": "^/api/automations/executions/(?<nxtPid>[^/]+?)(?:\\.rsc)(?:/)?$",
+      "dest": "/api/automations/executions/[id].rsc?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/automations/executions/(?<nxtPid>[^/]+?)(?:/)?$",
+      "dest": "/api/automations/executions/[id]?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/automations/(?<nxtPid>[^/]+?)(?:\\.rsc)(?:/)?$",
+      "dest": "/api/automations/[id].rsc?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/automations/(?<nxtPid>[^/]+?)(?:/)?$",
+      "dest": "/api/automations/[id]?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/automations/(?<nxtPid>[^/]+?)/executions(?:\\.rsc)(?:/)?$",
+      "dest": "/api/automations/[id]/executions.rsc?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/automations/(?<nxtPid>[^/]+?)/executions(?:/)?$",
+      "dest": "/api/automations/[id]/executions?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/automations/(?<nxtPid>[^/]+?)/metrics(?:\\.rsc)(?:/)?$",
+      "dest": "/api/automations/[id]/metrics.rsc?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/automations/(?<nxtPid>[^/]+?)/metrics(?:/)?$",
+      "dest": "/api/automations/[id]/metrics?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/automations/(?<nxtPid>[^/]+?)/run(?:\\.rsc)(?:/)?$",
+      "dest": "/api/automations/[id]/run.rsc?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/automations/(?<nxtPid>[^/]+?)/run(?:/)?$",
+      "dest": "/api/automations/[id]/run?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/dr(?:/(?<nxtPslug>.+?))?(?:\\.rsc)(?:/)?$",
+      "dest": "/api/dr/[[...slug]].rsc?nxtPslug=$nxtPslug"
+    },
+    {
+      "src": "^/api/dr(?:/(?<nxtPslug>.+?))?(?:/)?$",
+      "dest": "/api/dr/[[...slug]]?nxtPslug=$nxtPslug"
+    },
+    {
+      "src": "^/api/inbound\\-webhooks/(?<nxtPid>[^/]+?)(?:\\.rsc)(?:/)?$",
+      "dest": "/api/inbound-webhooks/[id].rsc?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/inbound\\-webhooks/(?<nxtPid>[^/]+?)(?:/)?$",
+      "dest": "/api/inbound-webhooks/[id]?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/incidents(?:/(?<nxtPslug>.+?))?(?:\\.rsc)(?:/)?$",
+      "dest": "/api/incidents/[[...slug]].rsc?nxtPslug=$nxtPslug"
+    },
+    {
+      "src": "^/api/incidents(?:/(?<nxtPslug>.+?))?(?:/)?$",
+      "dest": "/api/incidents/[[...slug]]?nxtPslug=$nxtPslug"
+    },
+    {
+      "src": "^/api/os/ai/knowledge\\-bases/(?<nxtPid>[^/]+?)(?:\\.rsc)(?:/)?$",
+      "dest": "/api/os/ai/knowledge-bases/[id].rsc?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/os/ai/knowledge\\-bases/(?<nxtPid>[^/]+?)(?:/)?$",
+      "dest": "/api/os/ai/knowledge-bases/[id]?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/os/ai/knowledge\\-bases/(?<nxtPid>[^/]+?)/documents(?:\\.rsc)(?:/)?$",
+      "dest": "/api/os/ai/knowledge-bases/[id]/documents.rsc?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/os/ai/knowledge\\-bases/(?<nxtPid>[^/]+?)/documents(?:/)?$",
+      "dest": "/api/os/ai/knowledge-bases/[id]/documents?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/os/ai/knowledge\\-bases/(?<nxtPid>[^/]+?)/query(?:\\.rsc)(?:/)?$",
+      "dest": "/api/os/ai/knowledge-bases/[id]/query.rsc?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/os/ai/knowledge\\-bases/(?<nxtPid>[^/]+?)/query(?:/)?$",
+      "dest": "/api/os/ai/knowledge-bases/[id]/query?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/os/ai/prompts/(?<nxtPid>[^/]+?)(?:\\.rsc)(?:/)?$",
+      "dest": "/api/os/ai/prompts/[id].rsc?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/os/ai/prompts/(?<nxtPid>[^/]+?)(?:/)?$",
+      "dest": "/api/os/ai/prompts/[id]?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/os/apps/(?<nxtPid>[^/]+?)/chat(?:\\.rsc)(?:/)?$",
+      "dest": "/api/os/apps/[id]/chat.rsc?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/os/apps/(?<nxtPid>[^/]+?)/chat(?:/)?$",
+      "dest": "/api/os/apps/[id]/chat?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/os/apps/(?<nxtPid>[^/]+?)/dashboard(?:\\.rsc)(?:/)?$",
+      "dest": "/api/os/apps/[id]/dashboard.rsc?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/os/apps/(?<nxtPid>[^/]+?)/dashboard(?:/)?$",
+      "dest": "/api/os/apps/[id]/dashboard?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/os/apps/(?<nxtPid>[^/]+?)/live(?:\\.rsc)(?:/)?$",
+      "dest": "/api/os/apps/[id]/live.rsc?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/os/apps/(?<nxtPid>[^/]+?)/live(?:/)?$",
+      "dest": "/api/os/apps/[id]/live?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/os/apps/(?<nxtPid>[^/]+?)/tick(?:\\.rsc)(?:/)?$",
+      "dest": "/api/os/apps/[id]/tick.rsc?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/os/apps/(?<nxtPid>[^/]+?)/tick(?:/)?$",
+      "dest": "/api/os/apps/[id]/tick?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/os/apps/(?<nxtPid>[^/]+?)/vitals(?:\\.rsc)(?:/)?$",
+      "dest": "/api/os/apps/[id]/vitals.rsc?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/os/apps/(?<nxtPid>[^/]+?)/vitals(?:/)?$",
+      "dest": "/api/os/apps/[id]/vitals?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/os/integrations/(?<nxtPid>[^/]+?)(?:\\.rsc)(?:/)?$",
+      "dest": "/api/os/integrations/[id].rsc?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/os/integrations/(?<nxtPid>[^/]+?)(?:/)?$",
+      "dest": "/api/os/integrations/[id]?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/os/integrations/(?<nxtPid>[^/]+?)/run(?:\\.rsc)(?:/)?$",
+      "dest": "/api/os/integrations/[id]/run.rsc?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/os/integrations/(?<nxtPid>[^/]+?)/run(?:/)?$",
+      "dest": "/api/os/integrations/[id]/run?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/os/mcp/(?<nxtPid>[^/]+?)(?:\\.rsc)(?:/)?$",
+      "dest": "/api/os/mcp/[id].rsc?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/os/mcp/(?<nxtPid>[^/]+?)(?:/)?$",
+      "dest": "/api/os/mcp/[id]?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/os/mcp/(?<nxtPid>[^/]+?)/disable(?:\\.rsc)(?:/)?$",
+      "dest": "/api/os/mcp/[id]/disable.rsc?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/os/mcp/(?<nxtPid>[^/]+?)/disable(?:/)?$",
+      "dest": "/api/os/mcp/[id]/disable?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/os/mcp/(?<nxtPid>[^/]+?)/enable(?:\\.rsc)(?:/)?$",
+      "dest": "/api/os/mcp/[id]/enable.rsc?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/os/mcp/(?<nxtPid>[^/]+?)/enable(?:/)?$",
+      "dest": "/api/os/mcp/[id]/enable?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/os/mcp/(?<nxtPid>[^/]+?)/refresh(?:\\.rsc)(?:/)?$",
+      "dest": "/api/os/mcp/[id]/refresh.rsc?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/os/mcp/(?<nxtPid>[^/]+?)/refresh(?:/)?$",
+      "dest": "/api/os/mcp/[id]/refresh?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/os/observability/billing/(?<nxtPworkspaceId>[^/]+?)/credits(?:\\.rsc)(?:/)?$",
+      "dest": "/api/os/observability/billing/[workspaceId]/credits.rsc?nxtPworkspaceId=$nxtPworkspaceId"
+    },
+    {
+      "src": "^/api/os/observability/billing/(?<nxtPworkspaceId>[^/]+?)/credits(?:/)?$",
+      "dest": "/api/os/observability/billing/[workspaceId]/credits?nxtPworkspaceId=$nxtPworkspaceId"
+    },
+    {
+      "src": "^/api/os/observability/billing/(?<nxtPworkspaceId>[^/]+?)/plan(?:\\.rsc)(?:/)?$",
+      "dest": "/api/os/observability/billing/[workspaceId]/plan.rsc?nxtPworkspaceId=$nxtPworkspaceId"
+    },
+    {
+      "src": "^/api/os/observability/billing/(?<nxtPworkspaceId>[^/]+?)/plan(?:/)?$",
+      "dest": "/api/os/observability/billing/[workspaceId]/plan?nxtPworkspaceId=$nxtPworkspaceId"
+    },
+    {
+      "src": "^/api/os/workflows/(?<nxtPid>[^/]+?)(?:\\.rsc)(?:/)?$",
+      "dest": "/api/os/workflows/[id].rsc?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/os/workflows/(?<nxtPid>[^/]+?)(?:/)?$",
+      "dest": "/api/os/workflows/[id]?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/os/workflows/(?<nxtPid>[^/]+?)/run(?:\\.rsc)(?:/)?$",
+      "dest": "/api/os/workflows/[id]/run.rsc?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/os/workflows/(?<nxtPid>[^/]+?)/run(?:/)?$",
+      "dest": "/api/os/workflows/[id]/run?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/platform/connectors/(?<nxtPid>[^/]+?)/health(?:\\.rsc)(?:/)?$",
+      "dest": "/api/platform/connectors/[id]/health.rsc?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/platform/connectors/(?<nxtPid>[^/]+?)/health(?:/)?$",
+      "dest": "/api/platform/connectors/[id]/health?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/runbooks(?:/(?<nxtPslug>.+?))?(?:\\.rsc)(?:/)?$",
+      "dest": "/api/runbooks/[[...slug]].rsc?nxtPslug=$nxtPslug"
+    },
+    {
+      "src": "^/api/runbooks(?:/(?<nxtPslug>.+?))?(?:/)?$",
+      "dest": "/api/runbooks/[[...slug]]?nxtPslug=$nxtPslug"
+    },
+    {
+      "src": "^/api/sector(?:/(?<nxtPpath>.+?))?(?:\\.rsc)(?:/)?$",
+      "dest": "/api/sector/[[...path]].rsc?nxtPpath=$nxtPpath"
+    },
+    {
+      "src": "^/api/sector(?:/(?<nxtPpath>.+?))?(?:/)?$",
+      "dest": "/api/sector/[[...path]]?nxtPpath=$nxtPpath"
+    },
+    {
+      "src": "^/api/siem/integrations/(?<nxtPid>[^/]+?)(?:\\.rsc)(?:/)?$",
+      "dest": "/api/siem/integrations/[id].rsc?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/siem/integrations/(?<nxtPid>[^/]+?)(?:/)?$",
+      "dest": "/api/siem/integrations/[id]?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/siem/integrations/(?<nxtPid>[^/]+?)/test(?:\\.rsc)(?:/)?$",
+      "dest": "/api/siem/integrations/[id]/test.rsc?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/siem/integrations/(?<nxtPid>[^/]+?)/test(?:/)?$",
+      "dest": "/api/siem/integrations/[id]/test?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/api/stripe/subscription/(?<nxtPworkspaceId>[^/]+?)(?:\\.rsc)(?:/)?$",
+      "dest": "/api/stripe/subscription/[workspaceId].rsc?nxtPworkspaceId=$nxtPworkspaceId"
+    },
+    {
+      "src": "^/api/stripe/subscription/(?<nxtPworkspaceId>[^/]+?)(?:/)?$",
+      "dest": "/api/stripe/subscription/[workspaceId]?nxtPworkspaceId=$nxtPworkspaceId"
+    },
+    {
+      "src": "^/api/workspaces/(?<nxtPworkspaceId>[^/]+?)/branding(?:\\.rsc)(?:/)?$",
+      "dest": "/api/workspaces/[workspaceId]/branding.rsc?nxtPworkspaceId=$nxtPworkspaceId"
+    },
+    {
+      "src": "^/api/workspaces/(?<nxtPworkspaceId>[^/]+?)/branding(?:/)?$",
+      "dest": "/api/workspaces/[workspaceId]/branding?nxtPworkspaceId=$nxtPworkspaceId"
+    },
+    {
+      "src": "^/api/workspaces/(?<nxtPworkspaceId>[^/]+?)/chat(?:\\.rsc)(?:/)?$",
+      "dest": "/api/workspaces/[workspaceId]/chat.rsc?nxtPworkspaceId=$nxtPworkspaceId"
+    },
+    {
+      "src": "^/api/workspaces/(?<nxtPworkspaceId>[^/]+?)/chat(?:/)?$",
+      "dest": "/api/workspaces/[workspaceId]/chat?nxtPworkspaceId=$nxtPworkspaceId"
+    },
+    {
+      "src": "^/api/workspaces/(?<nxtPworkspaceId>[^/]+?)/history(?:\\.rsc)(?:/)?$",
+      "dest": "/api/workspaces/[workspaceId]/history.rsc?nxtPworkspaceId=$nxtPworkspaceId"
+    },
+    {
+      "src": "^/api/workspaces/(?<nxtPworkspaceId>[^/]+?)/history(?:/)?$",
+      "dest": "/api/workspaces/[workspaceId]/history?nxtPworkspaceId=$nxtPworkspaceId"
+    },
+    {
+      "src": "^/os/(?<nxtPappId>[^/]+?)(?:\\.rsc)(?:/)?$",
+      "dest": "/os/[appId].rsc?nxtPappId=$nxtPappId"
+    },
+    {
+      "src": "^/os/(?<nxtPappId>[^/]+?)(?:/)?$",
+      "dest": "/os/[appId]?nxtPappId=$nxtPappId"
+    },
+    {
+      "src": "^/swarms/report/(?<nxtPid>[^/]+?)(?:\\.rsc)(?:/)?$",
+      "dest": "/swarms/report/[id].rsc?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/swarms/report/(?<nxtPid>[^/]+?)(?:/)?$",
+      "dest": "/swarms/report/[id]?nxtPid=$nxtPid"
+    },
+    {
+      "src": "^/_next/data/pWApYoo6tZZr5xHFSfWKU/(.*).json",
+      "headers": {
+        "x-nextjs-matched-path": "/$1"
+      },
+      "continue": true,
+      "override": true
+    },
+    {
+      "src": "^/_next/data/pWApYoo6tZZr5xHFSfWKU/(.*).json",
+      "dest": "__next_data_catchall"
+    },
+    {
+      "handle": "hit"
+    },
+    {
+      "src": "/_next/static/(?:[^/]+/pages|pages|chunks|runtime|css|image|media|pWApYoo6tZZr5xHFSfWKU)/.+",
+      "headers": {
+        "cache-control": "public,max-age=31536000,immutable"
+      },
+      "continue": true,
+      "important": true
+    },
+    {
+      "src": "/index(?:/)?",
+      "headers": {
+        "x-matched-path": "/"
+      },
+      "continue": true,
+      "important": true
+    },
+    {
+      "src": "/((?!index$).*?)(?:/)?",
+      "headers": {
+        "x-matched-path": "/$1"
+      },
+      "continue": true,
+      "important": true
+    },
+    {
+      "handle": "error"
+    },
+    {
+      "src": "/.*",
+      "dest": "/_not-found",
+      "status": 404,
+      "headers": {
+        "x-next-error-status": "404"
+      }
+    },
+    {
+      "src": "/.*",
+      "dest": "/500",
+      "status": 500,
+      "headers": {
+        "x-next-error-status": "500"
+      }
+    }
+  ],
+  "images": {
+    "domains": [],
+    "sizes": [
+      640,
+      750,
+      828,
+      1080,
+      1200,
+      1920,
+      2048,
+      3840,
+      16,
+      32,
+      48,
+      64,
+      96,
+      128,
+      256,
+      384
+    ],
+    "remotePatterns": [],
+    "minimumCacheTTL": 60,
+    "formats": [
+      "image/webp"
+    ],
+    "dangerouslyAllowSVG": false,
+    "contentSecurityPolicy": "script-src 'none'; frame-src 'none'; sandbox;",
+    "contentDispositionType": "attachment"
+  },
+  "overrides": {
+    "500.html": {
+      "path": "500",
+      "contentType": "text/html; charset=utf-8"
+    },
+    "_app.rsc.json": {
+      "path": "_app.rsc",
+      "contentType": "application/json"
+    },
+    "_error.rsc.json": {
+      "path": "_error.rsc",
+      "contentType": "application/json"
+    },
+    "_document.rsc.json": {
+      "path": "_document.rsc",
+      "contentType": "application/json"
+    },
+    "__next_data_catchall.json": {
+      "path": "__next_data_catchall",
+      "contentType": "application/json"
+    },
+    "_next/static/not-found.txt": {
+      "contentType": "text/plain"
+    }
+  },
+  "framework": {
+    "slug": "nextjs",
+    "version": "15.5.23"
+  },
+  "crons": []
+}

@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { BACKEND_DOWN_MESSAGE } from "@/lib/backend-status";
+import { backendSessionHeaders } from "@/lib/backend-session";
 import { demoResponseForPath } from "@/lib/demo-data";
 
 const AEON_PYTHON_URL = process.env.AEON_PYTHON_URL || "http://127.0.0.1:5000";
@@ -30,6 +31,12 @@ export async function proxyApiRequest(
   const headers = new Headers();
   if (authHeader) {
     headers.set("Authorization", authHeader);
+  }
+  // Carry the authenticated NextAuth identity to the Python backend, which
+  // resolves the tenant/workspace from X-User-* headers (or a service token).
+  const sessionHeaders = await backendSessionHeaders();
+  for (const [key, value] of Object.entries(sessionHeaders)) {
+    if (!headers.has(key)) headers.set(key, value);
   }
   headers.set("Accept", "application/json");
 

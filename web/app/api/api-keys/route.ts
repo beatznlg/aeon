@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
+import { withBackendSessionHeaders } from "@/lib/backend-session";
 import { pythonUrl } from "@/lib/kernel";
 import { demoApiKeys } from "@/lib/demo-data";
 
@@ -16,6 +17,7 @@ export async function GET() {
   try {
     const res = await fetch(`${url}/api-keys?workspace_id=${encodeURIComponent(workspaceId)}`, {
       cache: "no-store",
+      headers: await withBackendSessionHeaders({}),
     });
     const data = await res.json();
     return NextResponse.json(data);
@@ -35,7 +37,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const res = await fetch(`${url}/api-keys`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: await withBackendSessionHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify(body),
     });
     const data = await res.json();

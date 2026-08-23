@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { withBackendSessionHeaders } from "@/lib/backend-session";
 import { pythonUrl } from "@/lib/kernel";
 
 export const dynamic = "force-dynamic";
@@ -14,9 +15,11 @@ export async function GET(req: NextRequest, context: { params: Promise<{ workspa
     const res = await fetch(
       `${url}/stripe/subscription/${encodeURIComponent(params.workspaceId)}`,
       {
-        headers: req.headers.get("authorization")
-          ? { Authorization: req.headers.get("authorization") as string }
-          : undefined,
+        headers: await withBackendSessionHeaders(
+          req.headers.get("authorization")
+            ? { Authorization: req.headers.get("authorization") as string }
+            : {}
+        ),
         cache: "no-store",
       }
     );

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { withBackendSessionHeaders } from "@/lib/backend-session";
 
 const AEON_URL = process.env.AEON_PYTHON_URL || "http://127.0.0.1:5000";
 
@@ -7,13 +7,10 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const session = await auth();
     const headers: Record<string, string> = { "Content-Type": "application/json" };
 
-    // Forward the session JWT to Flask for authentication
-    if (session?.user && (session.user as any)?.token) {
-      headers["Authorization"] = `Bearer ${(session.user as any).token}`;
-    }
+    // Carry the authenticated session identity to Flask via X-User-* headers
+    await withBackendSessionHeaders(headers);
 
     const res = await fetch(`${AEON_URL}/llm/providers`, { headers, cache: "no-store" });
     const data = await res.json();

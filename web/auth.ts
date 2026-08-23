@@ -49,9 +49,12 @@ function getFallbackAdmin(): AeonUser | null {
       workspaceId: DEMO_WORKSPACE_ID,
     };
   }
-  // Built-in demo account fallback
+  // Built-in demo account fallback. The id matches the Flask backend's
+  // platform admin (aeon_auth._FallbackAdmin.id) so the proxy's X-User-Id
+  // header grants workspace-scoped access when the backend is running but
+  // the demo user has not been registered there yet.
   return {
-    id: "demo-admin",
+    id: "admin-fallback",
     email: DEMO_EMAIL,
     name: "Demo Admin",
     role: "ADMIN" as AeonRole,
@@ -83,6 +86,8 @@ async function loginViaFlask(email: string, password: string): Promise<AeonUser 
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password }),
+      // Don't let a half-up backend stall the login flow.
+      signal: AbortSignal.timeout(4000),
     });
     const data = await res.json();
     if (!data?.ok || !data?.user?.id) return null;
@@ -117,6 +122,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         const email = credentials.email as string;
         const password = credentials.password as string;
+
+        // ── AEON Flask backend bridge ─────────────────────────────────
+        // Authenticate first against the Python backend so users registered
+        // there (self-service signups and the seeded demo account) use their
+        // real workspace + membership instead of the frontend fallback.
+        const flaskUser = await loginViaFlask(email, password);
+        if (flaskUser) return flaskUser;
 
         // ── Fallback admin (no Supabase required) ─────────────────────
         const fallback = getFallbackAdmin();
@@ -169,12 +181,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         } else {
           console.warn("[auth] Supabase not configured; falling back to AEON backend");
         }
-
-        // ── AEON Flask backend bridge ─────────────────────────────────
-        // Authenticates users that live in the Python backend's database
-        // (self-service registrations and the one-click demo account).
-        const flaskUser = await loginViaFlask(email, password);
-        if (flaskUser) return flaskUser;
 
         // ── Offline local user store ──────────────────────────────────
         // Lets users registered while the backend was unreachable (see

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { withBackendSessionHeaders } from "@/lib/backend-session";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +13,7 @@ export async function POST(req: NextRequest) {
     const body = (await req.json().catch(() => ({}))) as { app_ids?: string[]; prompt?: string };
     const res = await fetch(`${PYTHON_URL}/swarm/run`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: await withBackendSessionHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({
         app_ids: body.app_ids || [],
         prompt: body.prompt || "",

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { withBackendSessionHeaders } from "@/lib/backend-session";
 import { pythonUrl } from "@/lib/kernel";
 
 export const dynamic = "force-dynamic";
@@ -13,12 +14,12 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const res = await fetch(`${url}/stripe/portal`, {
       method: "POST",
-      headers: {
+      headers: await withBackendSessionHeaders({
         "Content-Type": "application/json",
         ...(req.headers.get("authorization")
           ? { Authorization: req.headers.get("authorization") as string }
           : {}),
-      },
+      }),
       body: JSON.stringify(body),
     });
     const data = await res.json();

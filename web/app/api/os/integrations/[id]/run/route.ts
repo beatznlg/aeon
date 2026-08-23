@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
+import { withBackendSessionHeaders } from "@/lib/backend-session";
 import { logUsage } from "@/lib/usage";
 
 export const dynamic = "force-dynamic";
@@ -24,7 +25,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
     };
     const res = await fetch(`${PYTHON_URL}/integrations/${encodeURIComponent(id)}/run`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: await withBackendSessionHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({
         endpoint: body.endpoint || "",
         method: body.method || "GET",

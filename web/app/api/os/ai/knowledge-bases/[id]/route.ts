@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { withBackendSessionHeaders } from "@/lib/backend-session";
 
 const PYTHON_URL = process.env.AEON_PYTHON_URL;
 
@@ -8,7 +9,10 @@ export async function GET(_req: NextRequest, context: { params: Promise<{ id: st
     return NextResponse.json({ ok: false, error: "AEON_PYTHON_URL not set" });
   }
   try {
-    const res = await fetch(`${PYTHON_URL}/knowledge-bases/${params.id}`, { cache: "no-store" });
+    const res = await fetch(`${PYTHON_URL}/knowledge-bases/${params.id}`, {
+      cache: "no-store",
+      headers: await withBackendSessionHeaders({}),
+    });
     const data = await res.json();
     return NextResponse.json(data);
   } catch (e: any) {
@@ -22,7 +26,10 @@ export async function DELETE(_req: NextRequest, context: { params: Promise<{ id:
     return NextResponse.json({ ok: false, error: "AEON_PYTHON_URL not set" });
   }
   try {
-    const res = await fetch(`${PYTHON_URL}/knowledge-bases/${params.id}`, { method: "DELETE" });
+    const res = await fetch(`${PYTHON_URL}/knowledge-bases/${params.id}`, {
+      method: "DELETE",
+      headers: await withBackendSessionHeaders({}),
+    });
     const data = await res.json();
     return NextResponse.json(data);
   } catch (e: any) {

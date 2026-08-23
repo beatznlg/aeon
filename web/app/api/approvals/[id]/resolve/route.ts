@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { withBackendSessionHeaders } from "@/lib/backend-session";
 import { sanitizeApprovalResponse } from "@/lib/approval-response";
 
 const AEON_URL = process.env.AEON_PYTHON_URL || "http://127.0.0.1:5000";
@@ -10,6 +11,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
   try {
     const body = await req.text();
     const headers: Record<string, string> = { "Content-Type": "application/json" };
+    await withBackendSessionHeaders(headers);
     const authHeader = req.headers.get("authorization");
     if (authHeader) headers.Authorization = authHeader;
     const res = await fetch(`${AEON_URL}/approvals/${encodeURIComponent(params.id)}/resolve`, {

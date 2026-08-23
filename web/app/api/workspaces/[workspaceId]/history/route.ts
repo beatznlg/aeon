@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { withBackendSessionHeaders } from "@/lib/backend-session";
 
 const AEON_URL = process.env.AEON_PYTHON_URL || "http://127.0.0.1:5000";
 
@@ -10,6 +11,7 @@ export async function GET(req: NextRequest, context: { params: Promise<{ workspa
     if (authHeader) {
       headers["Authorization"] = authHeader;
     }
+    await withBackendSessionHeaders(headers);
 
     const limit = req.nextUrl.searchParams.get("limit") || "50";
     const res = await fetch(`${AEON_URL}/workspaces/${params.workspaceId}/history?limit=${limit}`, {

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { withBackendSessionHeaders } from "@/lib/backend-session";
 import { pythonUrl } from "@/lib/kernel";
 
 export const dynamic = "force-dynamic";
@@ -12,6 +13,7 @@ export async function DELETE(_req: NextRequest, context: { params: Promise<{ key
   try {
     const res = await fetch(`${url}/api-keys/${encodeURIComponent(params.keyId)}`, {
       method: "DELETE",
+      headers: await withBackendSessionHeaders({}),
     });
     const data = await res.json();
     return NextResponse.json(data);
@@ -30,7 +32,7 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ keyId
     const body = await req.json();
     const res = await fetch(`${url}/api-keys/${encodeURIComponent(params.keyId)}`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+      headers: await withBackendSessionHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify(body),
     });
     const data = await res.json();

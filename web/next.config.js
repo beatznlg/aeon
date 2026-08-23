@@ -13,7 +13,16 @@ const nextConfig = {
   // path and fail with ENOENT. Excluding it keeps the build green while
   // the runtime fs access keeps working where the filesystem is writable.
   outputFileTracingExcludes: {
-    "*": ["./.data/**", "./.data"],
+    "*": [
+      "./.data/**",
+      "./.data",
+      // The app does not use OpenTelemetry (no instrumentation.ts). Excluding
+      // the package stops the Vercel builder's output tracer from lstat'ing
+      // a root-node_modules copy whose build layout differs from web's, which
+      // previously failed the deploy with ENOENT after a successful build.
+      "./node_modules/@opentelemetry/**",
+      "node_modules/@opentelemetry/**",
+    ],
   },
 };
 

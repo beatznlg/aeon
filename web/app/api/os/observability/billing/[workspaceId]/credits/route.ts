@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
+import { withBackendSessionHeaders } from "@/lib/backend-session";
 import { pythonUrl } from "@/lib/kernel";
 
 export const dynamic = "force-dynamic";
@@ -17,6 +18,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ worksp
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     const authorization = req.headers.get("authorization");
     if (authorization) headers.Authorization = authorization;
+    await withBackendSessionHeaders(headers);
     const res = await fetch(`${url}/billing/${encodeURIComponent(params.workspaceId)}/credits`, {
       method: "POST",
       headers,

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
+import { withBackendSessionHeaders } from "@/lib/backend-session";
 import { logAudit } from "@/lib/audit";
 import { logUsage } from "@/lib/usage";
 
@@ -940,6 +941,7 @@ async function fetchLiveDashboard(
     const cookie = req.headers.get("cookie");
     if (authHeader) headers.Authorization = authHeader;
     if (cookie) headers.Cookie = cookie;
+    await withBackendSessionHeaders(headers);
 
     const res = await fetch(url, { headers, cache: "no-store" });
     if (!res.ok) return null;

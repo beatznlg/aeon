@@ -99,7 +99,7 @@ def register_marketplace_routes(app) -> None:  # type: ignore[no-untyped-def]
     @require_permission("plugins.manage")
     def marketplace_plugin_install(plugin_id: str):
         """Install a plugin into the caller's workspace."""
-        data = request.json or {}
+        data = request.get_json(silent=True) or {}
         result = get_marketplace_manager().install(g.workspace_id, plugin_id, data.get("config"))
         if not result["ok"]:
             return jsonify(result), 400
@@ -152,7 +152,7 @@ def register_marketplace_routes(app) -> None:  # type: ignore[no-untyped-def]
     @require_permission("plugins.manage")
     def marketplace_plugin_config(plugin_id: str):
         """Update an installed plugin's configuration (validated against its schema)."""
-        data = request.json or {}
+        data = request.get_json(silent=True) or {}
         result = get_marketplace_manager().update_config(g.workspace_id, plugin_id, data.get("config", {}))
         if not result["ok"]:
             return jsonify(result), 400
@@ -164,7 +164,7 @@ def register_marketplace_routes(app) -> None:  # type: ignore[no-untyped-def]
     @require_permission("plugins.manage")
     def marketplace_plugin_run(plugin_id: str):
         """Invoke a plugin entry point for the caller's workspace."""
-        data = request.json or {}
+        data = request.get_json(silent=True) or {}
         entry = data.get("entry")
         if not entry:
             return jsonify({"ok": False, "error": "entry required"}), 400

@@ -82,15 +82,21 @@ from aeon_budgets import (
 from aeon_capabilities_routes import register_capability_routes
 from aeon_compliance_routes import register_compliance_routes
 from aeon_db import (
+    add_automation_rule,
     create_automation_budget,
     create_automation_policy,
     delete_automation_budget,
     delete_automation_policy,
+    delete_automation_rule,
     get_automation_budget,
     get_automation_policy,
+    get_automation_rule,
     list_automation_budgets,
+    list_automation_rules,
+    record_automation_rule_run,
     update_automation_budget,
     update_automation_policy,
+    update_automation_rule,
 )
 from aeon_governance import GovernanceManager, get_governance
 from aeon_integrations import IntegrationManager, WebhookDelivery, get_integration_catalog
@@ -275,6 +281,559 @@ _SUCCESS_STATUSES = {"triggered", "completed"}
 def _metrics_local_fallback_enabled() -> bool:
     """Return True if metrics should fall back to the local DB."""
     return os.environ.get("AEON_METRICS_LOCAL_FALLBACK", "").lower() in ("1", "true", "yes")
+
+
+def _automation_rule_store() -> dict[str, Any]:
+    """Resolve the active automation-rules backend.
+
+    Uses Supabase REST when configured (production path). Without Supabase
+    credentials the local SQLite/Postgres ``automation_rules`` store is used so
+    the full automations surface keeps working in preview and self-hosted
+    deployments — rules and executions persist across restarts.
+    """
+    supabase_url = os.environ.get("SUPABASE_URL")
+    service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+    if supabase_url and service_key:
+        return {"mode": "supabase", "url": supabase_url, "key": service_key}
+    return {"mode": "local"}
+
+
+def _automation_event_from_rule(rule: dict[str, Any], ctx: dict[str, Any], workspace_id: str, manual: bool = False) -> dict[str, Any]:
+    """Build a standard automation event payload from a rule dict."""
+    return {
+        "type": rule.get("event_type") or "system",
+        "payload": {"manual": manual, "rule_id": rule.get("id")},
+        "user_id": ctx.get("user_id"),
+        "workspace_id": workspace_id,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def _automations_local_index(request: Any, ctx: dict[str, Any], workspace_id: str) -> Response:
+    """Local store implementation of GET/POST /automations."""
+    if request.method == "GET":
+        return jsonify({"ok": True, "rules": list_automation_rules(str(workspace_id)), "source": "local"})
+
+    data = request.get_json(silent=True) or {}
+    name = (data.get("name") or "").strip()
+    event_type = (data.get("event_type") or "").strip()
+    if not name or not event_type:
+        return _error_response("name and event_type are required", "MISSING_FIELD", 400)
+
+    actions = data.get("actions") or []
+    action_type = (data.get("action_type") or "").strip()
+    action_config = data.get("action_config") or {}
+    if actions:
+        first = actions[0] if isinstance(actions[0], dict) else {}
+        action_type = first.get("type") or first.get("action_type") or action_type
+        action_config = first.get("config") or first.get("action_config") or action_config
+    if not action_type:
+        return _error_response("Must provide actions array or legacy action_type", "MISSING_FIELD", 400)
+
+    schedule_type = (data.get("schedule_type") or "event").strip()
+    cron_expression = (data.get("cron_expression") or "").strip()
+    if schedule_type not in ("event", "cron"):
+        return _error_response("schedule_type must be event or cron", "VALIDATION_ERROR", 400)
+    next_run_at = None
+    if schedule_type == "cron":
+        if not cron_expression:
+            return _error_response("cron_expression is required for scheduled rules", "MISSING_FIELD", 400)
+        next_run_at = _compute_next_run(cron_expression)
+        if next_run_at is None:
+            return _error_response("invalid cron_expression", "INVALID_CRON", 400)
+
+    rule = add_automation_rule(
+        str(workspace_id),
+        name=name,
+        event_type=event_type,
+        description=(data.get("description") or "").strip() or None,
+        condition=data.get("condition", {}),
+        action_type=action_type,
+        action_config=action_config,
+        actions=actions,
+        schedule_type=schedule_type,
+        cron_expression=cron_expression if schedule_type == "cron" else None,
+        enabled=bool(data.get("enabled", True)),
+        approval_required=bool(data.get("approval_required", False)),
+        approver_message=(data.get("approver_message") or "") or None,
+        cooldown_minutes=int(data.get("cooldown_minutes", 0) or 0),
+        created_by=ctx.get("user_id"),
+    )
+    _log_automation_event("automation_created", ctx, rule_id=rule["id"], metadata={"name": name, "event_type": event_type, "rule_id": rule["id"], "source": "local"})
+    return jsonify({"ok": True, "rule": rule}), 201
+
+
+def _automations_local_detail(request: Any, ctx: dict[str, Any], workspace_id: str, rule_id: str) -> Response:
+    """Local store implementation of GET/PATCH/DELETE /automations/<id>."""
+    if request.method == "GET":
+        rule = get_automation_rule(str(workspace_id), rule_id)
+        if not rule:
+            return _error_response("rule not found", "RULE_NOT_FOUND", 404)
+        return jsonify({"ok": True, "rule": rule})
+
+    if request.method == "DELETE":
+        if not delete_automation_rule(str(workspace_id), rule_id):
+            return _error_response("rule not found", "RULE_NOT_FOUND", 404)
+        _log_automation_event("automation_deleted", ctx, rule_id=rule_id, metadata={"rule_id": rule_id, "source": "local"})
+        return jsonify({"ok": True})
+
+    # PATCH
+    data = request.get_json(silent=True) or {}
+    allowed = (
+        "name", "event_type", "condition", "action_type", "action_config", "actions",
+        "enabled", "approval_required", "approver_message", "schedule_type",
+        "cron_expression", "cooldown_minutes", "description",
+    )
+    updates = {k: v for k, v in data.items() if k in allowed}
+    if "cooldown_minutes" in updates:
+        try:
+            updates["cooldown_minutes"] = max(0, int(updates["cooldown_minutes"]))
+        except (TypeError, ValueError):
+            return _error_response("cooldown_minutes must be a non-negative integer", "VALIDATION_ERROR", 400)
+    if "schedule_type" in updates:
+        if updates["schedule_type"] == "cron":
+            cron_expr = updates.get("cron_expression") or data.get("cron_expression")
+            if not cron_expr:
+                return _error_response("cron_expression is required for scheduled rules", "MISSING_FIELD", 400)
+            next_run_at = _compute_next_run(cron_expr)
+            if next_run_at is None:
+                return _error_response("invalid cron_expression", "INVALID_CRON", 400)
+            updates["next_run_at"] = next_run_at.isoformat()
+        else:
+            updates["cron_expression"] = None
+            updates["next_run_at"] = None
+    if not updates:
+        return _error_response("no fields to update", "VALIDATION_ERROR", 400)
+    rule = update_automation_rule(str(workspace_id), rule_id, updates)
+    if not rule:
+        return _error_response("rule not found", "RULE_NOT_FOUND", 404)
+    _log_automation_event("automation_updated", ctx, rule_id=rule_id, metadata={"rule_id": rule_id, "fields": list(updates.keys()), "source": "local"})
+    return jsonify({"ok": True, "rule": rule})
+
+
+def _automations_local_run(request: Any, ctx: dict[str, Any], workspace_id: str, rule_id: str) -> Response:
+    """Local store implementation of POST /automations/<id>/run."""
+    rule = get_automation_rule(str(workspace_id), rule_id)
+    if not rule:
+        return _error_response("rule not found", "RULE_NOT_FOUND", 404)
+
+    # Phase 42: enforce automation budgets before execution.
+    budget_result = check_automation_budget(str(workspace_id), rule_id=rule_id)
+    if not budget_result.allowed:
+        add_automation_execution(rule_id=rule_id, workspace_id=str(workspace_id), status="throttled", result={"reason": budget_result.blocks})
+        return jsonify({"ok": False, "error": "budget exceeded", "blocks": budget_result.blocks}), 429
+
+    body = request.get_json(silent=True) or {}
+    dry_run = bool(body.get("dry_run"))
+    event = _automation_event_from_rule(rule, ctx, str(workspace_id), manual=True)
+    _log_automation_event("automation_run", ctx, rule_id=rule_id, metadata={"rule_id": rule_id, "dry_run": dry_run, "source": "local"})
+    try:
+        result = _execute_action(rule, event, dry_run=dry_run)
+    except Exception as exc:  # nosec B110 - surface the action error to the caller
+        logger.warning("Local automation run failed for %s: %s", rule_id, exc)
+        result = {"ok": False, "error": str(exc)}
+
+    if not dry_run:
+        add_automation_execution(
+            rule_id=rule_id,
+            workspace_id=str(workspace_id),
+            status="completed" if result.get("ok") else "failed",
+            result=result,
+        )
+        record_automation_rule_run(str(workspace_id), rule_id, result)
+    try:
+        emit_event(
+            AUTOMATION_COMPLETED if result.get("ok") else AUTOMATION_FAILED,
+            tenant_id="",
+            workspace_id=workspace_id,
+            payload={"rule_id": rule_id, "rule_name": rule.get("name"), "dry_run": dry_run, "result_ok": result.get("ok"), "status": result.get("status")},
+        )
+    except Exception:  # nosec B110 - telemetry must never break the run
+        pass
+    return jsonify({"ok": result.get("ok"), "dry_run": dry_run, "result": result})
+
+
+def _automations_local_executions_list(request: Any, ctx: dict[str, Any], workspace_id: str, rule_id: str | None = None, execution_id: str | None = None) -> Response:
+    """Local store implementation of the execution-list endpoints."""
+    executions = list_automation_executions(str(workspace_id))
+    if rule_id:
+        executions = [e for e in executions if e.get("rule_id") == rule_id]
+    if execution_id:
+        executions = [e for e in executions if e.get("id") == execution_id]
+        if not executions:
+            return _error_response("execution not found", "EXECUTION_NOT_FOUND", 404)
+        return jsonify({"ok": True, "execution": executions[0], "source": "local"})
+
+    limit = min(100, max(1, request.args.get("limit", 50, type=int)))
+    offset = max(0, request.args.get("offset", 0, type=int))
+    status = request.args.get("status")
+    if status and status in ("triggered", "failed", "completed", "throttled", "pending_approval"):
+        executions = [e for e in executions if e.get("status") == status]
+    executions = executions[offset : offset + limit]
+
+    rule_names = {r["id"]: r["name"] for r in list_automation_rules(str(workspace_id))}
+    for e in executions:
+        e["rule_name"] = rule_names.get(e.get("rule_id"))
+    return jsonify({"ok": True, "executions": executions, "source": "local"})
+
+
+def _automations_local_export(workspace_id: str, ctx: dict[str, Any]) -> Response:
+    """Local store implementation of GET /automations/export."""
+    rule_id = request.args.get("rule_id")
+    rules = list_automation_rules(str(workspace_id))
+    if rule_id:
+        rules = [r for r in rules if r.get("id") == rule_id]
+    _log_automation_event("automation_exported", ctx, metadata={"count": len(rules), "rule_id": rule_id, "source": "local"})
+    return jsonify({
+        "ok": True,
+        "exported_at": datetime.now(timezone.utc).isoformat(),
+        "version": "aeon-automation-v1",
+        "source_workspace_id": workspace_id,
+        "count": len(rules),
+        "rules": [_strip_rule_for_export(rule) for rule in rules],
+    })
+
+
+def _automations_local_import(request: Any, ctx: dict[str, Any], workspace_id: str) -> Response:
+    """Local store implementation of POST /automations/import."""
+    data = request.get_json(silent=True) or {}
+    if isinstance(data, dict) and "rules" in data:
+        raw_rules = data.get("rules") or []
+    elif isinstance(data, list):
+        raw_rules = data
+    elif isinstance(data, dict):
+        raw_rules = [data]
+    else:
+        return _error_response("import body must be a rule object, a list of rules, or {rules: [...]}", "INVALID_PAYLOAD", 400)
+    if not raw_rules:
+        return _error_response("no rules to import", "VALIDATION_ERROR", 400)
+
+    created: list[dict] = []
+    errors: list[dict] = []
+    for idx, raw in enumerate(raw_rules):
+        ok, err = _validate_automation_payload(raw)
+        if not ok:
+            errors.append({"index": idx, "error": err})
+            continue
+        actions = raw.get("actions") or []
+        if actions and isinstance(actions[0], dict):
+            first = actions[0]
+            action_type = first.get("type") or first.get("action_type")
+            action_config = first.get("config") or first.get("action_config") or {}
+        else:
+            action_type = raw.get("action_type")
+            action_config = raw.get("action_config") or {}
+            actions = [{"type": action_type, "config": action_config}] if action_type else []
+        schedule_type = (raw.get("schedule_type") or "event").strip()
+        cron_expression = (raw.get("cron_expression") or "").strip()
+        try:
+            rule = add_automation_rule(
+                str(workspace_id),
+                name=(raw.get("name") or "").strip(),
+                event_type=(raw.get("event_type") or "").strip(),
+                description=(raw.get("description") or "") or None,
+                condition=raw.get("condition", {}),
+                action_type=action_type,
+                action_config=action_config,
+                actions=actions,
+                schedule_type=schedule_type,
+                cron_expression=cron_expression if schedule_type == "cron" else None,
+                enabled=bool(raw.get("enabled", True)),
+                approval_required=bool(raw.get("approval_required", False)),
+                approver_message=(raw.get("approver_message") or "") or None,
+                cooldown_minutes=int(raw.get("cooldown_minutes", 0) or 0),
+                created_by=ctx.get("user_id"),
+            )
+            created.append(rule)
+        except Exception as exc:  # nosec B110 - collect per-rule import errors
+            errors.append({"index": idx, "error": str(exc)})
+    _log_automation_event("automation_imported", ctx, metadata={"imported": len(created), "errors": len(errors), "source": "local"})
+    return jsonify({"ok": len(errors) == 0, "imported": len(created), "rules": created, "errors": errors}), 200 if not errors else 207
+
+
+# ── Local approvals / inbound-webhook stores (no Supabase) ──────────────────
+
+def _local_json_load(kind: str) -> dict[str, Any]:
+    """Load a JSON-file-backed store from AEON_ROOT."""
+    try:
+        path = Path(AEON_ROOT) / f"{kind}.json"
+        if path.exists():
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                return data
+    except Exception as exc:  # nosec B110 - corrupt store resets to empty
+        logger.warning("Failed to read %s store: %s", kind, exc)
+    return {}
+
+
+def _local_json_save(kind: str, data: dict[str, Any]) -> None:
+    """Persist a JSON-file-backed store under AEON_ROOT."""
+    try:
+        path = Path(AEON_ROOT) / f"{kind}.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
+    except Exception as exc:  # nosec B110 - persistence must never crash the API
+        logger.warning("Failed to persist %s store: %s", kind, exc)
+
+
+def _local_ws_rows(kind: str, workspace_id: str) -> list[dict[str, Any]]:
+    return _local_json_load(kind).get(str(workspace_id), [])
+
+
+def _local_ws_save(kind: str, workspace_id: str, rows: list[dict[str, Any]]) -> None:
+    store = _local_json_load(kind)
+    store[str(workspace_id)] = rows
+    _local_json_save(kind, store)
+
+
+def _approvals_local_index(request: Any, ctx: dict[str, Any], workspace_id: str) -> Response:
+    """Local GET/POST /approvals."""
+    rows = _local_ws_rows("approvals", workspace_id)
+    if request.method == "GET":
+        status = request.args.get("status", "pending")
+        filtered = [r for r in rows if status == "all" or r.get("status") == status]
+        return jsonify({"ok": True, "approvals": filtered, "source": "local"})
+    data = request.get_json(silent=True) or {}
+    approval = {
+        "id": "ap-" + secrets.token_hex(8),
+        "rule_id": data.get("rule_id"),
+        "event_type": data.get("event_type", "manual"),
+        "event_payload": json.dumps(data.get("event_payload") or {}),
+        "action_type": data.get("action_type", "webhook"),
+        "action_config": json.dumps(data.get("action_config") or {}),
+        "status": "pending",
+        "workspace_id": workspace_id,
+        "user_id": ctx.get("user_id"),
+        "requested_by": ctx.get("user_id"),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    rows.insert(0, approval)
+    _local_ws_save("approvals", workspace_id, rows)
+    return jsonify({"ok": True, "approval": approval, "source": "local"}), 201
+
+
+def _approvals_local_detail(request: Any, ctx: dict[str, Any], workspace_id: str, approval_id: str) -> Response:
+    """Local GET /approvals/<id>."""
+    rows = _local_ws_rows("approvals", workspace_id)
+    for row in rows:
+        if row.get("id") == approval_id:
+            return jsonify({"ok": True, "approval": row, "source": "local"})
+    return _error_response("approval not found", "APPROVAL_NOT_FOUND", 404)
+
+
+def _approvals_local_resolve(request: Any, ctx: dict[str, Any], approval_id: str) -> Response:
+    """Local POST /approvals/<id>/resolve (approve/reject)."""
+    data = request.get_json(silent=True) or {}
+    decision = (data.get("decision") or "").strip().lower()
+    if not decision:
+        return _error_response("decision is required", "MISSING_FIELD", 400)
+    workspace_id = ctx.get("workspace_id")
+    rows = _local_ws_rows("approvals", workspace_id)
+    for row in rows:
+        if row.get("id") == approval_id:
+            if decision in ("approve", "approved"):
+                row["status"] = "approved"
+            elif decision in ("reject", "deny", "denied"):
+                row["status"] = "denied"
+            else:
+                return jsonify({"ok": False, "error": f"unknown decision {decision}"}), 400
+            row["resolved_by"] = ctx.get("user_id")
+            row["resolved_at"] = datetime.now(timezone.utc).isoformat()
+            row["reason"] = data.get("reason")
+            _local_ws_save("approvals", workspace_id, rows)
+            return jsonify({"ok": True, "approval": row, "source": "local"})
+    return jsonify({"ok": False, "error": "approval not found"}), 404
+
+
+def _webhooks_local_index(request: Any, ctx: dict[str, Any], workspace_id: str) -> Response:
+    """Local GET/POST /inbound-webhooks."""
+    rows = _local_ws_rows("inbound_webhooks", workspace_id)
+    if request.method == "GET":
+        return jsonify({"ok": True, "webhooks": rows, "source": "local"})
+    data = request.get_json(silent=True) or {}
+    hook = {
+        "id": "wh-" + secrets.token_hex(8),
+        "workspace_id": workspace_id,
+        "name": (data.get("name") or "Inbound Webhook").strip(),
+        "token": _generate_inbound_token(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    rows.insert(0, hook)
+    _local_ws_save("inbound_webhooks", workspace_id, rows)
+    return jsonify({"ok": True, "webhook": hook, "source": "local"}), 201
+
+
+def _webhooks_local_detail(request: Any, ctx: dict[str, Any], workspace_id: str, webhook_id: str) -> Response:
+    """Local GET/DELETE /inbound-webhooks/<id>."""
+    rows = _local_ws_rows("inbound_webhooks", workspace_id)
+    if request.method == "GET":
+        for row in rows:
+            if row.get("id") == webhook_id:
+                return jsonify({"ok": True, "webhook": row, "source": "local"})
+        return _error_response("webhook not found", "NOT_FOUND", 404)
+    remaining = [r for r in rows if r.get("id") != webhook_id]
+    _local_ws_save("inbound_webhooks", workspace_id, remaining)
+    return jsonify({"ok": True, "source": "local"})
+
+
+# ── Local approvals / inbound-webhook stores (no Supabase) ──────────────────
+
+def _local_json_load(kind: str) -> dict[str, Any]:
+    """Load a JSON-file-backed store from AEON_ROOT."""
+    try:
+        path = Path(AEON_ROOT) / f"{kind}.json"
+        if path.exists():
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                return data
+    except Exception as exc:  # nosec B110 - corrupt store resets to empty
+        logger.warning("Failed to read %s store: %s", kind, exc)
+    return {}
+
+
+def _local_json_save(kind: str, data: dict[str, Any]) -> None:
+    """Persist a JSON-file-backed store under AEON_ROOT."""
+    try:
+        path = Path(AEON_ROOT) / f"{kind}.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
+    except Exception as exc:  # nosec B110 - persistence must never crash the API
+        logger.warning("Failed to persist %s store: %s", kind, exc)
+
+
+def _local_ws_rows(kind: str, workspace_id: str) -> list[dict[str, Any]]:
+    return _local_json_load(kind).get(str(workspace_id), [])
+
+
+def _local_ws_save(kind: str, workspace_id: str, rows: list[dict[str, Any]]) -> None:
+    store = _local_json_load(kind)
+    store[str(workspace_id)] = rows
+    _local_json_save(kind, store)
+
+
+def _approvals_local_index(request: Any, ctx: dict[str, Any], workspace_id: str) -> Response:
+    """Local GET/POST /approvals."""
+    rows = _local_ws_rows("approvals", workspace_id)
+    if request.method == "GET":
+        status = request.args.get("status", "pending")
+        filtered = [r for r in rows if status == "all" or r.get("status") == status]
+        return jsonify({"ok": True, "approvals": filtered, "source": "local"})
+    data = request.get_json(silent=True) or {}
+    approval = {
+        "id": "ap-" + secrets.token_hex(8),
+        "rule_id": data.get("rule_id"),
+        "event_type": data.get("event_type", "manual"),
+        "event_payload": json.dumps(data.get("event_payload") or {}),
+        "action_type": data.get("action_type", "webhook"),
+        "action_config": json.dumps(data.get("action_config") or {}),
+        "status": "pending",
+        "workspace_id": workspace_id,
+        "user_id": ctx.get("user_id"),
+        "requested_by": ctx.get("user_id"),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    rows.insert(0, approval)
+    _local_ws_save("approvals", workspace_id, rows)
+    return jsonify({"ok": True, "approval": approval, "source": "local"}), 201
+
+
+def _approvals_local_detail(request: Any, ctx: dict[str, Any], workspace_id: str, approval_id: str) -> Response:
+    """Local GET /approvals/<id>."""
+    rows = _local_ws_rows("approvals", workspace_id)
+    for row in rows:
+        if row.get("id") == approval_id:
+            return jsonify({"ok": True, "approval": row, "source": "local"})
+    return _error_response("approval not found", "APPROVAL_NOT_FOUND", 404)
+
+
+def _approvals_local_resolve(request: Any, ctx: dict[str, Any], approval_id: str) -> Response:
+    """Local POST /approvals/<id>/resolve (approve/reject)."""
+    data = request.get_json(silent=True) or {}
+    decision = (data.get("decision") or "").strip().lower()
+    if not decision:
+        return _error_response("decision is required", "MISSING_FIELD", 400)
+    workspace_id = ctx.get("workspace_id")
+    rows = _local_ws_rows("approvals", workspace_id)
+    for row in rows:
+        if row.get("id") == approval_id:
+            if decision in ("approve", "approved"):
+                row["status"] = "approved"
+            elif decision in ("reject", "deny", "denied"):
+                row["status"] = "denied"
+            else:
+                return jsonify({"ok": False, "error": f"unknown decision {decision}"}), 400
+            row["resolved_by"] = ctx.get("user_id")
+            row["resolved_at"] = datetime.now(timezone.utc).isoformat()
+            row["reason"] = data.get("reason")
+            _local_ws_save("approvals", workspace_id, rows)
+            return jsonify({"ok": True, "approval": row, "source": "local"})
+    return jsonify({"ok": False, "error": "approval not found"}), 404
+
+
+def _webhooks_local_index(request: Any, ctx: dict[str, Any], workspace_id: str) -> Response:
+    """Local GET/POST /inbound-webhooks."""
+    rows = _local_ws_rows("inbound_webhooks", workspace_id)
+    if request.method == "GET":
+        return jsonify({"ok": True, "webhooks": rows, "source": "local"})
+    data = request.get_json(silent=True) or {}
+    hook = {
+        "id": "wh-" + secrets.token_hex(8),
+        "workspace_id": workspace_id,
+        "name": (data.get("name") or "Inbound Webhook").strip(),
+        "token": _generate_inbound_token(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    rows.insert(0, hook)
+    _local_ws_save("inbound_webhooks", workspace_id, rows)
+    return jsonify({"ok": True, "webhook": hook, "source": "local"}), 201
+
+
+def _webhooks_local_detail(request: Any, ctx: dict[str, Any], workspace_id: str, webhook_id: str) -> Response:
+    """Local GET/DELETE /inbound-webhooks/<id>."""
+    rows = _local_ws_rows("inbound_webhooks", workspace_id)
+    if request.method == "GET":
+        for row in rows:
+            if row.get("id") == webhook_id:
+                return jsonify({"ok": True, "webhook": row, "source": "local"})
+        return _error_response("webhook not found", "NOT_FOUND", 404)
+    remaining = [r for r in rows if r.get("id") != webhook_id]
+    _local_ws_save("inbound_webhooks", workspace_id, remaining)
+    return jsonify({"ok": True, "source": "local"})
+
+
+def _automations_local_dispatch(request: Any, ctx: dict[str, Any], workspace_id: str) -> Response:
+    """Route /automations* requests to the local SQLite store implementation.
+
+    Invoked from each decorated automation route when Supabase is not
+    configured, so workspace auth/roles have already been enforced.
+    """
+    path = request.path.rstrip("/")
+    if path in ("/automations", ""):
+        return _automations_local_index(request, ctx, workspace_id)
+    if path == "/automations/executions":
+        return _automations_local_executions_list(request, ctx, workspace_id)
+    if path == "/automations/export":
+        return _automations_local_export(workspace_id, ctx)
+    if path == "/automations/import":
+        return _automations_local_import(request, ctx, workspace_id)
+    parts = path.split("/")
+    # /automations/executions/<execution_id>
+    if len(parts) == 4 and parts[1] == "automations" and parts[2] == "executions" and parts[3]:
+        return _automations_local_executions_list(request, ctx, workspace_id, execution_id=parts[3])
+    # /automations/<rule_id>[/run|/executions|/snapshots|/rollback/<id>]
+    if len(parts) >= 3 and parts[0] == "" and parts[1] == "automations" and parts[2] not in ("policies", "budgets", "blueprints", "metrics", "audit", "test-condition"):
+        rule_id = parts[2]
+        if len(parts) == 3:
+            return _automations_local_detail(request, ctx, workspace_id, rule_id)
+        if len(parts) == 4 and parts[3] == "run":
+            return _automations_local_run(request, ctx, workspace_id, rule_id)
+        if len(parts) == 4 and parts[3] == "executions":
+            return _automations_local_executions_list(request, ctx, workspace_id, rule_id=rule_id)
+        if len(parts) == 4 and parts[3] == "snapshots":
+            return jsonify({"ok": True, "snapshots": []})
+        if len(parts) == 5 and parts[3] == "rollback":
+            return _error_response("no snapshots available", "NO_SNAPSHOTS", 404)
+    return _error_response("not found", "NOT_FOUND", 404)
 
 
 def _seed_sample_automation_executions(workspace_id: str) -> None:
@@ -2098,7 +2657,7 @@ def workspace_residency_check(workspace_id: str):
 @require_workspace_role("ADMIN")
 def workspace_security_encrypt(workspace_id: str):
     """Encrypt a payload using the workspace's configured KMS key (BYOK)."""
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     payload = data.get("payload")
     if not isinstance(payload, dict):
         return _error_response("payload must be an object", "INVALID_PAYLOAD", 400)
@@ -2120,7 +2679,7 @@ def workspace_security_encrypt(workspace_id: str):
 @require_workspace_role("ADMIN")
 def workspace_security_decrypt(workspace_id: str):
     """Decrypt a payload previously encrypted via /security/encrypt."""
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     encrypted_data = data.get("encrypted_data")
     envelope = data.get("envelope")
     if not isinstance(encrypted_data, str) or not isinstance(envelope, dict):
@@ -2164,7 +2723,7 @@ def workspaces_list():
 def workspace_chat(workspace_id: str):
     """Workspace-scoped chat with isolated agent state per workspace."""
     from aeon_db import get_db
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     query = (data.get("query") or "").strip()
     if not query:
         return _error_response("missing query", "MISSING_FIELD", 400)
@@ -2339,7 +2898,7 @@ def workspace_branding_get(workspace_id: str):
 @require_workspace_role("ADMIN")
 def workspace_branding_update(workspace_id: str):
     """Update the branding/theme config for a workspace. Admin only."""
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     try:
         validated = _validate_branding_payload(data)
         updated = update_workspace_theme_config(workspace_id, validated)
@@ -2412,7 +2971,7 @@ def _governance_context() -> dict[str, Any]:
             "email": ctx.get("email"),
         }
     # Legacy header fallback for existing integrations
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     return {
         "user_id": data.get("user_id") or request.headers.get("X-User-Id"),
         "workspace_id": data.get("workspace_id") or request.headers.get("X-Workspace-Id"),
@@ -2485,7 +3044,7 @@ def chat():
     """Global chat endpoint. Uses the 'default' agent context.
     Supports per-request provider override via the 'provider' field.
     """
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     query = (data.get("query") or "").strip()
     if not query:
         return _error_response("missing query", "MISSING_FIELD", 400)
@@ -2563,7 +3122,7 @@ def chat():
 @require_auth
 def app_chat(app_id: str):
     """Module-aware chat endpoint."""
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     query = (data.get("query") or "").strip()
     if not query:
         return _error_response("missing query", "MISSING_FIELD", 400)
@@ -2631,7 +3190,7 @@ def app_chat(app_id: str):
 @require_auth
 def app_tick(app_id: str):
     """Run one agent tick for the given app."""
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     query = (data.get("query") or "tick").strip()
     async_mode = bool(data.get("async"))
     ctx = _governance_context()
@@ -2755,7 +3314,7 @@ def workflows_index():
     if not _has_workspace_role(ctx, workspace_id, "OPERATOR"):
         return _error_response("workspace operator required", "WORKSPACE_OPERATOR_REQUIRED", 403)
 
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     workflow = aeon_workflows.WorkflowDefinition(
         id=data.get("id") or f"wf-{int(time.time() * 1000)}",
         name=data.get("name", "Untitled Workflow"),
@@ -2792,7 +3351,7 @@ def workflow_detail(workflow_id: str):
 @require_auth
 @require_workspace_role("OPERATOR")
 def workflow_run(workflow_id: str):
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     initial_input = (data.get("initial_input") or "").strip()
     ctx = _governance_context()
     workspace_id = ctx.get("workspace_id") or data.get("workspace_id")
@@ -2863,7 +3422,7 @@ def workflow_run(workflow_id: str):
 @require_auth
 @require_workspace_role("OPERATOR")
 def swarm_run():
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     app_ids = data.get("app_ids") or []
     prompt = (data.get("prompt") or "").strip()
     roles = data.get("roles") or {}
@@ -3014,7 +3573,7 @@ def api_keys_index():
     if not _has_workspace_role(ctx, workspace_id, "ADMIN"):
         return _error_response("workspace admin required", "WORKSPACE_ADMIN_REQUIRED", 403)
 
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     name = data.get("name", "Unnamed Key")
     rate_limit = min(10000, max(1, int(data.get("rate_limit_per_min", 100))))
     key, plaintext = mgr.create_key(
@@ -3091,7 +3650,7 @@ def api_key_detail(key_id: str):
     # PATCH - update key metadata (ADMIN only)
     if not _has_workspace_role(ctx, workspace_id, "ADMIN"):
         return _error_response("workspace admin required", "WORKSPACE_ADMIN_REQUIRED", 403)
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     key = mgr.get_key_by_id(key_id)
     if not key or key.workspace_id != workspace_id:
         return _error_response("key not found", "KEY_NOT_FOUND", 404)
@@ -3240,7 +3799,7 @@ def governance_audit():
 @app.route("/governance/compliance", methods=["GET", "POST"])
 @require_auth
 def governance_compliance():
-    workspace_id = (request.json or {}).get("workspace_id") or request.args.get("workspace_id")
+    workspace_id = (request.get_json(silent=True) or {}).get("workspace_id") or request.args.get("workspace_id")
     if workspace_id and not _has_workspace_role(_governance_context(), workspace_id, "ADMIN"):
         return _error_response("workspace admin required", "WORKSPACE_ADMIN_REQUIRED", 403)
     if request.method == "GET":
@@ -3249,7 +3808,7 @@ def governance_compliance():
         result = get_governance_manager().run_compliance_check(check_type, workspace_id)
         return jsonify(result)
 
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     check_type = data.get("check_type", "pii_scan")
     workspace_id = data.get("workspace_id")
     result = get_governance_manager().run_compliance_check(check_type, workspace_id)
@@ -3259,7 +3818,7 @@ def governance_compliance():
 @app.route("/governance/retention", methods=["GET", "POST"])
 @require_auth
 def governance_retention():
-    workspace_id = (request.json or {}).get("workspace_id") or request.args.get("workspace_id")
+    workspace_id = (request.get_json(silent=True) or {}).get("workspace_id") or request.args.get("workspace_id")
     if workspace_id and not _has_workspace_role(_governance_context(), workspace_id, "ADMIN"):
         return _error_response("workspace admin required", "WORKSPACE_ADMIN_REQUIRED", 403)
     if request.method == "GET":
@@ -3267,7 +3826,7 @@ def governance_retention():
         # RBAC already checked above if workspace_id was present
         return jsonify({"ok": True, "policy": get_governance_manager().get_retention_policy(workspace_id)})
 
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     workspace_id = data.get("workspace_id")
     retention_days = int(data.get("retention_days", 365))
     action = data.get("action", "archive")
@@ -3301,7 +3860,7 @@ def integrations_index():
     if not _has_workspace_role(ctx, workspace_id, "OPERATOR"):
         return _error_response("workspace operator required", "WORKSPACE_OPERATOR_REQUIRED", 403)
 
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     integration_id = data.get("id")
     cfg = mgr.save(data, integration_id=integration_id)
     return jsonify({"ok": True, "integration": cfg.to_dict(mask=True)})
@@ -3332,7 +3891,7 @@ def integration_detail(integration_id: str):
 @require_auth
 @require_workspace_role("OPERATOR")
 def integration_run(integration_id: str):
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     endpoint = data.get("endpoint", "")
     method = data.get("method", "GET")
     payload = data.get("payload")
@@ -3374,7 +3933,7 @@ def integration_run(integration_id: str):
 @app.route("/proxy", methods=["POST"])
 @require_auth
 def proxy_request():
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     integration_id = data.get("integration_id")
     ctx = _governance_context()
     if not integration_id:
@@ -3417,7 +3976,7 @@ def webhook_receive(integration_id: str):
         id=f"wh-{int(time.time() * 1000)}-{id(request)}",
         integration_id=integration_id,
         timestamp=time.time(),
-        payload=request.json or {},
+        payload=request.get_json(silent=True) or {},
         response_status=200 if verified else 401,
         error_message=None if verified else "webhook signature verification failed",
     )
@@ -3454,7 +4013,7 @@ def billing_set_plan(workspace_id: str):
     """Upgrade/downgrade a workspace plan."""
     if not _has_workspace_role(_governance_context(), workspace_id, "ADMIN"):
         return _error_response("workspace admin required", "WORKSPACE_ADMIN_REQUIRED", 403)
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     plan_id = data.get("plan_id", "free")
     credits = float(data.get("credits", 0))
 
@@ -3493,7 +4052,7 @@ def billing_add_credits(workspace_id: str):
     """Add credits to a workspace (simulated payment)."""
     if not _has_workspace_role(_governance_context(), workspace_id, "ADMIN"):
         return _error_response("workspace admin required", "WORKSPACE_ADMIN_REQUIRED", 403)
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     amount = float(data.get("amount", 0))
     if amount <= 0:
         return _error_response("amount must be positive", "AMOUNT_MUST_BE_POSITIVE", 400)
@@ -3527,7 +4086,7 @@ def billing_add_credits(workspace_id: str):
 @require_auth
 def usage_record():
     """Record one or more usage events."""
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     events = data if isinstance(data, list) else [data]
     recorded = []
     ctx = _governance_context()
@@ -3576,7 +4135,7 @@ def stripe_checkout():
     """Create a Stripe Checkout Session for workspace subscription upgrade.
     Falls back to simulated upgrade when Stripe is not configured.
     """
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     workspace_id = data.get("workspace_id", "")
     plan_id = data.get("plan_id", "team")
     success_url = data.get("success_url", "")
@@ -3614,7 +4173,7 @@ def stripe_checkout():
 @require_auth
 def stripe_portal():
     """Create a Stripe Billing Portal session for managing subscriptions."""
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     workspace_id = data.get("workspace_id", "")
     return_url = data.get("return_url", "")
     ctx = _governance_context()
@@ -3804,7 +4363,7 @@ def llm_providers():
 @require_auth
 def llm_switch():
     """Switch the active LLM provider at runtime."""
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     provider_id = data.get("provider", "").strip().lower()
     if not provider_id:
         return _error_response("provider required", "PROVIDER_REQUIRED", 400)
@@ -3828,7 +4387,7 @@ def llm_switch():
 @require_auth
 def llm_test():
     """Test a provider (or the current active one) with a simple prompt."""
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     provider_id = data.get("provider") or None
     prompt = data.get("prompt") or None
     result = _test_llm_provider(provider_id, prompt)
@@ -3873,7 +4432,7 @@ def prompts_index():
     if request.method == "GET":
         return jsonify({"ok": True, "prompts": reg.list_prompts()})
 
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     if not data.get("name"):
         return _error_response("name is required", "MISSING_FIELD", 400)
     prompt = reg.save_prompt(data)
@@ -3920,7 +4479,7 @@ def knowledge_bases_index():
     if request.method == "GET":
         return jsonify({"ok": True, "knowledge_bases": mgr.list_kbs()})
 
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     if not data.get("name"):
         return _error_response("name is required", "MISSING_FIELD", 400)
     kb = mgr.create_kb(data)
@@ -3962,7 +4521,7 @@ def knowledge_base_detail(kb_id: str):
 @app.route("/knowledge-bases/<kb_id>/documents", methods=["POST"])
 @require_auth
 def knowledge_base_upload(kb_id: str):
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     text = (data.get("text") or "").strip()
     doc_id = data.get("doc_id") or f"doc-{int(time.time() * 1000)}"
     ctx = _governance_context()
@@ -3988,7 +4547,7 @@ def knowledge_base_upload(kb_id: str):
 @app.route("/knowledge-bases/<kb_id>/query", methods=["POST"])
 @require_auth
 def knowledge_base_query(kb_id: str):
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     query = (data.get("query") or "").strip()
     top_k = min(20, max(1, int(data.get("top_k", 5))))
     mode = data.get("mode", "hybrid")
@@ -4027,7 +4586,7 @@ def knowledge_base_stats(kb_id: str):
 @app.route("/rag/chat", methods=["POST"])
 @require_auth
 def rag_chat():
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     query = (data.get("query") or "").strip()
     if not query:
         return _error_response("query is required", "MISSING_FIELD", 400)
@@ -4115,10 +4674,11 @@ def automations_index():
     ctx = _governance_context()
     workspace_id = ctx.get("workspace_id")
 
-    supabase_url = os.environ.get("SUPABASE_URL")
-    service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
-    if not supabase_url or not service_key:
-        return _error_response("Supabase not configured", "SUPABASE_NOT_CONFIGURED", 503)
+    store = _automation_rule_store()
+    if store["mode"] == "local":
+        return _automations_local_dispatch(request, ctx, workspace_id)
+    supabase_url = store["url"]
+    service_key = store["key"]
 
     if request.method == "GET":
         try:
@@ -4141,7 +4701,7 @@ def automations_index():
             return _error_response(str(e), "INTERNAL_ERROR", 500)
 
     # POST
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     name = (data.get("name") or "").strip()
     event_type = (data.get("event_type") or "").strip()
     actions = data.get("actions") or []
@@ -4288,10 +4848,11 @@ def automation_detail(rule_id: str):
     ctx = _governance_context()
     workspace_id = ctx.get("workspace_id")
 
-    supabase_url = os.environ.get("SUPABASE_URL")
-    service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
-    if not supabase_url or not service_key:
-        return _error_response("Supabase not configured", "SUPABASE_NOT_CONFIGURED", 503)
+    store = _automation_rule_store()
+    if store["mode"] == "local":
+        return _automations_local_dispatch(request, ctx, workspace_id)
+    supabase_url = store["url"]
+    service_key = store["key"]
 
     if request.method == "GET":
         r = requests.get(
@@ -4324,7 +4885,7 @@ def automation_detail(rule_id: str):
         return jsonify({"ok": True})
 
     # PATCH
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     updates: dict[str, Any] = {}
     for field in (
         "name",
@@ -4461,10 +5022,11 @@ def automation_run_now(rule_id: str):
     ctx = _governance_context()
     workspace_id = ctx.get("workspace_id")
 
-    supabase_url = os.environ.get("SUPABASE_URL")
-    service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
-    if not supabase_url or not service_key:
-        return _error_response("Supabase not configured", "SUPABASE_NOT_CONFIGURED", 503)
+    store = _automation_rule_store()
+    if store["mode"] == "local":
+        return _automations_local_dispatch(request, ctx, workspace_id)
+    supabase_url = store["url"]
+    service_key = store["key"]
 
     try:
         r = requests.get(
@@ -4558,10 +5120,11 @@ def automation_executions_list():
     ctx = _governance_context()
     workspace_id = ctx.get("workspace_id")
 
-    supabase_url = os.environ.get("SUPABASE_URL")
-    service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
-    if not supabase_url or not service_key:
-        return _error_response("Supabase not configured", "SUPABASE_NOT_CONFIGURED", 503)
+    store = _automation_rule_store()
+    if store["mode"] == "local":
+        return _automations_local_dispatch(request, ctx, workspace_id)
+    supabase_url = store["url"]
+    service_key = store["key"]
 
     try:
         limit = min(100, max(1, request.args.get("limit", 50, type=int)))
@@ -4632,10 +5195,11 @@ def automation_execution_detail(execution_id: str):
     ctx = _governance_context()
     workspace_id = ctx.get("workspace_id")
 
-    supabase_url = os.environ.get("SUPABASE_URL")
-    service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
-    if not supabase_url or not service_key:
-        return _error_response("Supabase not configured", "SUPABASE_NOT_CONFIGURED", 503)
+    store = _automation_rule_store()
+    if store["mode"] == "local":
+        return _automations_local_dispatch(request, ctx, workspace_id)
+    supabase_url = store["url"]
+    service_key = store["key"]
 
     try:
         r = requests.get(
@@ -4690,10 +5254,11 @@ def automation_executions(rule_id: str):
     ctx = _governance_context()
     workspace_id = ctx.get("workspace_id")
 
-    supabase_url = os.environ.get("SUPABASE_URL")
-    service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
-    if not supabase_url or not service_key:
-        return _error_response("Supabase not configured", "SUPABASE_NOT_CONFIGURED", 503)
+    store = _automation_rule_store()
+    if store["mode"] == "local":
+        return _automations_local_dispatch(request, ctx, workspace_id)
+    supabase_url = store["url"]
+    service_key = store["key"]
 
     try:
         r = requests.get(
@@ -4753,7 +5318,7 @@ def automation_policies_index():
             ],
         })
 
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     name = (data.get("name") or "").strip()
     effect = (data.get("effect") or "").strip()
     rules = data.get("rules") or {}
@@ -4822,7 +5387,7 @@ def automation_policy_detail(policy_id: str):
         _log_automation_event("automation_policy_deleted", ctx, metadata={"policy_id": policy_id})
         return jsonify({"ok": True})
 
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     name = data.get("name")
     effect = data.get("effect")
     rules = data.get("rules")
@@ -4869,7 +5434,7 @@ def automation_policies_evaluate():
     """
     ctx = _governance_context()
     workspace_id = ctx.get("workspace_id")
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
 
     rule_payload = {
         "name": data.get("name", ""),
@@ -4918,7 +5483,7 @@ def automation_budgets_index():
         budgets = list_automation_budgets(workspace_id, enabled_only=request.args.get("enabled", "true").lower() != "false")
         return jsonify({"ok": True, "budgets": [_serialize_budget(b) for b in budgets]})
 
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     name = (data.get("name") or "").strip()
     period = (data.get("period") or "").strip().lower()
     limit_value = data.get("limit_value")
@@ -5022,7 +5587,7 @@ def automation_budget_detail(budget_id: str):
         _log_automation_event("automation_budget_deleted", ctx, metadata={"budget_id": budget_id})
         return jsonify({"ok": True})
 
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     name = data.get("name")
     period = data.get("period")
     limit_value = data.get("limit_value")
@@ -5063,7 +5628,7 @@ def automation_test_condition():
     Accepts: { condition: dict, payload: dict }
     Returns: { ok: true, matches: bool }
     """
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     condition = data.get("condition", {})
     payload = data.get("payload", {})
     try:
@@ -5156,10 +5721,11 @@ def automations_export():
     ctx = _governance_context()
     workspace_id = ctx.get("workspace_id")
 
-    supabase_url = os.environ.get("SUPABASE_URL")
-    service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
-    if not supabase_url or not service_key:
-        return _error_response("Supabase not configured", "SUPABASE_NOT_CONFIGURED", 503)
+    store = _automation_rule_store()
+    if store["mode"] == "local":
+        return _automations_local_dispatch(request, ctx, workspace_id)
+    supabase_url = store["url"]
+    service_key = store["key"]
 
     try:
         rule_id = request.args.get("rule_id")
@@ -5203,12 +5769,13 @@ def automations_import():
     ctx = _governance_context()
     workspace_id = ctx.get("workspace_id")
 
-    supabase_url = os.environ.get("SUPABASE_URL")
-    service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
-    if not supabase_url or not service_key:
-        return _error_response("Supabase not configured", "SUPABASE_NOT_CONFIGURED", 503)
+    store = _automation_rule_store()
+    if store["mode"] == "local":
+        return _automations_local_dispatch(request, ctx, workspace_id)
+    supabase_url = store["url"]
+    service_key = store["key"]
 
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     if isinstance(data, dict) and "rules" in data:
         raw_rules = data.get("rules") or []
     elif isinstance(data, list):
@@ -5411,10 +5978,11 @@ def automation_snapshots(rule_id: str):
     ctx = _governance_context()
     workspace_id = ctx.get("workspace_id")
 
-    supabase_url = os.environ.get("SUPABASE_URL")
-    service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
-    if not supabase_url or not service_key:
-        return _error_response("Supabase not configured", "SUPABASE_NOT_CONFIGURED", 503)
+    store = _automation_rule_store()
+    if store["mode"] == "local":
+        return _automations_local_dispatch(request, ctx, workspace_id)
+    supabase_url = store["url"]
+    service_key = store["key"]
 
     # Verify the rule exists and belongs to the workspace
     try:
@@ -5478,10 +6046,11 @@ def automation_rollback(rule_id: str, snapshot_id: str):
     ctx = _governance_context()
     workspace_id = ctx.get("workspace_id")
 
-    supabase_url = os.environ.get("SUPABASE_URL")
-    service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
-    if not supabase_url or not service_key:
-        return _error_response("Supabase not configured", "SUPABASE_NOT_CONFIGURED", 503)
+    store = _automation_rule_store()
+    if store["mode"] == "local":
+        return _automations_local_dispatch(request, ctx, workspace_id)
+    supabase_url = store["url"]
+    service_key = store["key"]
 
     # Fetch the current rule
     try:
@@ -5593,10 +6162,8 @@ def inbound_webhooks_index():
     ctx = _governance_context()
     workspace_id = ctx.get("workspace_id")
 
-    supabase_url = os.environ.get("SUPABASE_URL")
-    service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
-    if not supabase_url or not service_key:
-        return _error_response("Supabase not configured", "SUPABASE_NOT_CONFIGURED", 503)
+    if _automation_rule_store()["mode"] == "local":
+        return _webhooks_local_index(request, ctx, workspace_id)
 
     if request.method == "GET":
         try:
@@ -5619,7 +6186,7 @@ def inbound_webhooks_index():
             return _error_response(str(e), "INTERNAL_ERROR", 500)
 
     # POST
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     name = (data.get("name") or "Inbound Webhook").strip()
     try:
         payload = {
@@ -5654,10 +6221,8 @@ def inbound_webhook_detail(webhook_id: str):
     ctx = _governance_context()
     workspace_id = ctx.get("workspace_id")
 
-    supabase_url = os.environ.get("SUPABASE_URL")
-    service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
-    if not supabase_url or not service_key:
-        return _error_response("Supabase not configured", "SUPABASE_NOT_CONFIGURED", 503)
+    if _automation_rule_store()["mode"] == "local":
+        return _webhooks_local_detail(request, ctx, workspace_id, webhook_id)
 
     try:
         r = requests.delete(
@@ -5683,10 +6248,8 @@ def approvals_index():
     ctx = _governance_context()
     workspace_id = ctx.get("workspace_id")
 
-    supabase_url = os.environ.get("SUPABASE_URL")
-    service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
-    if not supabase_url or not service_key:
-        return _error_response("Supabase not configured", "SUPABASE_NOT_CONFIGURED", 503)
+    if _automation_rule_store()["mode"] == "local":
+        return _approvals_local_index(request, ctx, workspace_id)
 
     if request.method == "GET":
         status = request.args.get("status", "pending")
@@ -5712,7 +6275,7 @@ def approvals_index():
             return _error_response(str(e), "INTERNAL_ERROR", 500)
 
     # POST - manual creation of an approval request
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     try:
         payload = {
             "rule_id": data.get("rule_id"),
@@ -5752,10 +6315,8 @@ def approval_detail(approval_id: str):
     ctx = _governance_context()
     workspace_id = ctx.get("workspace_id")
 
-    supabase_url = os.environ.get("SUPABASE_URL")
-    service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
-    if not supabase_url or not service_key:
-        return _error_response("Supabase not configured", "SUPABASE_NOT_CONFIGURED", 503)
+    if _automation_rule_store()["mode"] == "local":
+        return _approvals_local_detail(request, ctx, workspace_id, approval_id)
 
     try:
         r = requests.get(
@@ -5786,13 +6347,16 @@ def approval_detail(approval_id: str):
 def approval_resolve(approval_id: str):
     """Approve or reject a pending approval request."""
     ctx = _governance_context()
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     decision = (data.get("decision") or "").strip().lower()
     reason = data.get("reason")
     resolver_user_id = ctx.get("user_id")
 
     if not decision:
         return _error_response("decision is required", "MISSING_FIELD", 400)
+
+    if _automation_rule_store()["mode"] == "local":
+        return _approvals_local_resolve(request, ctx, approval_id)
 
     result = resolve_approval(
         approval_id,

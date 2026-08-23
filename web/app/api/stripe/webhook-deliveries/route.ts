@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withBackendSessionHeaders } from "@/lib/backend-session";
 import { pythonUrl } from "@/lib/kernel";
 
 export const dynamic = "force-dynamic";
@@ -12,8 +13,11 @@ export async function GET(req: Request) {
   try {
     const authorization = req.headers.get("authorization");
     const limit = new URL(req.url).searchParams.get("limit") || "100";
+    const headers = await withBackendSessionHeaders(
+      authorization ? { Authorization: authorization } : {}
+    );
     const res = await fetch(`${url}/stripe/webhook-deliveries?limit=${encodeURIComponent(limit)}`, {
-      headers: authorization ? { Authorization: authorization } : undefined,
+      headers: Object.keys(headers).length > 0 ? headers : undefined,
       cache: "no-store",
     });
     const data = await res.json();

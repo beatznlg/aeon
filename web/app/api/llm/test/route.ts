@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { withBackendSessionHeaders } from "@/lib/backend-session";
 
 const AEON_URL = (process.env.AEON_PYTHON_URL || "").replace(/\/$/, "");
 
@@ -12,11 +12,8 @@ export async function POST(req: NextRequest) {
   // Try Flask backend first
   if (AEON_URL) {
     try {
-      const session = await auth();
       const headers: Record<string, string> = { "Content-Type": "application/json" };
-      if (session?.user && (session.user as any)?.token) {
-        headers["Authorization"] = `Bearer ${(session.user as any).token}`;
-      }
+      await withBackendSessionHeaders(headers);
       const res = await fetch(`${AEON_URL}/llm/test`, {
         method: "POST",
         headers,

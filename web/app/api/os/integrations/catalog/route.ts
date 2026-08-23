@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withBackendSessionHeaders } from "@/lib/backend-session";
 
 export const dynamic = "force-dynamic";
 
@@ -9,7 +10,10 @@ export async function GET() {
     return NextResponse.json({ ok: true, catalog: [], note: "AEON_PYTHON_URL not set" });
   }
   try {
-    const res = await fetch(`${PYTHON_URL}/integrations/catalog`, { cache: "no-store" });
+    const res = await fetch(`${PYTHON_URL}/integrations/catalog`, {
+      cache: "no-store",
+      headers: await withBackendSessionHeaders({}),
+    });
     const data = await res.json();
     return NextResponse.json(data);
   } catch (e) {

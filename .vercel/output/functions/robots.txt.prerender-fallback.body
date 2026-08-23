@@ -1,0 +1,18 @@
+User-Agent: *
+Allow: /
+Disallow: /login
+Disallow: /onboarding
+Disallow: /api/
+Disallow: /os/
+Disallow: /settings/
+Disallow: /admin/
+Disallow: /chat
+Disallow: /agents/
+Disallow: /anomalies/
+Disallow: /dr/
+Disallow: /incidents/
+Disallow: /llm/
+Disallow: /swarms/
+Disallow: /error
+
+Sitemap: https://aeonos.com/sitemap.xml

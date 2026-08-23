@@ -1,0 +1,1 @@
+{"servers": [{"added_at": 1787469516.5086336, "auth_token": "", "enabled": true, "id": "facfe15f2a9c4146", "last_synced": null, "name": "Smoke MCP", "server_info": {}, "token_masked": "", "tool_count": 0, "tools": [], "url": "http://example.com/mcp", "workspace_id": "7b7bb661-bdd7-4c3c-bf61-56ec7d08bcb3"}], "version": 1}

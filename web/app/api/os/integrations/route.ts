@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { withBackendSessionHeaders } from "@/lib/backend-session";
 import { demoIntegrations } from "@/lib/demo-data";
 
 export const dynamic = "force-dynamic";
@@ -10,7 +11,10 @@ export async function GET() {
     return NextResponse.json(demoIntegrations);
   }
   try {
-    const res = await fetch(`${PYTHON_URL}/integrations`, { cache: "no-store" });
+    const res = await fetch(`${PYTHON_URL}/integrations`, {
+      cache: "no-store",
+      headers: await withBackendSessionHeaders({}),
+    });
     const data = await res.json();
     return NextResponse.json(data);
   } catch {
@@ -26,7 +30,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const res = await fetch(`${PYTHON_URL}/integrations`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: await withBackendSessionHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify(body),
     });
     const data = await res.json();
