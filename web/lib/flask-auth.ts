@@ -71,11 +71,15 @@ export async function loginToFlask(
   }
 }
 
+export type RegisterResult =
+  | { ok: true; token: string; user: FlaskUser }
+  | { ok: false; error: string };
+
 export async function registerToFlask(
   email: string,
   password: string,
   name?: string
-): Promise<{ token: string; user: FlaskUser } | null> {
+): Promise<RegisterResult> {
   try {
     const res = await fetch(FLASK_AUTH_PROXY, {
       method: "POST",
@@ -89,11 +93,14 @@ export async function registerToFlask(
     });
     const data = await res.json();
     if (data.ok && data.token) {
-      return { token: data.token, user: data.user };
+      return { ok: true, token: data.token, user: data.user };
     }
-    return null;
+    return {
+      ok: false,
+      error: data?.error || `Registration failed (${res.status}).`,
+    };
   } catch {
-    return null;
+    return { ok: false, error: "Network error during registration." };
   }
 }
 

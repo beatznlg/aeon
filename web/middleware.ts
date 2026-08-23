@@ -7,13 +7,16 @@ export default auth((req) => {
   const role = getRole(req.auth);
 
   const isProtectedRoute =
+    pathname === "/" ||
     pathname.startsWith("/os") ||
     pathname.startsWith("/settings") ||
     pathname.startsWith("/chat") ||
     pathname.startsWith("/onboarding");
 
   if (isProtectedRoute && !isLoggedIn) {
-    return Response.redirect(new URL("/login", req.nextUrl));
+    const loginUrl = new URL("/login", req.nextUrl);
+    loginUrl.searchParams.set("callbackUrl", pathname);
+    return Response.redirect(loginUrl);
   }
 
   // Admin-only routes

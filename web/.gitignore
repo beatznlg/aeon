@@ -9,3 +9,6 @@
 # Local env files
 .env*.local
 .vercel
+
+# Offline local user store (web/lib/local-users.ts)
+/.data/

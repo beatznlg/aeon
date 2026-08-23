@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, Suspense, useEffect } from "react";
+import { useState, Suspense } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { loginToFlask, storeFlaskSession } from "@/lib/flask-auth";
+import { loginToFlask, registerToFlask, storeFlaskSession } from "@/lib/flask-auth";
 import AeonLogo from "@/components/AeonLogo";
 
 const DEMO_EMAIL = "admin@demo.local";
@@ -27,33 +27,49 @@ function LoginForm() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  const doSignIn = async (e: React.FormEvent) => {
+  const finishSignIn = async () => {
+    const result = await signIn("credentials", {
+      email,
+      password,
+      redirect: false,
+      callbackUrl,
+    });
+    if (result?.error) {
+      setError(ERRORS[result.error] || "Sign-in failed. Check your credentials.");
+      return false;
+    }
+    if (!result?.ok) {
+      setError("Authentication failed");
+      return false;
+    }
+    // Also get Flask JWT for backend API calls.
+    const flask = await loginToFlask(email, password);
+    if (flask) storeFlaskSession(flask.token, flask.user);
+    router.push(callbackUrl);
+    return true;
+  };
+
+  const doSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError("");
     try {
-      const result = await signIn("credentials", {
-        email,
-        password,
-        redirect: false,
-        callbackUrl,
-      });
-      if (result?.error) {
-        setError(ERRORS[result.error] || "Sign-in failed. Check your credentials.");
-        setLoading(false);
-        return;
+      if (mode === "register") {
+        const registered = await registerToFlask(email, password, name);
+        if (!registered.ok) {
+          setError(
+            registered.error === "EMAIL_TAKEN"
+              ? "That email is already registered. Try signing in instead."
+              : registered.error || "Registration failed. Please try again."
+          );
+          return;
+        }
+        storeFlaskSession(registered.token, registered.user);
       }
-      if (!result?.ok) {
-        setError("Authentication failed");
-        setLoading(false);
-        return;
-      }
-      // Also get Flask JWT for backend API calls
-      const flask = await loginToFlask(email, password);
-      if (flask) storeFlaskSession(flask.token, flask.user);
-      router.push(callbackUrl);
+      await finishSignIn();
     } catch {
       setError("Network error — try again");
+    } finally {
       setLoading(false);
     }
   };
@@ -79,8 +95,8 @@ function LoginForm() {
       if (result?.ok) {
         const flask = await loginToFlask(data.email || DEMO_EMAIL, data.password || DEMO_PASSWORD);
         if (flask) storeFlaskSession(flask.token, flask.user);
-        // Demo accounts land on the sector showcase so new users see everything AEON OS can do.
-        router.push("/showcase");
+        // Demo accounts follow the same setup path as registered companies.
+        router.push("/onboarding?demo=1");
       } else {
         setError("Demo sign-in failed");
         setLoading(false);
@@ -131,7 +147,7 @@ function LoginForm() {
         )}
 
         {/* Form */}
-        <form onSubmit={doSignIn} style={styles.form}>
+        <form onSubmit={doSubmit} style={styles.form}>
           {mode === "register" && (
             <div style={styles.field}>
               <label style={styles.label}>Name</label>

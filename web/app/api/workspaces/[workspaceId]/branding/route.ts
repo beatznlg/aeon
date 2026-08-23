@@ -46,7 +46,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
 
-  const user = session.user as { id?: string; role?: string; workspaceId?: string };
+  const user = session.user as { id?: string; email?: string | null; role?: string; workspaceId?: string };
   const userRole = user.role || "VIEWER";
 
   if (!["ADMIN", "SUPER_ADMIN"].includes(userRole)) {
@@ -77,18 +77,42 @@ export async function POST(request: NextRequest, context: RouteContext) {
   headers.set("X-User-Role", userRole);
   headers.set("X-Workspace-Id", workspaceId);
 
-  const upstream = await fetch(backendUrl(workspaceId), {
-    method: "POST",
-    headers,
-    body,
-  });
+  try {
+    const upstream = await fetch(backendUrl(workspaceId), {
+      method: "POST",
+      headers,
+      body,
+    });
 
-  const responseBody = await upstream.arrayBuffer();
-  return new Response(responseBody, {
-    status: upstream.status,
-    statusText: upstream.statusText,
-    headers: {
-      "Content-Type": upstream.headers.get("Content-Type") || "application/json",
-    },
-  });
+    const responseBody = await upstream.arrayBuffer();
+    return new Response(responseBody, {
+      status: upstream.status,
+      statusText: upstream.statusText,
+      headers: {
+        "Content-Type": upstream.headers.get("Content-Type") || "application/json",
+      },
+    });
+  } catch {
+    // Keep the no-credential demo workspace fully navigable when the optional
+    // Flask worker is not running. Real tenants still fail closed above.
+    if (workspaceId !== "demo-workspace" && user.email !== "admin@demo.local") {
+      return NextResponse.json({ ok: false, error: "workspace backend unavailable" }, { status: 503 });
+    }
+    let branding: Record<string, unknown> = { onboardingComplete: true };
+    try {
+      branding = JSON.parse(new TextDecoder().decode(body || new ArrayBuffer(0)));
+    } catch {
+      // The completion marker is enough for the demo setup gate.
+    }
+    branding.onboardingComplete = true;
+    const response = NextResponse.json({ ok: true, workspace_id: workspaceId, branding });
+    response.cookies.set("aeon_onboarding_complete", encodeURIComponent(workspaceId), {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 30,
+    });
+    return response;
+  }
 }

@@ -308,6 +308,10 @@ class TenantConfig:
     modules: tuple[str, ...] = ()
     connectors: tuple[str, ...] = ()
     deployment_mode: str = "cloud"
+    # Private markers distinguish an explicit empty selection from an unset
+    # selection, so tenants can intentionally clear pack defaults.
+    _modules_explicit: bool = False
+    _connectors_explicit: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -332,6 +336,8 @@ class TenantConfig:
             modules=tuple(str(m) for m in (data.get("modules") or ())),
             connectors=tuple(str(c) for c in (data.get("connectors") or ())),
             deployment_mode=str(data.get("deployment_mode") or "cloud"),
+            _modules_explicit=bool(data.get("_modules_explicit", bool(data.get("modules")))),
+            _connectors_explicit=bool(data.get("_connectors_explicit", bool(data.get("connectors")))),
         )
 
 
@@ -393,7 +399,10 @@ class TenantConfigManager:
     def save(self, config: TenantConfig) -> TenantConfig:
         path = self._path(config.tenant_id)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(config.to_dict(), indent=2, sort_keys=True), encoding="utf-8")
+        stored = config.to_dict()
+        stored["_modules_explicit"] = config._modules_explicit
+        stored["_connectors_explicit"] = config._connectors_explicit
+        path.write_text(json.dumps(stored, indent=2, sort_keys=True), encoding="utf-8")
         self._cache[config.tenant_id] = config
         return config
 
@@ -405,9 +414,9 @@ class TenantConfigManager:
         """
         config = self.get(tenant_id)
         modules, connectors = _pack_defaults(config.industry)
-        if config.modules:
+        if config._modules_explicit:
             modules = config.modules
-        if config.connectors:
+        if config._connectors_explicit:
             connectors = config.connectors
         result = dict(config.to_dict())
         result["modules"] = list(modules)
@@ -446,6 +455,8 @@ class TenantConfigManager:
             modules=tuple(modules) if modules is not None else current.modules,
             connectors=tuple(connectors) if connectors is not None else current.connectors,
             deployment_mode=str(deployment_mode if deployment_mode is not None else current.deployment_mode),
+            _modules_explicit=current._modules_explicit if modules is None else True,
+            _connectors_explicit=current._connectors_explicit if connectors is None else True,
         )
         self.save(config)
         return self.effective(tenant_id)
@@ -556,28 +567,25 @@ def connector_health(connector_id: str) -> dict[str, Any]:
 # Public catalogs
 # ──────────────────────────────────────────────────────────────────────
 def list_modules(workspace_id: str | None = None) -> list[dict[str, Any]]:
-    """Return the universal module catalog with per-tenant activation state."""
-    enabled = set()
+    """Return the universal module catalog with effective tenant activation state."""
+    enabled = set(_CORE_MODULE_IDS)
     if workspace_id:
         try:
-            enabled = set(get_tenant_config_manager().get(workspace_id).modules) | set(_CORE_MODULE_IDS)
+            enabled = set(get_tenant_config_manager().effective(workspace_id).get("modules") or ())
         except Exception:  # nosec B110 - catalog still renders
-            enabled = set(_CORE_MODULE_IDS)
-    return [
-        dict(m, enabled=m["id"] in enabled)
-        for m in MODULE_CATALOG
-    ]
+            pass
+    return [dict(module, enabled=module["id"] in enabled) for module in MODULE_CATALOG]
 
 
 def list_connectors(workspace_id: str | None = None) -> list[dict[str, Any]]:
-    """Return the connector catalog with per-tenant activation state."""
-    enabled = set()
+    """Return the connector catalog with effective tenant activation state."""
+    enabled: set[str] = set()
     if workspace_id:
         try:
-            enabled = set(get_tenant_config_manager().get(workspace_id).connectors)
+            enabled = set(get_tenant_config_manager().effective(workspace_id).get("connectors") or ())
         except Exception:  # nosec B110 - catalog still renders
-            enabled = set()
-    return [dict(c, enabled=c["id"] in enabled) for c in CONNECTOR_CATALOG]
+            pass
+    return [dict(connector, enabled=connector["id"] in enabled) for connector in CONNECTOR_CATALOG]
 
 
 def list_industry_packs() -> list[dict[str, Any]]:

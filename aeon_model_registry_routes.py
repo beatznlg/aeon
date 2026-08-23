@@ -31,8 +31,14 @@ def _workspace_id() -> str:
 
 
 def _is_workspace_admin() -> bool:
-    membership_role = getattr(getattr(g, "membership", None), "role", None)
-    return has_role(membership_role, "ADMIN") or has_role(g.user.get("role"), "ADMIN")
+    membership = getattr(g, "membership", None)
+    if isinstance(membership, dict):
+        role = membership.get("role")
+    elif membership is not None:
+        role = getattr(membership, "role", None)
+    else:
+        role = g.user.get("role")
+    return has_role(role, "ADMIN")
 
 
 def _admin_guard():

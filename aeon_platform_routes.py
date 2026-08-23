@@ -35,10 +35,18 @@ def _workspace_id() -> str:
     return str(getattr(g, "workspace_id", None) or g.user.get("workspace_id") or "")
 
 
+def _effective_membership_role() -> str | None:
+    """Return the role resolved for this request's selected workspace."""
+    membership = getattr(g, "membership", None)
+    if isinstance(membership, dict):
+        return membership.get("role")
+    if membership is not None:
+        return getattr(membership, "role", None)
+    return g.user.get("role")
+
+
 def _is_admin() -> bool:
-    membership_role = getattr(getattr(g, "membership", None), "role", None)
-    user_role = g.user.get("role")
-    return bool(has_role(membership_role, "ADMIN") or has_role(user_role, "ADMIN"))
+    return has_role(_effective_membership_role(), "ADMIN")
 
 
 def _audit(action: str, workspace_id: str, metadata: dict[str, Any] | None = None) -> None:
@@ -103,7 +111,7 @@ def register_platform_routes(app: Any) -> None:
             return jsonify({"ok": False, "error": "workspace not selected"}), 400
         if request.method == "GET":
             return jsonify({"ok": True, "modules": list_modules(workspace_id), "version": 1})
-        if not (has_role(getattr(getattr(g, "membership", None), "role", None), "OPERATOR") or has_role(g.user.get("role"), "OPERATOR")):
+        if not has_role(_effective_membership_role(), "OPERATOR"):
             return jsonify({"ok": False, "error": "workspace operator role required"}), 403
         body = request.get_json(silent=True)
         module_ids = list((body or {}).get("modules") or ())
@@ -124,7 +132,7 @@ def register_platform_routes(app: Any) -> None:
             return jsonify({"ok": False, "error": "workspace not selected"}), 400
         if request.method == "GET":
             return jsonify({"ok": True, "connectors": list_connectors(workspace_id), "contract": None, "version": 1})
-        if not (has_role(getattr(getattr(g, "membership", None), "role", None), "OPERATOR") or has_role(g.user.get("role"), "OPERATOR")):
+        if not has_role(_effective_membership_role(), "OPERATOR"):
             return jsonify({"ok": False, "error": "workspace operator role required"}), 403
         body = request.get_json(silent=True)
         connector_ids = list((body or {}).get("connectors") or ())

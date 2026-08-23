@@ -1508,18 +1508,23 @@ def auth_login():
 
     # Pick the first workspace membership as the default workspace context.
     workspace_id = None
+    effective_role = user.role
     try:
         memberships = db.list_user_memberships(user.id)
         if memberships:
             workspace_id = memberships[0].workspace_id
+            # The workspace membership is the authoritative role for the
+            # tenant context. Self-service registration creates an ADMIN
+            # membership even though the global user default is VIEWER.
+            effective_role = memberships[0].role or user.role
     except Exception:  #nosec B110
         pass
-    token = create_access_token(user.id, user.email, user.role, workspace_id)
+    token = create_access_token(user.id, user.email, effective_role, workspace_id)
     _audit_auth_event("LOGIN_SUCCESS", user_id=str(user.id), email=user.email, workspace_id=workspace_id)
     return jsonify({
         "ok": True,
         "token": token,
-        "user": {"id": user.id, "email": user.email, "name": user.name, "role": user.role, "workspace_id": workspace_id},
+        "user": {"id": user.id, "email": user.email, "name": user.name, "role": effective_role, "workspace_id": workspace_id},
     })
 
 
@@ -1537,9 +1542,11 @@ def auth_me():
         return _error_response("user not found", "USER_NOT_FOUND", 404)
 
     workspace = None
+    effective_role = ctx.get("role") or user.role
     try:
         memberships = db.list_user_memberships(str(user.id))
         if memberships:
+            effective_role = memberships[0].role or effective_role
             ws = db.get_workspace(str(memberships[0].workspace_id))
             if ws:
                 workspace = {
@@ -1557,7 +1564,7 @@ def auth_me():
             "id": str(user.id),
             "email": user.email,
             "name": user.name,
-            "role": user.role,
+            "role": effective_role,
             "tenant_id": user.tenant_id,
             "workspace": workspace,
         },
@@ -1595,6 +1602,9 @@ def auth_register():
             email=email,
             name=name,
             password=generate_password_hash(password),
+            # Keep the global user role least-privilege. The workspace
+            # membership is ADMIN and login/auth-me resolve that effective
+            # tenant role when the owner enters the product.
             role="VIEWER",
         )
         with db.session() as s:

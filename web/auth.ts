@@ -2,6 +2,7 @@ import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { getSupabaseServerClient } from "@/lib/supabase";
+import { verifyLocalUser } from "@/lib/local-users";
 
 export type AeonRole = "ADMIN" | "OPERATOR" | "VIEWER";
 
@@ -25,6 +26,7 @@ const TRUST_HOST = process.env.VERCEL === "1" || process.env.AUTH_TRUST_HOST ===
  */
 const DEMO_EMAIL = "admin@demo.local";
 const DEMO_PASSWORD = "demo123";
+const DEMO_WORKSPACE_ID = "demo-workspace";
 
 function getFallbackAdmin(): AeonUser | null {
   // Always allow the built-in demo account so users can try AEON without
@@ -36,6 +38,7 @@ function getFallbackAdmin(): AeonUser | null {
       email: process.env.ADMIN_EMAIL,
       name: "Administrator",
       role: "ADMIN" as AeonRole,
+      workspaceId: DEMO_WORKSPACE_ID,
     };
   }
   // Built-in demo account fallback
@@ -44,6 +47,7 @@ function getFallbackAdmin(): AeonUser | null {
     email: DEMO_EMAIL,
     name: "Demo Admin",
     role: "ADMIN" as AeonRole,
+    workspaceId: DEMO_WORKSPACE_ID,
   };
 }
 
@@ -126,11 +130,27 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           if (!error && user?.password) {
             const isValid = await bcrypt.compare(password, String(user.password));
             if (isValid) {
+              let workspaceId: string | undefined;
+              let workspaceRole = user.role as AeonRole;
+              try {
+                const { data: membership } = await sb
+                  .from("memberships")
+                  .select("workspace_id, role")
+                  .eq("user_id", user.id)
+                  .limit(1)
+                  .maybeSingle();
+                workspaceId = membership?.workspace_id;
+                workspaceRole = (membership?.role as AeonRole) || workspaceRole;
+              } catch {
+                // Older Supabase schemas may not expose memberships; keep the
+                // authenticated user role and let the setup gate explain the gap.
+              }
               return {
                 id: user.id,
                 email: user.email,
                 name: user.name,
-                role: user.role as AeonRole,
+                role: workspaceRole,
+                workspaceId,
               };
             }
             // Known Supabase user with a wrong password — do not fall through
@@ -147,6 +167,20 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // (self-service registrations and the one-click demo account).
         const flaskUser = await loginViaFlask(email, password);
         if (flaskUser) return flaskUser;
+
+        // ── Offline local user store ──────────────────────────────────
+        // Lets users registered while the backend was unreachable (see
+        // /api/auth/flask fallback) sign in even in frontend-only sessions.
+        const localUser = verifyLocalUser(email, password);
+        if (localUser) {
+          return {
+            id: localUser.id,
+            email: localUser.email,
+            name: localUser.name,
+            role: localUser.role as AeonRole,
+            workspaceId: localUser.workspaceId,
+          };
+        }
 
         return null;
       },

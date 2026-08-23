@@ -58,6 +58,17 @@ def test_new_tenant_defaults_to_universal_core(manager):
     assert effective["pack"]["id"] == "core"
 
 
+def test_explicit_empty_overrides_can_clear_pack_defaults(manager):
+    manager.set("custom", industry="engineering-construction")
+    out = manager.set("custom", modules=[], connectors=[])
+    assert out["modules"] == []
+    assert out["connectors"] == []
+    reloaded = TenantConfigManager(manager.root)
+    persisted = reloaded.effective("custom")
+    assert persisted["modules"] == []
+    assert persisted["connectors"] == []
+
+
 def test_engineering_pack_applies_modules_and_connectors(manager):
     out = manager.set("ag_group", company="AG Group", industry="engineering-construction", currency="EUR", country="MT")
     assert out["company"] == "AG Group"

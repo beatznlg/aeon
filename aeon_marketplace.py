@@ -40,6 +40,7 @@ from pathlib import Path
 from typing import Any
 
 from aeon_connector_plugins import CONNECTOR_PLUGIN_DEFINITIONS
+from aeon_universal_plugins import UNIVERSAL_PLUGIN_DEFINITIONS
 
 # === constants =============================================================
 
@@ -262,6 +263,7 @@ def validate_config(schema: dict[str, Any], config: dict[str, Any]) -> dict[str,
 
 BUILTIN_PLUGIN_CATALOG: tuple[PluginManifest, ...] = (
     *(PluginManifest(**definition) for definition in CONNECTOR_PLUGIN_DEFINITIONS),
+    *(PluginManifest(**definition) for definition in UNIVERSAL_PLUGIN_DEFINITIONS),
     PluginManifest(
         id="incident-responder",
         name="Incident Responder",
