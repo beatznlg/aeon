@@ -3,8 +3,10 @@ const nextConfig = {
   // output: 'standalone' is only needed for self-hosted Docker deployments.
   // Vercel manages its own output structure; do NOT set it here.
   allowedDevOrigins: ["*.daytonaproxy01.net"],
-  // Pin the tracing root to the app dir to silence the multi-lockfile warning.
-  outputFileTracingRoot: __dirname,
+  // NOTE: do NOT set outputFileTracingRoot here. The Freebuff/Vercel builder
+  // packages the app from the repo root, so the traced file map must stay
+  // root-relative; pinning it to web/ breaks module resolution in every
+  // serverless function at runtime (MODULE_NOT_FOUND on next internals).
   // The offline local user store (web/lib/local-users.ts) reads
   // `.data/aeon-users.json` at runtime. The file doesn't exist at build
   // time, and Vercel's output file tracing would statically resolve the
