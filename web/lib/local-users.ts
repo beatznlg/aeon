@@ -43,10 +43,12 @@ export type LocalUserPublic = Omit<LocalUser, "passwordHash">;
  * function) keeps the tracer from resolving it while preserving behavior.
  */
 function usersFile(): string {
-  const dir =
-    process.env.AEON_LOCAL_DATA_DIR ||
-    path.join(process.cwd(), ".data");
-  return path.join(dir, "aeon-users.json");
+  const dir = process.env.AEON_LOCAL_DATA_DIR;
+  const base = dir && dir.length > 0 ? dir : process.cwd();
+  // Built with plain string concatenation at request time so the Vercel
+  // output tracer cannot statically resolve this fs path (it would lstat
+  // the missing file during the build and fail with ENOENT).
+  return base + "/.data/aeon-" + "users" + ".json";
 }
 
 function normalizeEmail(email: string): string {
