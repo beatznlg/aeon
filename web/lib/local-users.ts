@@ -33,8 +33,21 @@ export interface LocalUser {
 
 export type LocalUserPublic = Omit<LocalUser, "passwordHash">;
 
-const DATA_DIR = path.resolve(process.cwd(), ".data");
-const USERS_FILE = path.join(DATA_DIR, "aeon-users.json");
+/**
+ * Resolve the store path lazily at request time, never at module scope.
+ *
+ * Vercel's Next.js build performs output file tracing: a module-level
+ * `path.resolve(process.cwd(), ...)` constant feeding an fs call gets
+ * statically resolved and lstat'd during the build, which throws ENOENT on
+ * the read-only builder. Building the path from a runtime value (env or a
+ * function) keeps the tracer from resolving it while preserving behavior.
+ */
+function usersFile(): string {
+  const dir =
+    process.env.AEON_LOCAL_DATA_DIR ||
+    path.join(process.cwd(), ".data");
+  return path.join(dir, "aeon-users.json");
+}
 
 function normalizeEmail(email: string): string {
   return String(email || "").trim().toLowerCase();
@@ -42,8 +55,9 @@ function normalizeEmail(email: string): string {
 
 function loadUsers(): LocalUser[] {
   try {
-    if (!fs.existsSync(USERS_FILE)) return [];
-    const raw = fs.readFileSync(USERS_FILE, "utf-8");
+    const file = usersFile();
+    if (!fs.existsSync(file)) return [];
+    const raw = fs.readFileSync(file, "utf-8");
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? (parsed as LocalUser[]) : [];
   } catch {
@@ -54,8 +68,9 @@ function loadUsers(): LocalUser[] {
 
 function saveUsers(users: LocalUser[]): boolean {
   try {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-    fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2), {
+    const file = usersFile();
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(users, null, 2), {
       encoding: "utf-8",
       mode: 0o600,
     });
