@@ -61,3 +61,9 @@ isolate/
 bandit-report.json
 scripts/output/
 scripts/__pycache__/
+-e 
+# Vercel build output
+.vercel/
+mcp_servers.json
+traces/
+*.json.tmp
