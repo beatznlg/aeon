@@ -375,16 +375,23 @@ function MetricRow({
   health,
   stats,
 }: {
-  health: { ok: boolean; backend?: string } | null;
+  health: { ok: boolean; backend?: string; backend_up?: boolean } | null;
   stats: Record<string, string | number>;
 }) {
   const cards = [
     {
       label: "System Status",
-      value: health === null ? "—" : health.ok ? "Online" : "Connecting",
-      trend: "Operational",
-      good: true,
-      color: "#22c55e",
+      value:
+        health === null
+          ? "—"
+          : !health.ok
+            ? "Connecting"
+            : health.backend_up === false
+              ? "Demo Mode"
+              : "Online",
+      trend: health?.backend_up === false ? "Backend offline" : "Operational",
+      good: health === null || (health.ok && health.backend_up !== false),
+      color: health !== null && health.backend_up === false ? "#eab308" : "#22c55e",
       points: [3, 4, 5, 5, 6, 6, 7],
       sub: "All systems operational",
     },
@@ -472,7 +479,7 @@ function OverviewGrid({
 }: {
   counts: DashboardCounts | null;
   enabledIds: Set<string>;
-  health: { ok: boolean; backend?: string } | null;
+  health: { ok: boolean; backend?: string; backend_up?: boolean } | null;
   modules: CommandModule[];
 }) {
   const ops = [
@@ -556,7 +563,7 @@ function OverviewGrid({
               <div className="ring-center">
                 <div className="ring-value">{healthPct}%</div>
                 <div className="ring-cap">
-                  {health === null ? "Checking" : health.ok ? "Operational" : "Degraded"}
+                  {health === null ? "Checking" : health.backend_up === false ? "Demo Mode" : health.ok ? "Operational" : "Degraded"}
                 </div>
               </div>
             </div>
@@ -717,7 +724,11 @@ function PlatformFeaturesSection() {
 
 export default function DashboardPage() {
   const [vitals, setVitals] = useState<any>(null);
-  const [health, setHealth] = useState<{ ok: boolean; backend?: string } | null>(null);
+  const [health, setHealth] = useState<{
+    ok: boolean;
+    backend?: string;
+    backend_up?: boolean;
+  } | null>(null);
   const [liveStats, setLiveStats] = useState<DashboardCounts | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [loading, setLoading] = useState(false);

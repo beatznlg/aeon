@@ -18,11 +18,16 @@ type SetupResponse = {
 };
 type Health = "checking" | "ok" | "warn" | "down";
 
-function dotFor(health: Health, h: { ok?: boolean; backend?: string } | null) {
+function dotFor(
+  health: Health,
+  h: { ok?: boolean; backend?: string; backend_up?: boolean } | null
+) {
   if (health === "checking") return { color: "#71717a", label: "checking…" };
   if (health === "down") return { color: "#dc2626", label: "down" };
-  if (health === "ok") return { color: "#16a34a", label: "live · " + (h?.backend || "stub") };
-  return { color: "#eab308", label: "live · partial env" };
+  if (health === "warn") return { color: "#eab308", label: "live · partial env" };
+  if (h?.backend_up === false)
+    return { color: "#eab308", label: "demo mode · backend offline" };
+  return { color: "#16a34a", label: "live · " + (h?.backend || "stub") };
 }
 
 export default function Sidebar({
@@ -42,6 +47,7 @@ export default function Sidebar({
 }) {
   const [setup, setSetup] = useState<SetupResponse | null>(null);
   const [health, setHealth] = useState<Health>("checking");
+  const [backendUp, setBackendUp] = useState<boolean | undefined>(undefined);
 
   useEffect(() => {
     let alive = true;
@@ -50,6 +56,7 @@ export default function Sidebar({
         const r = await fetch("/api/health", { cache: "no-store" });
         const h = await r.json();
         if (!alive) return;
+        setBackendUp(h?.backend_up);
         setHealth(h?.ok ? "ok" : "down");
       } catch {
         if (!alive) return;
@@ -78,7 +85,11 @@ export default function Sidebar({
     };
   }, []);
 
-  const dot = dotFor(health, setup);
+  const dot = dotFor(health, {
+    ok: health === "ok",
+    backend: setup?.backend,
+    backend_up: backendUp,
+  });
   const missing = setup?.notes?.filter((n) => /missing/i.test(n)) || [];
 
   return (

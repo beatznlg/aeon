@@ -7,6 +7,8 @@ export async function GET(_req: NextRequest) {
     const res = await fetch(`${AEON_URL}/ready`, {
       method: "GET",
       headers: { "Content-Type": "application/json" },
+      // Fail fast instead of hanging when the backend sleeps.
+      signal: AbortSignal.timeout(5000),
     });
     const text = await res.text();
     let data: any;

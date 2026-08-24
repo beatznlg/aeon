@@ -5,6 +5,16 @@ import { demoResponseForPath } from "@/lib/demo-data";
 const AEON_URL = (process.env.AEON_PYTHON_URL || "http://127.0.0.1:5000").replace(/\/$/, "");
 
 /**
+ * Upstream request budget. Without this, a sleeping/hung backend (e.g. Render
+ * free tier) hangs every API route until the platform limit kills it.
+ * Override with AEON_PROXY_TIMEOUT_MS; set to 0 to disable.
+ */
+function upstreamTimeoutMs(): number {
+  const raw = Number(process.env.AEON_PROXY_TIMEOUT_MS);
+  return Number.isFinite(raw) && raw > 0 ? raw : 45000;
+}
+
+/**
  * Fetch from the Flask backend with a demo-data fallback.
  *
  * For GET requests, when the backend is unreachable and demo data is
@@ -59,6 +69,7 @@ export async function backendFetch(
       method,
       headers,
       body,
+      signal: AbortSignal.timeout(upstreamTimeoutMs()),
     });
     const text = await res.text();
     let data: unknown;

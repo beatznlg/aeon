@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 interface Health {
   ok: boolean;
   backend?: string;
+  backend_up?: boolean;
 }
 
 export default function HealthStatus({ initial }: { initial?: Health | null }) {
@@ -31,12 +32,15 @@ export default function HealthStatus({ initial }: { initial?: Health | null }) {
     };
   }, []);
 
+  // Honest status: the frontend being up doesn't mean the Flask kernel is.
   const label =
     health === null
       ? "Connecting..."
-      : health.ok
-        ? `System Online · ${health.backend || "stub"}`
-        : "Connecting...";
+      : !health.ok
+        ? "Connecting..."
+        : health.backend_up
+          ? `System Online · ${health.backend || "stub"}`
+          : "Demo Mode · Backend Offline";
 
   return (
     <div className="sidebar-status">

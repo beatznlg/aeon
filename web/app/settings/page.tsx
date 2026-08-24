@@ -21,7 +21,12 @@ type SetupStatus = {
   notes: string[];
 };
 
-type Health = { ok: boolean; backend?: string; ts?: number };
+type Health = {
+  ok: boolean;
+  backend?: string;
+  backend_up?: boolean;
+  ts?: number;
+};
 
 type ConnectorCatalogItem = {
   id: string;
@@ -194,12 +199,18 @@ export default function SettingsPage() {
             <div className="settings-item-desc">AI inference backend</div>
           </div>
           <div className="settings-item-right">
-            <span className={`settings-status ${health?.ok ? "connected" : "disconnected"}`}>
+            <span
+              className={`settings-status ${
+                health === null ? "" : health.ok && health.backend_up !== false ? "connected" : "disconnected"
+              }`}
+            >
               {health === null
                 ? "..."
-                : health.ok
-                  ? `Online · ${health.backend || "stub"}`
-                  : "Offline"}
+                : !health.ok
+                  ? "Offline"
+                  : health.backend_up === false
+                    ? "Demo mode · kernel offline"
+                    : `Online · ${health.backend || "stub"}`}
             </span>
           </div>
         </div>

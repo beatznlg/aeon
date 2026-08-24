@@ -7,7 +7,12 @@ const SUPA_ANON_SET = !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const HFSPACE_SET = !!process.env.AEON_HF_SPACE_URL;
 
 export default function SettingsDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const [health, setHealth] = useState<{ ok: boolean; backend?: string; ts?: number } | null>(null);
+  const [health, setHealth] = useState<{
+    ok: boolean;
+    backend?: string;
+    backend_up?: boolean;
+    supabase_configured?: boolean;
+  } | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -28,12 +33,14 @@ export default function SettingsDrawer({ open, onClose }: { open: boolean; onClo
 
         <div className="setting">
           <div className="label">Backend liveness</div>
-          <div className={"value " + (health?.ok ? "ok" : "no")}>
+          <div className={"value " + (health === null ? "" : health.ok && health.backend_up !== false ? "ok" : "no")}>
             {health === null
               ? "checking…"
-              : health.ok
-                ? "ok" + (health.backend ? " · " + health.backend : "")
-                : "unreachable"}
+              : !health.ok
+                ? "unreachable"
+                : health.backend_up === false
+                  ? "frontend ok · kernel offline (demo mode)"
+                  : "ok" + (health.backend ? " · " + health.backend : "")}
           </div>
         </div>
 
