@@ -16,12 +16,13 @@ const nextConfig = {
     "*": [
       "./.data/**",
       "./.data",
-      // The app does not use OpenTelemetry (no instrumentation.ts). Excluding
-      // the package stops the Vercel builder's output tracer from lstat'ing
-      // a root-node_modules copy whose build layout differs from web's, which
-      // previously failed the deploy with ENOENT after a successful build.
+      // The app does not use OpenTelemetry (no instrumentation.ts). The root
+      // package.json mirrors web's deps so the tracer resolves modules from
+      // /vercel/node_modules/@opentelemetry/... which is outside web/; all
+      // three patterns cover every possible resolution path.
       "./node_modules/@opentelemetry/**",
-      "node_modules/@opentelemetry/**",
+      "../node_modules/@opentelemetry/**",
+      "**/@opentelemetry/**",
     ],
   },
 };
