@@ -6159,6 +6159,9 @@ def _generate_inbound_token() -> str:
 @require_workspace_role("OPERATOR")
 def inbound_webhooks_index():
     """List or create inbound webhooks for the current workspace."""
+    _sb_store = _automation_rule_store()
+    supabase_url = _sb_store.get("url")
+    service_key = _sb_store.get("key")
     ctx = _governance_context()
     workspace_id = ctx.get("workspace_id")
 
@@ -6218,6 +6221,9 @@ def inbound_webhooks_index():
 @require_workspace_role("OPERATOR")
 def inbound_webhook_detail(webhook_id: str):
     """Delete an inbound webhook."""
+    _sb_store = _automation_rule_store()
+    supabase_url = _sb_store.get("url")
+    service_key = _sb_store.get("key")
     ctx = _governance_context()
     workspace_id = ctx.get("workspace_id")
 
@@ -6245,6 +6251,9 @@ def inbound_webhook_detail(webhook_id: str):
 @require_workspace_role("VIEWER")
 def approvals_index():
     """List pending approval requests for the current workspace or create one."""
+    _sb_store = _automation_rule_store()
+    supabase_url = _sb_store.get("url")
+    service_key = _sb_store.get("key")
     ctx = _governance_context()
     workspace_id = ctx.get("workspace_id")
 
@@ -6312,6 +6321,9 @@ def approvals_index():
 @require_workspace_role("VIEWER")
 def approval_detail(approval_id: str):
     """Get a single approval request."""
+    _sb_store = _automation_rule_store()
+    supabase_url = _sb_store.get("url")
+    service_key = _sb_store.get("key")
     ctx = _governance_context()
     workspace_id = ctx.get("workspace_id")
 

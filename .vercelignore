@@ -31,3 +31,21 @@ __pycache__
 *.pyc
 *.pyo
 *.pyd
+
+# Flask backend adapter (deployed separately as its own project; including
+# api/index.py + requirements.txt here makes the builder register a Python
+# function that shadows/conflicts with the Next.js /api routes)
+api
+vercel.backend.json
+requirements.txt
+requirements-dev.txt
+aeon_*.py
+alembic
+alembic.ini
+alembic_baseline.db
+pyproject.toml
+bandit.yaml
+smoke_test.py
+tests
+sdk
+examples

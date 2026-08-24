@@ -48,6 +48,7 @@ web/.env.local
 !-web/.env.example
 
 # Local secrets (root .env.local is bridged into web/ by scripts/start-preview.sh)
+.env
 .env.local
 
 # Local runtime state/logs
