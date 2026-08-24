@@ -1,10 +1,8 @@
-import { auth } from "@/auth";
-import { getRole } from "@/lib/auth";
+import { NextRequest, NextResponse } from "next/server";
+import { getToken } from "next-auth/jwt";
 
-export default auth((req) => {
-  const isLoggedIn = !!req.auth;
+export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
-  const role = getRole(req.auth);
 
   const isProtectedRoute =
     pathname === "/" ||
@@ -13,26 +11,27 @@ export default auth((req) => {
     pathname.startsWith("/chat") ||
     pathname.startsWith("/onboarding");
 
-  if (isProtectedRoute && !isLoggedIn) {
-    const loginUrl = new URL("/login", req.nextUrl);
-    loginUrl.searchParams.set("callbackUrl", pathname);
-    return Response.redirect(loginUrl);
+  if (isProtectedRoute) {
+    const token = await getToken({
+      req,
+      secret: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || "aeon-dev-fallback-do-not-use-in-production",
+    });
+    if (!token) {
+      const loginUrl = new URL("/login", req.nextUrl);
+      loginUrl.searchParams.set("callbackUrl", pathname);
+      return NextResponse.redirect(loginUrl);
+    }
+    const role = (token.role as string) || "VIEWER";
+
+    // Admin-only routes
+    if (pathname.startsWith("/admin") && role !== "ADMIN") {
+      return NextResponse.redirect(new URL("/settings", req.nextUrl));
+    }
   }
 
-  // Admin-only routes
-  if (pathname.startsWith("/admin") && role !== "ADMIN") {
-    return Response.redirect(new URL("/settings", req.nextUrl));
-  }
-
-  // Operator-level write routes (API only)
-  if (pathname.startsWith("/api/admin") && role !== "ADMIN") {
-    return Response.json({ ok: false, error: "forbidden" }, { status: 403 });
-  }
-});
+  return NextResponse.next();
+}
 
 export const config = {
   matcher: ["/((?!api|_next/static|_next/image|favicon.ico).*)"],
-  // Next.js 15.5+: run middleware on the Node.js runtime instead of the
-  // deprecated Edge runtime (Vercel deprecated Edge for anonymous deployments).
-  runtime: "nodejs",
 };

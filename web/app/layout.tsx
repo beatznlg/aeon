@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { auth } from "@/auth";
 import Providers from "@/components/Providers";
 import AppSidebar from "@/components/AppSidebar";
 import { ThemeConfig } from "@/lib/theme-config";
@@ -62,54 +61,9 @@ export const metadata: Metadata = {
   },
 };
 
-interface Health {
-  ok: boolean;
-  backend?: string;
-}
-
-interface BrandingResponse {
-  ok: boolean;
-  workspace_id?: string;
-  branding?: Partial<ThemeConfig>;
-}
-
-async function getHealth(): Promise<Health | null> {
-  try {
-    const res = await fetch("/api/health", { cache: "no-store" });
-    if (!res.ok) return null;
-    return (await res.json()) as Health;
-  } catch {
-    return null;
-  }
-}
-
-async function getWorkspaceBranding(workspaceId: string): Promise<Partial<ThemeConfig> | null> {
-  try {
-    const backendUrl = process.env.AEON_PYTHON_URL || "http://127.0.0.1:5000";
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 2000);
-    const res = await fetch(
-      `${backendUrl}/workspaces/${encodeURIComponent(workspaceId)}/branding`,
-      {
-        cache: "no-store",
-        signal: controller.signal,
-      }
-    );
-    clearTimeout(timeout);
-    if (!res.ok) return null;
-    const data = (await res.json()) as BrandingResponse;
-    return data.branding || null;
-  } catch {
-    return null;
-  }
-}
-
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const health = await getHealth();
-  const session = await auth();
-  const workspaceId = session?.user?.workspaceId as string | undefined;
-  const branding = workspaceId ? await getWorkspaceBranding(workspaceId) : null;
-
+  // Health and branding are fetched client-side via Providers/AppSidebar to
+  // avoid serverless crashes from import chains or network failures.
   return (
     <html lang="en">
       <head>
@@ -163,17 +117,6 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                   availability: "https://schema.org/InStock",
                   url: `${SITE_URL}/pricing`,
                   description: "Up to 10 workspaces, all AI providers, all 16 sectors, automations, RAG.",
-                  hasTier: {
-                    "@type": "PriceSpecification",
-                    name: "Team Monthly",
-                    price: "49",
-                    priceCurrency: "USD",
-                    billingDuration: {
-                      "@type": "QuantitativeValue",
-                      value: 1,
-                      unitCode: "MON",
-                    },
-                  },
                 },
                 {
                   "@type": "Offer",
@@ -184,17 +127,6 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                   availability: "https://schema.org/InStock",
                   url: `${SITE_URL}/pricing`,
                   description: "Unlimited workspaces, SSO/SCIM, SIEM, DR, compliance policies.",
-                  hasTier: {
-                    "@type": "PriceSpecification",
-                    name: "Enterprise Monthly",
-                    price: "199",
-                    priceCurrency: "USD",
-                    billingDuration: {
-                      "@type": "QuantitativeValue",
-                      value: 1,
-                      unitCode: "MON",
-                    },
-                  },
                 },
               ],
               aggregateRating: {
@@ -228,12 +160,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <Providers
           sidebar={
             <AppSidebar
-              health={health}
-              branding={branding ?? undefined}
-              userRole={(session?.user as any)?.role}
+              health={null}
+              branding={undefined}
+              userRole={undefined}
             />
           }
-          initialConfig={branding ?? undefined}
+          initialConfig={undefined}
         >
           {children}
         </Providers>
