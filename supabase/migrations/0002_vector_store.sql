@@ -28,10 +28,9 @@ CREATE INDEX IF NOT EXISTS idx_kb_chunks_fts ON public.kb_chunks
 -- Row Level Security
 ALTER TABLE public.kb_chunks ENABLE ROW LEVEL SECURITY;
 
--- Allow the anon/service role to call RPCs
-GRANT EXECUTE ON FUNCTION public.match_kb_chunks(TEXT, VECTOR(1536), INT) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.search_kb_chunks_fts(TEXT, TEXT, INT) TO authenticated;
-
+-- (GRANTs for the RPC functions live at the bottom of this file, after the
+-- functions are created — Postgres cannot grant execute on a function that
+-- does not exist yet.)
 DROP POLICY IF EXISTS kb_chunks_select ON public.kb_chunks;
 CREATE POLICY kb_chunks_select ON public.kb_chunks
   FOR SELECT USING (
@@ -92,3 +91,9 @@ AS $$
   ORDER BY rank DESC
   LIMIT match_count;
 $$;
+
+-- Allow the anon/service roles to call the RPCs (must come after creation)
+GRANT EXECUTE ON FUNCTION public.match_kb_chunks(TEXT, VECTOR(1536), INT) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.match_kb_chunks(TEXT, VECTOR(1536), INT) TO anon;
+GRANT EXECUTE ON FUNCTION public.search_kb_chunks_fts(TEXT, TEXT, INT) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.search_kb_chunks_fts(TEXT, TEXT, INT) TO anon;
