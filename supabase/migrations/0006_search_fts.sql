@@ -167,7 +167,7 @@ RETURNS TABLE (
   action TEXT,
   module TEXT,
   metadata JSONB,
-  timestamp TIMESTAMPTZ,
+  "timestamp" TIMESTAMPTZ,
   workspace_id UUID,
   rank FLOAT
 )
@@ -179,7 +179,7 @@ AS $$
     al.action,
     al.module,
     al.metadata,
-    al.timestamp,
+    al.timestamp AS "timestamp",
     al.workspace_id,
     ts_rank(al.search_tsv, websearch_to_tsquery('english', p_query))::FLOAT AS rank
   FROM public.audit_logs al
