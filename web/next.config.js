@@ -1,6 +1,14 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   allowedDevOrigins: ["*.daytonaproxy01.net"],
+  // Cap build-time parallelism: the app has ~60 routes, and full parallel
+  // static generation exhausts build-runner memory (~4 GB), which kills CI
+  // builds mid-prerender. Lower CPU count trades a slower build for one
+  // that actually finishes.
+  experimental: {
+    cpus: Math.max(1, Number(process.env.AEON_BUILD_CPUS || 1)),
+  },
+
   // NOTE: no serverExternalPackages / outputFileTracingExcludes for
   // @opentelemetry — nothing in the app imports it, and marking it external
   // while also excluding it from traces guarantees MODULE_NOT_FOUND at every
