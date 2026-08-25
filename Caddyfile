@@ -1,0 +1,16 @@
+# AEON OS reverse proxy with automatic HTTPS (Let's Encrypt).
+# Set AEON_DOMAIN in .env to your DNS name pointing at this VM and Caddy
+# obtains/renews certificates automatically. Without a domain it serves :80.
+
+{$AEON_DOMAIN::80} {
+	encode gzip zstd
+
+	# Backend kernel health endpoint on the same origin.
+	handle /health {
+		reverse_proxy backend:5000
+	}
+
+	handle {
+		reverse_proxy web:3000
+	}
+}

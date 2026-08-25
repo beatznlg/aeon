@@ -1,6 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   allowedDevOrigins: ["*.daytonaproxy01.net"],
+  // Self-contained server bundle for Docker/OCI deploys. Vercel ignores this
+  // and uses its own builder; other hosts get a runnable server.js.
+  output: "standalone",
   // Cap build-time parallelism: the app has ~60 routes, and full parallel
   // static generation exhausts build-runner memory (~4 GB), which kills CI
   // builds mid-prerender. Lower CPU count trades a slower build for one
@@ -24,7 +27,7 @@ const nextConfig = {
 // the repo root makes trace paths resolve against <root>/node_modules.
 // Vercel's own frontend project (rootDirectory=web) is detected via VERCEL=1
 // and keeps its default behavior.
-if (process.env.VERCEL !== "1") {
+if (process.env.VERCEL !== "1" && process.env.AEON_DOCKER_BUILD !== "1") {
   const path = require("path");
   nextConfig.outputFileTracingRoot = path.join(__dirname, "..");
 }

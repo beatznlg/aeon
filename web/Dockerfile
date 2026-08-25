@@ -1,58 +1,35 @@
-# AEON OS — Next.js Frontend
-# ===========================
-# Multi-stage Docker image for the AEON web dashboard.
-#
-# Build:
-#   docker build -t aeon-frontend -f web/Dockerfile web/
-# Run:
-#   docker run -p 3000:3000 aeon-frontend
-#
-# Environment variables (see .env.example):
-#   AEON_PYTHON_URL       (required — http://aeon-backend:5000)
-#   NEXTAUTH_URL           (required — http://localhost:3000)
-#   NEXTAUTH_SECRET        (required — generate with `openssl rand -base64 32`)
-#   SUPABASE_URL           (optional)
-#   SUPABASE_ANON_KEY      (optional)
-#   SUPABASE_SERVICE_ROLE_KEY (optional)
+# AEON OS — Next.js frontend container (multi-stage, ARM64/x64 compatible)
+# Used by docker-compose.yml on Oracle Cloud (Ampere A1 or x86 VMs).
 
-# ─── Stage 1: Install & Build ──────────────────────────────────────────────
-FROM node:20-alpine AS builder
-
+FROM node:20-slim AS deps
 WORKDIR /app
-
-# Install build dependencies
 COPY package.json package-lock.json* ./
 RUN npm ci
 
-# Copy source and build
+FROM node:20-slim AS builder
+WORKDIR /app
+ENV AEON_DOCKER_BUILD=1 \
+    NEXT_TELEMETRY_DISABLED=1
+COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run build
 
-# Prune dev dependencies for smaller runtime
-RUN npm prune --production
-
-# ─── Stage 2: Runtime ──────────────────────────────────────────────────────
-FROM node:20-alpine AS runner
-
+FROM node:20-slim AS runner
 WORKDIR /app
+ENV NODE_ENV=production \
+    NEXT_TELEMETRY_DISABLED=1 \
+    HOSTNAME=0.0.0.0 \
+    PORT=3000
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd -g 1001 nodejs && useradd -u 1001 -g nodejs -m nextjs
 
-RUN addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 nextjs
-
-# Copy built application
 COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package.json ./package.json
-COPY --from=builder /app/next.config.* ./ 2>/dev/null || true
-COPY --from=builder /app/next-env.d.ts ./ 2>/dev/null || true
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
 USER nextjs
-
 EXPOSE 3000
-
-ENV NODE_ENV=production
-ENV PORT=3000
-ENV HOSTNAME="0.0.0.0"
-
-CMD ["npm", "run", "start"]
+HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=3 \
+    CMD curl -f http://localhost:3000/api/health || exit 1
+CMD ["node", "server.js"]
