@@ -344,6 +344,10 @@ MODEL_REGISTRY: dict[str, dict[str, Any]] = {
     "google": {"name": "Google Gemini (OpenAI-compatible)", "models": ["gemini-3.7-flash", "gemini-3.1-pro", "gemini-3.1-flash-lite"], "env_var": "GEMINI_API_KEY", "desc": "Gemini through Google's OpenAI-compatible endpoint.", "base_url": "https://generativelanguage.googleapis.com/v1beta/openai", "model_env_var": "GEMINI_MODEL"},
     "mistral": {"name": "Mistral (OpenAI-compatible)", "models": ["mistral-large-latest", "mistral-medium-latest", "mistral-small-latest", "codestral-latest"], "env_var": "MISTRAL_API_KEY", "desc": "Mistral hosted models, including coding-focused Codestral.", "base_url": "https://api.mistral.ai/v1", "model_env_var": "MISTRAL_MODEL"},
     "openrouter": {"name": "OpenRouter", "models": ["openai/gpt-4.1-mini", "anthropic/claude-sonnet-4", "google/gemini-3.7-flash", "meta-llama/llama-4-scout"], "env_var": "OPENROUTER_API_KEY", "desc": "Route across hosted and open models with one API.", "base_url": "https://openrouter.ai/api/v1", "model_env_var": "OPENROUTER_MODEL"},
+    "groq": {"name": "Groq", "models": ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "meta-llama/llama-4-scout-17b-16e-instruct", "qwen/qwen3-32b", "deepseek-r1-distill-llama-70b"], "env_var": "GROQ_API_KEY", "desc": "Ultra-fast open-model inference on Groq LPU hardware.", "base_url": "https://api.groq.com/openai/v1", "model_env_var": "GROQ_MODEL"},
+    "deepseek": {"name": "DeepSeek", "models": ["deepseek-chat", "deepseek-reasoner"], "env_var": "DEEPSEEK_API_KEY", "desc": "Cost-effective chat and deep reasoning models.", "base_url": "https://api.deepseek.com/v1", "model_env_var": "DEEPSEEK_MODEL"},
+    "xai": {"name": "xAI (Grok)", "models": ["grok-4", "grok-4-fast", "grok-3-mini"], "env_var": "XAI_API_KEY", "desc": "Grok models with strong reasoning and realtime knowledge.", "base_url": "https://api.x.ai/v1", "model_env_var": "XAI_MODEL"},
+    "together": {"name": "Together AI", "models": ["meta-llama/Llama-4-Scout", "Qwen/Qwen2.5-72B-Instruct-Turbo", "mistralai/Mixtral-8x7B-Instruct-v0.1", "deepseek-ai/DeepSeek-V3"], "env_var": "TOGETHER_API_KEY", "desc": "Hosted open-weight models at scale with one key.", "base_url": "https://api.together.xyz/v1", "model_env_var": "TOGETHER_MODEL"},
     "ollama": {"name": "Ollama (Local)", "models": ["llama3.1", "qwen2.5", "gemma3", "mistral"], "env_var": "OLLAMA_BASE_URL", "desc": "Run local models privately through Ollama."},
     "lmstudio": {"name": "LM Studio (Local)", "models": ["local-model"], "env_var": "LM_STUDIO_BASE_URL", "desc": "Use a model loaded in LM Studio's local OpenAI-compatible server."},
     "vllm": {"name": "vLLM (Local or Private)", "models": ["served-model"], "env_var": "VLLM_BASE_URL", "desc": "Connect to a self-hosted vLLM OpenAI-compatible server."},
@@ -354,7 +358,7 @@ MODEL_REGISTRY: dict[str, dict[str, Any]] = {
     "pollinations": {"name": "Free (Pollinations)", "models": ["openai-fast"], "env_var": None, "base_url": "https://text.pollinations.ai/openai", "desc": "Genuinely free hosted AI — no API key required. Rate-limited anonymous tier."},
 }
 
-_PROVIDER_STYLE = {"stub": ("◇", "#71717a"), "openai": ("⚡", "#10a37f"), "anthropic": ("✦", "#d97706"), "google": ("✦", "#4285f4"), "mistral": ("◆", "#f97316"), "openrouter": ("◈", "#7c3aed"), "ollama": ("🦙", "#8b5cf6"), "lmstudio": ("⌘", "#14b8a6"), "vllm": ("▣", "#0ea5e9"), "hf": ("🤗", "#fbbf24"), "qwen": ("🧠", "#6366f1"), "custom": ("✚", "#22c55e"), "pollinations": ("✦", "#00a8ff")}
+_PROVIDER_STYLE = {"stub": ("◇", "#71717a"), "openai": ("⚡", "#10a37f"), "anthropic": ("✦", "#d97706"), "google": ("✦", "#4285f4"), "mistral": ("◆", "#f97316"), "openrouter": ("◈", "#7c3aed"), "groq": ("⚡", "#f55036"), "deepseek": ("🐋", "#4d6bfe"), "xai": ("𝕏", "#111827"), "together": ("🤝", "#0f6fff"), "ollama": ("🦙", "#8b5cf6"), "lmstudio": ("⌘", "#14b8a6"), "vllm": ("▣", "#0ea5e9"), "hf": ("🤗", "#fbbf24"), "qwen": ("🧠", "#6366f1"), "custom": ("✚", "#22c55e"), "pollinations": ("✦", "#00a8ff")}
 
 
 def _configured(provider_id: str, metadata: Mapping[str, Any]) -> bool:
@@ -437,6 +441,10 @@ def _compatible_provider(provider_id: str, model: str | None) -> OpenAICompatibl
         "google": {"base_url": MODEL_REGISTRY["google"]["base_url"], "api_key": os.environ.get("GEMINI_API_KEY")},
         "mistral": {"base_url": MODEL_REGISTRY["mistral"]["base_url"], "api_key": os.environ.get("MISTRAL_API_KEY")},
         "openrouter": {"base_url": MODEL_REGISTRY["openrouter"]["base_url"], "api_key": os.environ.get("OPENROUTER_API_KEY")},
+        "groq": {"base_url": MODEL_REGISTRY["groq"]["base_url"], "api_key": os.environ.get("GROQ_API_KEY")},
+        "deepseek": {"base_url": MODEL_REGISTRY["deepseek"]["base_url"], "api_key": os.environ.get("DEEPSEEK_API_KEY")},
+        "xai": {"base_url": MODEL_REGISTRY["xai"]["base_url"], "api_key": os.environ.get("XAI_API_KEY")},
+        "together": {"base_url": MODEL_REGISTRY["together"]["base_url"], "api_key": os.environ.get("TOGETHER_API_KEY")},
         "lmstudio": {"base_url": os.environ.get("LM_STUDIO_BASE_URL", "http://localhost:1234/v1")},
         "vllm": {"base_url": os.environ.get("VLLM_BASE_URL", "http://localhost:8000/v1"), "api_key": os.environ.get("VLLM_API_KEY")},
         "pollinations": {"base_url": MODEL_REGISTRY["pollinations"]["base_url"], "api_key": None, "retry_transient": True},
@@ -445,6 +453,10 @@ def _compatible_provider(provider_id: str, model: str | None) -> OpenAICompatibl
         "google": "GEMINI_MODEL",
         "mistral": "MISTRAL_MODEL",
         "openrouter": "OPENROUTER_MODEL",
+        "groq": "GROQ_MODEL",
+        "deepseek": "DEEPSEEK_MODEL",
+        "xai": "XAI_MODEL",
+        "together": "TOGETHER_MODEL",
         "lmstudio": "LM_STUDIO_MODEL",
         "vllm": "VLLM_MODEL",
     }.get(provider_id)
@@ -471,7 +483,7 @@ def get_llm_provider(provider: str | None = None, model: str | None = None) -> L
         return HFInferenceProvider(selected_model)
     if provider_id == "custom":
         return CustomLLMProvider(selected_model)
-    if provider_id in {"google", "mistral", "openrouter", "lmstudio", "vllm", "pollinations"}:
+    if provider_id in {"google", "mistral", "openrouter", "groq", "deepseek", "xai", "together", "lmstudio", "vllm", "pollinations"}:
         return _compatible_provider(provider_id, selected_model)
     return StubProvider()
 

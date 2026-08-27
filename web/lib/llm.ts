@@ -13,6 +13,10 @@ export type LLMProvider =
   | "mistral"
   | "hf"
   | "openrouter"
+  | "groq"
+  | "deepseek"
+  | "xai"
+  | "together"
   | "ollama"
   | "lmstudio"
   | "vllm"
@@ -32,6 +36,10 @@ function isValidProvider(value: string): value is LLMProvider {
     "mistral",
     "hf",
     "openrouter",
+    "groq",
+    "deepseek",
+    "xai",
+    "together",
     "ollama",
     "lmstudio",
     "vllm",
@@ -55,6 +63,10 @@ function getModel(provider: LLMProvider, override?: string): string {
     mistral: process.env.MISTRAL_MODEL || process.env.AEON_LLM_MODEL || "mistral-small-latest",
     hf: process.env.HF_MODEL || process.env.AEON_LLM_MODEL || "Qwen/Qwen2.5-7B-Instruct",
     openrouter: process.env.OPENROUTER_MODEL || process.env.AEON_LLM_MODEL || "openai/gpt-4.1-mini",
+    groq: process.env.GROQ_MODEL || process.env.AEON_LLM_MODEL || "llama-3.3-70b-versatile",
+    deepseek: process.env.DEEPSEEK_MODEL || process.env.AEON_LLM_MODEL || "deepseek-chat",
+    xai: process.env.XAI_MODEL || process.env.AEON_LLM_MODEL || "grok-4-fast",
+    together: process.env.TOGETHER_MODEL || process.env.AEON_LLM_MODEL || "meta-llama/Llama-3.3-70B-Instruct-Turbo",
     pollinations: "openai-fast",
     ollama: process.env.OLLAMA_MODEL || process.env.AEON_LLM_MODEL || "llama3.1",
     lmstudio: process.env.LM_STUDIO_MODEL || process.env.AEON_LLM_MODEL || "local-model",
@@ -76,6 +88,10 @@ function compatibleBaseUrl(provider: LLMProvider): string {
     mistral: process.env.MISTRAL_BASE_URL || "https://api.mistral.ai/v1",
     hf: process.env.HF_OPENAI_BASE_URL || "https://router.huggingface.co/v1",
     openrouter: process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1",
+    groq: process.env.GROQ_BASE_URL || "https://api.groq.com/openai/v1",
+    deepseek: process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com/v1",
+    xai: process.env.XAI_BASE_URL || "https://api.x.ai/v1",
+    together: process.env.TOGETHER_BASE_URL || "https://api.together.xyz/v1",
     pollinations: "https://text.pollinations.ai/openai",
     ollama: process.env.OLLAMA_OPENAI_BASE_URL || `${(process.env.OLLAMA_BASE_URL || "http://127.0.0.1:11434").replace(/\/$/, "")}/v1`,
     lmstudio: process.env.LM_STUDIO_BASE_URL || "http://127.0.0.1:1234/v1",
@@ -95,6 +111,10 @@ function apiKey(provider: LLMProvider): string | undefined {
     mistral: process.env.MISTRAL_API_KEY,
     hf: process.env.HUGGINGFACE_TOKEN,
     openrouter: process.env.OPENROUTER_API_KEY,
+    groq: process.env.GROQ_API_KEY,
+    deepseek: process.env.DEEPSEEK_API_KEY,
+    xai: process.env.XAI_API_KEY,
+    together: process.env.TOGETHER_API_KEY,
     ollama: process.env.OLLAMA_API_KEY,
     vllm: process.env.VLLM_API_KEY,
     custom: process.env.AEON_CUSTOM_LLM_API_KEY || process.env.CUSTOM_LLM_API_KEY,

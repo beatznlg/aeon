@@ -119,8 +119,8 @@ create policy "service write" on episodes
               </a>
             </li>
             <li>
-              <a href="https://vercel.com/dashboard" target="_blank" rel="noopener noreferrer">
-                Vercel project ↗
+              <a href="https://cloud.oracle.com/compute/instances" target="_blank" rel="noopener noreferrer">
+                Oracle Cloud instances ↗
               </a>
             </li>
           </ul>

@@ -1231,7 +1231,129 @@ function genComparables(seed: string) {
 }
 
 // ════════════════════════════════════════════════════════════════
-// Master generator — returns data for any sector/tool combo
+// ── Construction ─────────────────────────────────────────────
+
+function genProjects(seed: string) {
+  const names = ["Harbour Point Tower", "Northside Metro Extension", "Logistics Hub Retrofit", "Riverside Bridge Renewal", "Central Hospital Wing"];
+  return names.map((name, i) => {
+    const budget = Math.round(6000000 + pseudoRandom(seed, i + 2) * 38000000);
+    return {
+      project_id: "PRJ-" + (7701 + i),
+      name,
+      progress_pct: Math.round(oscillate(90, 20, seed, "prog" + i)),
+      budget,
+      spent: Math.round(budget * oscillate(0.95, 0.45, seed, "burn" + i)),
+      schedule_risk: pickRandom(["low", "medium", "high"], seed, i + 6),
+    };
+  });
+}
+
+function genBidPipeline(seed: string) {
+  const opportunities = ["Airport Terminal Phase 2", "Data Center Fit-out", "Coastal Road Upgrade", "Port Warehouse Complex", "Smart Grid Rollout"];
+  return opportunities.map((opportunity, i) => ({
+    bid_id: "BID-" + (3301 + i),
+    opportunity,
+    value: Math.round(8000000 + pseudoRandom(seed, i + 3) * 21000000),
+    win_probability: parseFloat((0.15 + pseudoRandom(seed, i + 9) * 0.65).toFixed(2)),
+    status: pickRandom(["drafting", "reviewing", "submitted", "won", "lost"], seed, i + 12),
+  }));
+}
+
+// ── Insurance ────────────────────────────────────────────
+
+function genClaims(seed: string) {
+  const types = ["property_damage", "liability", "auto", "business_interruption", "marine_cargo"];
+  const statuses = ["in_review", "investigation", "approved", "settled", "rejected"];
+  const count = 3 + Math.floor(pseudoRandom(seed, (Date.now() % 50000) / 12000) * 2);
+  return Array.from({ length: count }, (_, i) => ({
+    claim_id: "CLM-" + (88231 + i),
+    policy: "POL-" + (55100 + i * 7),
+    type: types[i % types.length],
+    reserve: Math.round(3000 + pseudoRandom(seed, i + 4) * 95000),
+    fraud_score: parseFloat(pseudoRandom(seed, i + 8).toFixed(2)),
+    status: statuses[i % statuses.length],
+  }));
+}
+
+function genUnderwritingPortfolio(seed: string) {
+  const segments = [
+    { segment: "commercial_property" },
+    { segment: "motor" },
+    { segment: "marine_cargo" },
+    { segment: "liability" },
+  ];
+  return {
+    policies_active: Math.round(oscillate(13500, 11800, seed, "pol")),
+    loss_ratio_pct: parseFloat(oscillate(66, 58, seed, "loss").toFixed(1)),
+    combined_ratio_pct: parseFloat(oscillate(99, 93, seed, "comb").toFixed(1)),
+    top_segments: segments.map((s, i) => ({
+      ...s,
+      premium: Math.round(1100000 + pseudoRandom(seed, i + 5) * 4200000),
+      loss_ratio: parseFloat(oscillate(74, 52, seed, "lr" + i).toFixed(1)),
+    })),
+  };
+}
+
+// ── Legal Services ───────────────────────────────────────
+
+function genCases(seed: string) {
+  const matters = ["Meridian vs. Atlas Holdings", "In re: Nova Retail IP claim", "Estate of Callahan", "State v. Orbital Logistics", "Kestrel Merger Review"];
+  const areas = ["commercial", "intellectual_property", "probate", "criminal_defense", "corporate"];
+  const stages = ["pleadings", "discovery", "trial_prep", "hearing", "settlement_talks"];
+  return matters.map((matter, i) => ({
+    case_id: "CASE-" + (4410 + i),
+    matter,
+    practice_area: areas[i % areas.length],
+    stage: stages[i % stages.length],
+    risk: pickRandom(["low", "medium", "high"], seed, i + 7),
+  }));
+}
+
+function genContractReview(seed: string) {
+  const flagged = [
+    { contract: "MSA-Delta-2026", clause: "indemnification", severity: "high", note: "uncapped liability" },
+    { contract: "NDA-Gamma", clause: "term", severity: "medium", note: "auto-renews indefinitely" },
+    { contract: "SOW-Epsilon-11", clause: "payment_terms", severity: "low", note: "net-120 exceeds policy" },
+  ];
+  return {
+    pending_review: Math.round(oscillate(10, 4, seed, "pend")),
+    flagged_clauses: flagged.slice(0, 2 + Math.floor(pseudoRandom(seed, Date.now() % 40000))),
+    avg_cycle_days: Math.round(oscillate(12, 6, seed, "cycle")),
+  };
+}
+
+// ── Logistics & Freight ──────────────────────────────────
+
+function genShipments(seed: string) {
+  const routes = [
+    { origin: "Rotterdam", destination: "Valletta", carrier: "Maersk" },
+    { origin: "Shenzhen", destination: "Hamburg", carrier: "DHL" },
+    { origin: "Chicago", destination: "Toronto", carrier: "FedEx" },
+    { origin: "Singapore", destination: "Sydney", carrier: "Kuehne+Nagel" },
+    { origin: "Santos", destination: "Antwerp", carrier: "MSC" },
+  ];
+  const statuses = ["in_transit", "customs_hold", "delivered", "loading", "delayed"];
+  return routes.map((route, i) => ({
+    shipment_id: "SHP-" + (2201 + i),
+    ...route,
+    eta_days: Math.round(1 + pseudoRandom(seed, i + 3) * 13),
+    status: statuses[i % statuses.length],
+  }));
+}
+
+function genFleetStatus(seed: string) {
+  return {
+    vehicles_active: Math.round(oscillate(46, 36, seed, "act")),
+    vehicles_idle: Math.max(2, Math.round(oscillate(9, 4, seed, "idle"))),
+    maintenance_due: [
+      { vehicle: "TRK-" + (100 + Math.floor(pseudoRandom(seed, 2) * 60)), issue: pickRandom(["tire_wear", "brake_service", "oil_change", "engine_diag"], seed, 3), due_km: Math.round(800 + pseudoRandom(seed, 4) * 4000) },
+      { vehicle: "TRK-" + (100 + Math.floor(pseudoRandom(seed, 5) * 60)), issue: pickRandom(["tire_wear", "brake_service", "cooling_system"], seed, 6), due_km: Math.round(800 + pseudoRandom(seed, 7) * 4000) },
+    ],
+    utilization_pct: parseFloat(oscillate(92, 78, seed, "util").toFixed(1)),
+  };
+}
+
+
 // ════════════════════════════════════════════════════════════════
 
 export type SectorToolGenerator = (seed: string) => unknown;
@@ -1326,6 +1448,22 @@ const SECTOR_TOOL_GENERATORS: Record<string, Record<string, SectorToolGenerator>
     valuations: genValuations,
     market: genMarketTrends,
     comparables: genComparables,
+  },
+  construction: {
+    projects: genProjects,
+    bids: genBidPipeline,
+  },
+  insurance: {
+    claims: genClaims,
+    portfolio: genUnderwritingPortfolio,
+  },
+  legal: {
+    cases: genCases,
+    contracts: genContractReview,
+  },
+  logistics: {
+    shipments: genShipments,
+    fleet: genFleetStatus,
   },
 };
 

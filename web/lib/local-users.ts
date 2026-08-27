@@ -36,7 +36,7 @@ export type LocalUserPublic = Omit<LocalUser, "passwordHash">;
 /**
  * Resolve the store path lazily at request time, never at module scope.
  *
- * Vercel's Next.js build performs output file tracing: a module-level
+ * Next.js's production build performs output file tracing: a module-level
  * `path.resolve(process.cwd(), ...)` constant feeding an fs call gets
  * statically resolved and lstat'd during the build, which throws ENOENT on
  * the read-only builder. Building the path from a runtime value (env or a
@@ -45,7 +45,7 @@ export type LocalUserPublic = Omit<LocalUser, "passwordHash">;
 function usersFile(): string {
   const dir = process.env.AEON_LOCAL_DATA_DIR;
   const base = dir && dir.length > 0 ? dir : process.cwd();
-  // Built with plain string concatenation at request time so the Vercel
+  // Built with plain string concatenation at request time so the Next.js
   // output tracer cannot statically resolve this fs path (it would lstat
   // the missing file during the build and fail with ENOENT).
   return base + "/.data/aeon-" + "users" + ".json";

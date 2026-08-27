@@ -209,6 +209,50 @@ export const INDUSTRY_PRESETS: IndustryPreset[] = [
     "#0ea5e9",
     ["governance", "cybersecurity", "professional"]
   ),
+  preset(
+    "legal",
+    "Legal Services",
+    "⚖️",
+    "#a16207",
+    "Case-law research, contract review drafting, clause comparison, and discovery summarization with citation grounding.",
+    "Lexbridge Counsel",
+    "Grounded Legal Intelligence",
+    "#a16207",
+    ["professional", "governance"]
+  ),
+  preset(
+    "insurance",
+    "Insurance & Underwriting",
+    "☂️",
+    "#0d9488",
+    "Claims triage, fraud-signal review, risk scoring, and policy Q&A with human-in-the-loop underwriting controls.",
+    "Meridian Assurance",
+    "Faster Claims, Safer Underwriting",
+    "#0d9488",
+    ["finance", "professional"]
+  ),
+  preset(
+    "construction",
+    "Construction & Engineering",
+    "🏗️",
+    "#d97706",
+    "Schedule-risk analysis, cost-estimate drafting, RFP summarization, and bid scoring for project-driven firms.",
+    "Keystone Build",
+    "On-Budget, On-Schedule Intelligence",
+    "#d97706",
+    ["manufacturing", "professional"]
+  ),
+  preset(
+    "real_estate",
+    "Real Estate & Property",
+    "🏘️",
+    "#7c3aed",
+    "Valuation analysis, comparables reports, market analytics, and portfolio review grounded in verified data.",
+    "Cornerstone Estates",
+    "Data-Driven Property Decisions",
+    "#7c3aed",
+    ["retail", "professional"]
+  ),
 ];
 
 export function getIndustryPreset(id: string): IndustryPreset | undefined {

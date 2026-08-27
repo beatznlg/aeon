@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 export const dynamic = "force-dynamic";
 
 /**
- * Vercel-compatible mock vitals for an AEON OS app.
+ * Standalone mock vitals for an AEON OS app.
  * Returns deterministic, realistic data without spawning Python.
  */
 export async function GET(_req: Request, context: { params: Promise<{ id: string }> }) {

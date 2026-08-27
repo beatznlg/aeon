@@ -115,4 +115,4 @@ fi
 echo
 echo "Done.  Visit https://huggingface.co/spaces/${HF_USERNAME}/${HF_SPACESLUG}"
 echo "to monitor the build.  Once it shows Running, set AEON_HF_SPACE_URL"
-echo "(without trailing /chat) in your Vercel env vars to wire it up."
+echo "(without trailing /chat) as AEON_HF_SPACE_URL in your frontend env to wire it up."

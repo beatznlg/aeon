@@ -19,11 +19,9 @@ const AEON_PYTHON_URL = (process.env.AEON_PYTHON_URL || "http://127.0.0.1:5000")
 // In production, override with a strong random value via AUTH_SECRET.
 const AUTH_SECRET = process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || "aeon-dev-fallback-do-not-use-in-production";
 // NextAuth refuses to run on unknown hosts in production unless explicitly
-// trusted. Managed hosts (Vercel, Freebuff hosting) all pass the real public
-// URL in the request, so default to trusted and only opt out explicitly via
-// AUTH_TRUST_HOST=false.
+// trusted. The Oracle Cloud deploy serves one origin behind Caddy, so default
+// to trusted and only opt out explicitly via AUTH_TRUST_HOST=false.
 const TRUST_HOST =
-  process.env.VERCEL === "1" ||
   process.env.AUTH_TRUST_HOST === "true" ||
   process.env.AUTH_TRUST_HOST === "1" ||
   process.env.AUTH_TRUST_HOST !== "false";

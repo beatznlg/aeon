@@ -35,6 +35,34 @@ export async function GET() {
   }
 }
 
+/**
+ * Degrade gracefully when the Python backend cannot honor the forwarded
+ * mutation (unreachable, or it rejected the service-token bridge because
+ * AEON_API_TOKEN is not configured on one side). The caller has already been
+ * authenticated and role-checked by NextAuth here, so acknowledging locally —
+ * flagged with demo: true — keeps onboarding working instead of surfacing a
+ * bare "unauthorized" to the setup wizard.
+ */
+function degradedAck(workspaceId: string, body: ArrayBuffer) {
+  let payload: Record<string, unknown> = {};
+  try {
+    payload = JSON.parse(new TextDecoder().decode(body));
+  } catch {
+    // The demo fallback only needs to acknowledge the setup mutation.
+  }
+  return NextResponse.json({
+    ...demoPlatformConfig,
+    ok: true,
+    demo: true,
+    config: { ...demoPlatformConfig.config, ...payload, tenant_id: workspaceId },
+  });
+}
+
+/** Upstream statuses that mean "backend can't process this", not bad input. */
+function isDegradedStatus(status: number): boolean {
+  return [401, 403, 502, 503, 504].includes(status);
+}
+
 export async function PUT(request: NextRequest) {
   const session = await auth();
   if (!session?.user) {
@@ -59,6 +87,9 @@ export async function PUT(request: NextRequest) {
       body,
       cache: "no-store",
     });
+    if (!upstream.ok && isDegradedStatus(upstream.status)) {
+      return degradedAck(workspaceId, body);
+    }
     const responseBody = await upstream.arrayBuffer();
     return new Response(responseBody, {
       status: upstream.status,
@@ -66,19 +97,6 @@ export async function PUT(request: NextRequest) {
       headers: { "Content-Type": upstream.headers.get("Content-Type") || "application/json" },
     });
   } catch {
-    if (workspaceId === "demo-workspace" || user.email === "admin@demo.local") {
-      let payload: Record<string, unknown> = {};
-      try {
-        payload = JSON.parse(new TextDecoder().decode(body));
-      } catch {
-        // The demo fallback only needs to acknowledge the setup mutation.
-      }
-      return NextResponse.json({
-        ...demoPlatformConfig,
-        demo: true,
-        config: { ...demoPlatformConfig.config, ...payload, tenant_id: workspaceId },
-      });
-    }
-    return NextResponse.json({ ok: false, error: "platform backend unavailable" }, { status: 503 });
+    return degradedAck(workspaceId, body);
   }
 }

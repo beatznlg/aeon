@@ -1,7 +1,7 @@
 """
 AEON kernel exposed as a Gradio chat endpoint for HF Spaces deployment.
 
-The Vercel frontend's `web/app/api/chat/route.ts` discovers this Space via the
+The AEON frontend's `web/app/api/chat/route.ts` discovers this Space via the
 `AEON_HF_SPACE_URL` environment variable and streams responses to the browser
 through `@gradio/client`. The Space itself runs on Hugging Face's free tier
 (ZeroGPU gives free A100 slices on demand; matches the Colab T4 GPU surface
@@ -13,7 +13,7 @@ To deploy:
   3. Set HUGGINGFACE_TOKEN as a Space secret (so the Qwen 3-bit download
      succeeds on first request)
   4. Copy the Space URL (e.g. https://beatznlg-aeon.hf.space) and paste it
-     as `AEON_HF_SPACE_URL` in the Vercel project's environment variables.
+     as `AEON_HF_SPACE_URL` in the frontend environment variables.
 """
 
 import gradio as gr
@@ -41,8 +41,8 @@ app = gr.ChatInterface(
     fn=chat_fn,
     title="AEON \u03b1 kernel proxy",
     description=(
-        "GPU inference endpoint for the AEON Vercel frontend. "
-        "POST /chat here from Vercel's @gradio/client."
+        "GPU inference endpoint for the AEON OS frontend. "
+        "POST /chat here from @gradio/client."
     ),
     examples=["What is the integral of x^2?", "Compute 1 + 1 + 1", "Solve 2x + 5 = 17"],
     retry_btn=None,

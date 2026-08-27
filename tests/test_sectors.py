@@ -32,27 +32,35 @@ def test_sector_catalog_exposes_registered_contract(client):
     assert response.status_code == 200
     data = response.get_json()
     assert data["ok"] is True
-    assert data["tool_count"] == 58
+    # The catalog contract is derived from the registry itself so adding a
+    # sector or tool never breaks this assertion silently.
+    from aeon_sectors import list_sector_catalog as _catalog
+
+    assert data["tool_count"] == sum(len(s["tools"]) for s in _catalog()) == 66
     assert data["aliases"]["cultural_heritage"] == "heritage"
 
     sectors = {sector["id"]: sector for sector in data["sectors"]}
     assert set(sectors) == {
+        "agriculture",
+        "construction",
         "cybersecurity",
+        "education",
         "finance",
         "health",
         "heritage",
+        "insurance",
+        "legal",
+        "logistics",
         "manufacturing",
+        "professional",
+        "public_safety",
+        "real_estate",
         "retail",
         "sme",
+        "telecom",
         "tourism",
         "transport",
         "utilities",
-        "telecom",
-        "agriculture",
-        "education",
-        "public_safety",
-        "real_estate",
-        "professional",
     }
     heritage_tools = {tool["id"] for tool in sectors["heritage"]["tools"]}
     assert heritage_tools == {"visitors", "sites", "exhibitions", "tours"}

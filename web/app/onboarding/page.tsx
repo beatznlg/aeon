@@ -348,23 +348,42 @@ export default function OnboardingPage() {
     const platformModules = Array.from(new Set([...CORE_PLATFORM_MODULES, ...platformPreset.modules]));
     const finalCompany = companyName.trim() || selected.companyName || selected.name;
 
+    const friendly = (msg: unknown) => {
+      const raw = String(msg ?? "").toLowerCase();
+      if (raw.includes("unauthorized") || raw.includes("forbidden")) {
+        return "Your session could not be verified by the workspace backend. Sign out and back in, then try again.";
+      }
+      if (raw.includes("backend") && (raw.includes("unavailable") || raw.includes("unreachable"))) {
+        return "The AEON backend is waking up or unreachable. Your setup was saved locally and will sync when it reconnects.";
+      }
+      return String(msg ?? "Something went wrong. Please try again.");
+    };
+
     try {
-      const platformRes = await fetch("/api/platform/config", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          company: finalCompany,
-          industry: platformPreset.industry,
-          currency,
-          country,
-          deployment_mode: deploymentMode,
-          modules: platformModules,
-          connectors: conns,
-        }),
-      });
-      const platformData = await platformRes.json();
-      if (!platformRes.ok || !platformData.ok) {
-        throw new Error(platformData.error || `Platform setup failed (${platformRes.status})`);
+      // Platform config is applied best-effort: a backend hiccup must not
+      // block onboarding — branding + the completion marker below are what
+      // gate the dashboard.
+      let platformWarning: string | null = null;
+      try {
+        const platformRes = await fetch("/api/platform/config", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            company: finalCompany,
+            industry: platformPreset.industry,
+            currency,
+            country,
+            deployment_mode: deploymentMode,
+            modules: platformModules,
+            connectors: conns,
+          }),
+        });
+        const platformData = await platformRes.json().catch(() => ({}));
+        if (!platformRes.ok || !platformData.ok) {
+          platformWarning = friendly(platformData.error || `Platform setup failed (${platformRes.status})`);
+        }
+      } catch {
+        platformWarning = friendly("backend unavailable");
       }
 
       const res = await fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/branding`, {
@@ -381,14 +400,16 @@ export default function OnboardingPage() {
           onboardingComplete: true,
         }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || `Save failed (${res.status})`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(friendly(data.error || `Save failed (${res.status})`));
 
-      await fetch("/api/onboarding/status", { method: "POST" });
-      setSuccess(`${selected.name} configured for ${finalCompany}. Taking you to your dashboard…`);
+      await fetch("/api/onboarding/status", { method: "POST" }).catch(() => undefined);
+      setSuccess(
+        `${selected.name} configured for ${finalCompany}. Taking you to your dashboard…`
+      );
       setTimeout(() => router.push("/"), 900);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(friendly(err instanceof Error ? err.message : err));
     } finally {
       setApplying(false);
     }

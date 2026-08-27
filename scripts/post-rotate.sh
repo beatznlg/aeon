@@ -29,7 +29,7 @@ fully compromised regardless of whether the chat is "private".
   5. Copy the new token (it starts with github_pat_...).
   6. Paste it ONLY into one of these, never into chat:
        - this dev env's  Keys / Secrets  tab   as  GH_TOKEN
-       - or, your Vercel dashboard env vars   as  GH_TOKEN
+       - or, the server's /opt/aeon/.env      as  GH_TOKEN
   7. Verify on your machine:  gh auth status  (should print "Logged in to
      github.com as <your-username>" with the new token).
 
@@ -51,7 +51,7 @@ treatment: rotate now.
        (You will NOT be able to view it again without rotating again.)
   6. Paste it ONLY into one of these, never into chat:
        - this dev env's  Keys / Secrets  tab   as  SUPABASE_SERVICE_ROLE_KEY
-       - or, your Vercel dashboard env vars   as  SUPABASE_SERVICE_ROLE_KEY
+       - or, the server's /opt/aeon/.env      as  SUPABASE_SERVICE_ROLE_KEY
      ALSO rotate SUPABASE_ANON_KEY if you used the anon JWT in chat (you did).
   7. Run the AEON kernel once locally and confirm:
        python -c "from aeon import SBC; print(SBC.whoami(), SBC.ping())"
@@ -89,7 +89,7 @@ Targets (paste fresh values INTO these, never re-paste into chat):
       SUPABASE_SERVICE_ROLE_KEY  (rotated in Step 2)
       GH_TOKEN                 (rotated in Step 1; github_pat_... form recommended)
 
-  Vercel project env vars  (Project Settings ▸ Environment Variables):
+  Server env vars  (/opt/aeon/.env on the Oracle VM):
       HUGGINGFACE_TOKEN                  (server)
       NEXT_PUBLIC_SUPABASE_URL           (browser-visible)
       NEXT_PUBLIC_SUPABASE_ANON_KEY      (browser-visible)
@@ -101,8 +101,8 @@ Targets (paste fresh values INTO these, never re-paste into chat):
       HUGGINGFACE_TOKEN                  (Space secret)
 
 
-Once the leak is closed, run  bash scripts/deploy-vercel.sh  to push the live
-URL, then  bash scripts/deploy-hf-space.sh  to spin up the AEON kernel
+Once the leak is closed, run  sh scripts/deploy-oracle.sh  to rebuild and
+restart the stack, then  bash scripts/deploy-hf-space.sh  to refresh the AEON kernel
 behind it.
 
 ================================================================================

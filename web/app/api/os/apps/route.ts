@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
  * The AEON app registry is served from the frontend catalog (web/lib/apps.ts),
  * but each workspace's installed set must survive server restarts and reboots.
  * Persist it as a JSON file per workspace (same pattern as web/lib/local-users.ts):
- * the path is resolved at request time so Vercel's output tracer cannot
+ * the path is resolved at request time so Next.js's output tracer cannot
  * statically lstat the file during the build.
  */
 function storeFile(): string {

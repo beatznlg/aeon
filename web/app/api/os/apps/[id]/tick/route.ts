@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 /**
  * Mock responses for AEON OS app tick.
  * Returns deterministic, contextual JSON for each app/query pair
- * without needing Python (works on Vercel).
+ * without needing Python (works in frontend-only deployments).
  */
 function mockTick(appId: string, query: string): object {
   const lower = query.toLowerCase();
@@ -19,7 +19,7 @@ function mockTick(appId: string, query: string): object {
     ok: true,
     app_id: appId,
     query,
-    response: `AEON processed '${q}' for the ${appId} module. Running in Vercel-compatible mock mode.`,
+    response: `AEON processed '${q}' for the ${appId} module. Running in standalone mock mode.`,
     mock: true,
   };
 

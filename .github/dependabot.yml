@@ -51,7 +51,7 @@ updates:
       - "dependencies"
       - "web"
     # Don't bump over major versions of Next.js or ai-sdk — they often
-    # break Vercel's cache; bump them by hand.
+    # break framework upgrades; bump them by hand.
     ignore:
       - dependency-name: "next"
         update-types: [ "version-update:semver-major" ]

@@ -14,6 +14,8 @@ from transformers import AutoConfig, AutoTokenizer
 from transformers import __version__ as transformers_version
 
 MODEL_ID = "Qwen/Qwen2.5-3B-Instruct"
+# Pin the model revision so downloads are reproducible (override via env).
+MODEL_REVISION = os.environ.get("AEON_HF_MODEL_REVISION", "main")
 
 
 def main() -> int:
@@ -23,6 +25,7 @@ def main() -> int:
     try:
         tokenizer = AutoTokenizer.from_pretrained(
             MODEL_ID,
+            revision=MODEL_REVISION,
             trust_remote_code=False,
             token=os.environ.get("HUGGINGFACE_TOKEN") or os.environ.get("AEON_HF_TOKEN"),
         )
@@ -36,6 +39,7 @@ def main() -> int:
     try:
         config = AutoConfig.from_pretrained(
             MODEL_ID,
+            revision=MODEL_REVISION,
             trust_remote_code=False,
             token=os.environ.get("HUGGINGFACE_TOKEN") or os.environ.get("AEON_HF_TOKEN"),
         )

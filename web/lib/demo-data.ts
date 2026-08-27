@@ -1,8 +1,8 @@
 /**
  * AEON OS — Demo data fallback layer.
  *
- * When the Flask backend is unreachable (e.g. a frontend-only preview or a
- * fresh Vercel deployment before Railway is configured), these handlers
+ * When the Flask backend is unreachable (e.g. a frontend-only preview before
+ * the kernel is deployed), these handlers
  * return realistic demo data so every OS module renders a working, populated
  * dashboard instead of empty/error states.
  */
@@ -687,8 +687,12 @@ export const demoMarketplace = {
     demoMarketplacePlugin({ id: "bamboohr-connector", name: "BambooHR Connector", description: "Connect BambooHR people data to AEON Employees, People, and Organizations.", category: "integration", icon: "🌿", tags: ["bamboohr", "hr", "people", "connector"], permissions: ["read", "execute", "network"], entry_points: { health: "Check BambooHR readiness.", sync: "Prepare a BambooHR synchronization run.", status: "Summarize BambooHR connector state." }, config_schema: { connector_id: { type: "string", default: "bamboohr", description: "Connector engine id." } } }),
     demoMarketplacePlugin({ id: "docusign-connector", name: "DocuSign Connector", description: "Connect DocuSign agreements to AEON Documents, Events, and Alerts.", category: "integration", icon: "✍️", tags: ["docusign", "esignature", "documents", "connector"], permissions: ["read", "execute", "network"], entry_points: { health: "Check DocuSign readiness.", sync: "Prepare a DocuSign synchronization run.", status: "Summarize DocuSign connector state." }, config_schema: { connector_id: { type: "string", default: "docusign", description: "Connector engine id." } } }),
     demoMarketplacePlugin({ id: "twilio-connector", name: "Twilio Connector", description: "Connect Twilio communications to AEON Messages, Events, and Alerts.", category: "integration", icon: "📱", tags: ["twilio", "sms", "communication", "connector"], permissions: ["read", "execute", "network"], entry_points: { health: "Check Twilio readiness.", sync: "Prepare a Twilio synchronization run.", status: "Summarize Twilio connector state." }, config_schema: { connector_id: { type: "string", default: "twilio", description: "Connector engine id." } } }),
+    demoMarketplacePlugin({ id: "insurance-claims-ai", name: "Insurance Claims AI", description: "Claims intake triage, damage-report summarization, and fraud-signal review support for insurers.", category: "analytics", icon: "📋", version: "1.0.0", tags: ["insurance", "claims", "fraud"], entry_points: { triage: "Triage an incoming claim and propose a handling queue.", report: "Summarize a claim file with key facts and coverage signals.", score: "Compute a fraud-risk score for a claim." } }),
+    demoMarketplacePlugin({ id: "construction-bid-ai", name: "Construction Bid AI", description: "RFP breakdown, cost-estimate drafting, and bid/no-bid scoring for construction and engineering firms.", category: "productivity", icon: "🏗️", version: "1.0.0", tags: ["construction", "bidding", "estimating"], entry_points: { parse: "Extract scope, milestones, and requirements from an RFP.", draft: "Draft a cost estimate outline from project inputs.", score: "Score a bid opportunity on fit, risk, and margin." } }),
+    demoMarketplacePlugin({ id: "hospitality-revenue-ai", name: "Hospitality Revenue AI", description: "Occupancy forecasting, rate-adjustment suggestions, and guest-review insights for hotels and venues.", category: "analytics", icon: "🛍️", version: "1.0.0", tags: ["hospitality", "revenue-management", "forecasting"], entry_points: { forecast: "Forecast occupancy for an upcoming window.", pricing: "Suggest rate adjustments from demand signals.", insights: "Summarize themes and sentiment across guest reviews." } }),
+    demoMarketplacePlugin({ id: "legal-discovery-ai", name: "Legal Discovery AI", description: "Document-pool summarization, privilege-flag triage, and timeline extraction for legal teams.", category: "productivity", icon: "⚖️", version: "1.0.0", tags: ["legal", "ediscovery", "documents"], entry_points: { summarize: "Summarize a document pool with key entities and dates.", triage: "Flag documents for privilege and responsiveness review.", extract: "Extract a chronology of events from case documents." } }),
   ],
-  summary: { plugins: 28, verified: 27, categories: ["communication", "devops", "billing", "monitoring", "oncall", "webhooks", "ai", "integration"], version: 1 },
+  summary: { plugins: 32, verified: 31, categories: ["communication", "devops", "billing", "monitoring", "oncall", "webhooks", "ai", "integration", "analytics", "productivity"], version: 1 },
 };
 
 export const demoMcp = {

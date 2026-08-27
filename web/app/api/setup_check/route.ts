@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
  * GET /api/setup_check
  *
  * Reports which optional environment variables are wired on the deployed
- * Vercel instance. NEVER echoes the secret value itself — only whether it
+ * server. NEVER echoes the secret value itself — only whether it
  * exists and a low-risk length hint so the user can confirm
  * "looks like 40+ chars" without seeing the string.
  *

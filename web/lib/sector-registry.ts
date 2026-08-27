@@ -578,6 +578,98 @@ export const SECTOR_DEFINITIONS: SectorDefinition[] = [
       },
     ],
   },
+  {
+    id: "construction",
+    name: "Construction & Engineering",
+    icon: "🏗️",
+    color: "#d97706",
+    description: "Project progress tracking, budget burn & bid pipeline scoring",
+    tools: [
+      {
+        path: "projects",
+        label: "Projects",
+        icon: "🏗️",
+        responseKey: "projects",
+        targetKey: "projects",
+      },
+      {
+        path: "bids",
+        label: "Bid Pipeline",
+        icon: "📄",
+        responseKey: "bid_pipeline",
+        targetKey: "bid_pipeline",
+      },
+    ],
+  },
+  {
+    id: "insurance",
+    name: "Insurance",
+    icon: "🛡️",
+    color: "#0891b2",
+    description: "Claims triage with fraud scoring & underwriting portfolio health",
+    tools: [
+      {
+        path: "claims",
+        label: "Claims",
+        icon: "📋",
+        responseKey: "claims",
+        targetKey: "claims",
+      },
+      {
+        path: "portfolio",
+        label: "Underwriting Portfolio",
+        icon: "📊",
+        responseKey: "underwriting_portfolio",
+        targetKey: "underwriting_portfolio",
+      },
+    ],
+  },
+  {
+    id: "legal",
+    name: "Legal Services",
+    icon: "⚖️",
+    color: "#7c3aed",
+    description: "Case management across practice areas & contract clause review",
+    tools: [
+      {
+        path: "cases",
+        label: "Cases",
+        icon: "⚖️",
+        responseKey: "cases",
+        targetKey: "cases",
+      },
+      {
+        path: "contracts",
+        label: "Contract Review",
+        icon: "📑",
+        responseKey: "contract_review",
+        targetKey: "contract_review",
+      },
+    ],
+  },
+  {
+    id: "logistics",
+    name: "Logistics & Freight",
+    icon: "🚚",
+    color: "#059669",
+    description: "Shipment tracking, customs status & fleet utilization monitoring",
+    tools: [
+      {
+        path: "shipments",
+        label: "Shipments",
+        icon: "🚚",
+        responseKey: "shipments",
+        targetKey: "shipments",
+      },
+      {
+        path: "fleet",
+        label: "Fleet Status",
+        icon: "🛻",
+        responseKey: "fleet_status",
+        targetKey: "fleet_status",
+      },
+    ],
+  },
 ];
 
 export function getSectorDefinition(sectorId: string): SectorDefinition | undefined {

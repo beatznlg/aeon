@@ -1731,6 +1731,94 @@ BUILTIN_PLUGIN_CATALOG: tuple[PluginManifest, ...] = (
     ),
 )
 
+# Sector-aligned specialist plugins (insurance, construction, hospitality, legal).
+BUILTIN_PLUGIN_CATALOG = BUILTIN_PLUGIN_CATALOG + (
+    PluginManifest(
+        id="insurance-claims-ai",
+        name="Insurance Claims AI",
+        version="1.0.0",
+        description="Claims intake triage, damage-report summarization, and fraud-signal review support for insurers.",
+        author="AEON Labs",
+        category="analytics",
+        icon="📋",
+        permissions=("read", "execute"),
+        entry_points={
+            "triage": "Triage an incoming claim and propose a handling queue.",
+            "report": "Summarize a claim file with key facts and coverage signals.",
+            "score": "Compute a fraud-risk score for a claim.",
+        },
+        config_schema={
+            "auto_triage": {"type": "boolean", "default": True, "description": "Automatically triage new claims."},
+            "risk_threshold": {"type": "number", "default": 0.8, "description": "High-risk fraud threshold."},
+        },
+        verified=True,
+        tags=("insurance", "claims", "fraud"),
+    ),
+    PluginManifest(
+        id="construction-bid-ai",
+        name="Construction Bid AI",
+        version="1.0.0",
+        description="RFP breakdown, cost-estimate drafting, and bid/no-bid scoring for construction and engineering firms.",
+        author="AEON Labs",
+        category="productivity",
+        icon="🏗️",
+        permissions=("read", "execute"),
+        entry_points={
+            "parse": "Extract scope, milestones, and requirements from an RFP.",
+            "draft": "Draft a cost estimate outline from project inputs.",
+            "score": "Score a bid opportunity on fit, risk, and margin.",
+        },
+        config_schema={
+            "margin_floor": {"type": "number", "default": 0.12, "description": "Minimum acceptable margin."},
+            "region": {"type": "string", "default": "global", "description": "Pricing region for estimates."},
+        },
+        verified=True,
+        tags=("construction", "bidding", "estimating"),
+    ),
+    PluginManifest(
+        id="hospitality-revenue-ai",
+        name="Hospitality Revenue AI",
+        version="1.0.0",
+        description="Occupancy forecasting, rate-adjustment suggestions, and guest-review insights for hotels and venues.",
+        author="AEON Labs",
+        category="analytics",
+        icon="🛍️",
+        permissions=("read", "execute"),
+        entry_points={
+            "forecast": "Forecast occupancy for an upcoming window.",
+            "pricing": "Suggest rate adjustments from demand signals.",
+            "insights": "Summarize themes and sentiment across guest reviews.",
+        },
+        config_schema={
+            "window_days": {"type": "number", "default": 30, "description": "Forecast horizon in days."},
+            "max_rate_delta": {"type": "number", "default": 0.15, "description": "Maximum suggested rate change."},
+        },
+        verified=True,
+        tags=("hospitality", "revenue-management", "forecasting"),
+    ),
+    PluginManifest(
+        id="legal-discovery-ai",
+        name="Legal Discovery AI",
+        version="1.0.0",
+        description="Document-pool summarization, privilege-flag triage, and timeline extraction for legal teams.",
+        author="AEON Labs",
+        category="productivity",
+        icon="⚖️",
+        permissions=("read", "execute"),
+        entry_points={
+            "summarize": "Summarize a document pool with key entities and dates.",
+            "triage": "Flag documents for privilege and responsiveness review.",
+            "extract": "Extract a chronology of events from case documents.",
+        },
+        config_schema={
+            "privilege_threshold": {"type": "number", "default": 0.7, "description": "Privilege flag threshold."},
+            "review_queue": {"type": "string", "default": "discovery-review", "description": "Queue for flagged documents."},
+        },
+        verified=True,
+        tags=("legal", "ediscovery", "documents"),
+    ),
+)
+
 _BUILTIN_BY_ID = {manifest.id: manifest for manifest in BUILTIN_PLUGIN_CATALOG}
 
 

@@ -225,7 +225,7 @@ def build_slides() -> list[Slide]:
     add_three_col(slides, "02 | Repository at a glance", "Measured from the repository snapshot used for this presentation.", [
         ("Frontend", ["36 page surfaces", "99 Next.js API route files", "React + TypeScript + Tailwind", "Recharts, Framer Motion, NextAuth"], CYAN),
         ("Backend", ["41 root Python modules", "Flask HTTP kernel", "SQLAlchemy models", "Supabase REST integrations", "Celery/Redis option"], BLUE),
-        ("Delivery", ["22 test files", "18 Supabase migrations", "Docker Compose stack", "Railway + Vercel deployment guide", "OpenAPI + SDKs"], ORANGE),
+        ("Delivery", ["22 test files", "18 Supabase migrations", "Docker Compose stack", "Oracle Cloud deployment guide", "OpenAPI + SDKs"], ORANGE),
     ])
     add_two_col(slides, "03 | System topology", "The intended production split keeps long-running AI and automation work off the frontend host.", "Request plane", [
         "Browser -> Next.js dashboard and server-side proxy routes.",
@@ -390,15 +390,14 @@ def build_slides() -> list[Slide]:
         "Go client and SDK generator are included in the repository structure.",
         "examples/ contains runnable integration starting points.",
     ])
-    add_two_col(slides, "20 | Deployment and runtime modes", "The repository supports a local all-in-one path, split production hosting, and an experimental serverless adapter.", "Recommended production", [
-        "Vercel -> Next.js frontend with NEXTAUTH_SECRET, NEXTAUTH_URL, and AEON_PYTHON_URL.",
-        "Railway or Docker -> long-running Flask backend with Postgres and mounted AEON_ROOT.",
-        "Redis + Celery worker/beat for durable distributed automation dispatch.",
+    add_two_col(slides, "20 | Deployment and runtime modes", "The repository supports a local all-in-one path and a single-VM Oracle Cloud production stack.", "Recommended production", [
+        "Oracle Cloud VM -> Caddy TLS proxy in front of the full stack.",
+        "Next.js frontend container with AUTH_SECRET and AEON_PYTHON_URL.",
+        "Docker -> long-running Flask backend with Postgres and mounted state volume.",
         "Prometheus/Grafana/Alertmanager for production telemetry.",
     ], "Local and experimental", [
         "docker compose up --build starts Postgres, Redis, Flask, Celery worker/beat, and Next.js.",
         "web/package.json offers dev, dev:full, build, start, lint, and formatting scripts.",
-        "Vercel Python backend exists for simple requests but is not recommended for long jobs or heavy ML.",
         "Stub LLM provider is the lowest-friction first boot; external provider keys are optional until needed.",
     ])
     add_three_col(slides, "21 | Configuration checklist", "Names below are configuration categories, not secrets or values.", [

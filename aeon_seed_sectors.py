@@ -22,7 +22,7 @@ logger = logging.getLogger("aeon_seed_sectors")
 
 
 def _sector_data() -> dict[str, dict[str, Any]]:
-    """Return the canonical static seed data for all 16 sectors.
+    """Return the canonical static seed data for all 20 sectors.
 
     Used when the live generator is unavailable (``live=False``); the shapes
     mirror the TOOL_META mocks in aeon_sectors.py.
@@ -399,6 +399,68 @@ def _sector_data() -> dict[str, dict[str, Any]]:
                 {"dataset": "Transaction Logs", "pii_records_found": 2300, "compliance": "needs_review"},
                 {"dataset": "Marketing Data", "pii_records_found": 980, "compliance": "compliant"},
             ],
+        },
+        # ═══ Construction ═══
+        "construction": {
+            "projects": [
+                {"project_id": "PRJ-7701", "name": "Harbour Point Tower", "progress_pct": 64, "budget": 18500000, "spent": 11240000, "schedule_risk": "medium"},
+                {"project_id": "PRJ-7702", "name": "Northside Metro Extension", "progress_pct": 31, "budget": 42000000, "spent": 14980000, "schedule_risk": "high"},
+                {"project_id": "PRJ-7703", "name": "Logistics Hub Retrofit", "progress_pct": 89, "budget": 6400000, "spent": 5610000, "schedule_risk": "low"},
+            ],
+            "bids": [
+                {"bid_id": "BID-3301", "opportunity": "Airport Terminal Phase 2", "value": 27500000, "win_probability": 0.42, "status": "submitted"},
+                {"bid_id": "BID-3302", "opportunity": "Data Center Fit-out", "value": 9800000, "win_probability": 0.67, "status": "drafting"},
+                {"bid_id": "BID-3303", "opportunity": "Coastal Road Upgrade", "value": 15200000, "win_probability": 0.25, "status": "reviewing"},
+            ],
+        },
+        # ═══ Insurance ═══
+        "insurance": {
+            "claims": [
+                {"claim_id": "CLM-88231", "policy": "POL-55210", "type": "property_damage", "reserve": 18500, "fraud_score": 0.18, "status": "in_review"},
+                {"claim_id": "CLM-88232", "policy": "POL-55344", "type": "liability", "reserve": 92000, "fraud_score": 0.61, "status": "investigation"},
+                {"claim_id": "CLM-88233", "policy": "POL-55102", "type": "auto", "reserve": 4300, "fraud_score": 0.05, "status": "approved"},
+            ],
+            "portfolio": {
+                "policies_active": 12840,
+                "loss_ratio_pct": 62.4,
+                "combined_ratio_pct": 96.8,
+                "top_segments": [
+                    {"segment": "commercial_property", "premium": 4820000, "loss_ratio": 54.1},
+                    {"segment": "motor", "premium": 3610000, "loss_ratio": 71.8},
+                    {"segment": "marine_cargo", "premium": 1240000, "loss_ratio": 58.3},
+                ],
+            },
+        },
+        # ═══ Legal Services ═══
+        "legal": {
+            "cases": [
+                {"case_id": "CASE-4410", "matter": "Meridian vs. Atlas Holdings", "practice_area": "commercial", "stage": "discovery", "risk": "medium"},
+                {"case_id": "CASE-4411", "matter": "In re: Nova Retail IP claim", "practice_area": "intellectual_property", "stage": "pleadings", "risk": "low"},
+                {"case_id": "CASE-4412", "matter": "Estate of Callahan", "practice_area": "probate", "stage": "hearing", "risk": "low"},
+            ],
+            "contracts": {
+                "pending_review": 7,
+                "flagged_clauses": [
+                    {"contract": "MSA-Delta-2026", "clause": "indemnification", "severity": "high", "note": "uncapped liability"},
+                    {"contract": "NDA-Gamma", "clause": "term", "severity": "medium", "note": "auto-renews indefinitely"},
+                ],
+                "avg_cycle_days": 9,
+            },
+        },
+        # ═══ Logistics ═══
+        "logistics": {
+            "shipments": [
+                {"shipment_id": "SHP-2201", "origin": "Rotterdam", "destination": "Valletta", "carrier": "Maersk", "eta_days": 4, "status": "in_transit"},
+                {"shipment_id": "SHP-2202", "origin": "Shenzhen", "destination": "Hamburg", "carrier": "DHL", "eta_days": 12, "status": "customs_hold"},
+                {"shipment_id": "SHP-2203", "origin": "Chicago", "destination": "Toronto", "carrier": "FedEx", "eta_days": 2, "status": "delivered"},
+                {"shipment_id": "SHP-2204", "origin": "Singapore", "destination": "Sydney", "carrier": "Kuehne+Nagel", "eta_days": 7, "status": "in_transit"},
+            ],
+            "fleet": {
+                "vehicles_active": 42,
+                "vehicles_idle": 6,
+                "maintenance_due": [{"vehicle": "TRK-118", "issue": "tire_wear", "due_km": 3200}],
+                "utilization_pct": 87.5,
+            },
         },
     }
 
