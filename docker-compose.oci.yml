@@ -67,7 +67,10 @@ services:
       - "80:80"
       - "443:443"
     environment:
-      AEON_DOMAIN: ${AEON_DOMAIN:-}
+      # Default to :80 (plain HTTP) until AEON_DOMAIN is set. An empty
+      # AEON_DOMAIN would leave the Caddyfile site address as {:80}, which
+      # Caddy mis-parses as global options.
+      AEON_DOMAIN: ${AEON_DOMAIN:-:80}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
