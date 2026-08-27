@@ -62,7 +62,7 @@ RUN mkdir -p /app/state
 # Healthcheck follows the same port precedence as aeon_server.py:
 # AEON_PYTHON_PORT -> PORT -> 5000.
 HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
-    CMD-SHELL curl -f "http://localhost:${AEON_PYTHON_PORT:-${PORT:-5000}}/health" || exit 1
+    CMD curl -f "http://localhost:${AEON_PYTHON_PORT:-${PORT:-5000}}/health" || exit 1
 
 EXPOSE 5000
 
