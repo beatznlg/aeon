@@ -28,7 +28,7 @@ export async function GET() {
     if (error) throw error;
 
     // Get member counts per workspace
-    const workspaceIds = (workspaces || []).map((w) => w.id);
+    const workspaceIds = (workspaces || []).map((w: any) => w.id);
     let memberships: any[] = [];
     if (workspaceIds.length > 0) {
       const { data: m } = await sb
@@ -43,7 +43,7 @@ export async function GET() {
       countMap.set(m.workspace_id, (countMap.get(m.workspace_id) || 0) + 1);
     }
 
-    const enriched = (workspaces || []).map((w) => ({
+    const enriched = (workspaces || []).map((w: any) => ({
       ...w,
       member_count: countMap.get(w.id) || 0,
     }));

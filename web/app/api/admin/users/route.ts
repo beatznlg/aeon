@@ -28,7 +28,7 @@ export async function GET() {
     if (error) throw error;
 
     // Get membership info for each user
-    const userIds = (users || []).map((u) => u.id);
+    const userIds = (users || []).map((u: any) => u.id);
     let memberships: any[] = [];
     if (userIds.length > 0) {
       const { data: m } = await sb
@@ -45,7 +45,7 @@ export async function GET() {
       membershipMap.set(m.user_id, list);
     }
 
-    const enriched = (users || []).map((u) => ({
+    const enriched = (users || []).map((u: any) => ({
       ...u,
       memberships: membershipMap.get(u.id) || [],
       member_count: membershipMap.get(u.id)?.length || 0,

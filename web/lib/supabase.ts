@@ -1,27 +1,22 @@
-import { createClient } from "@supabase/supabase-js";
-
-const publicUrl = () => process.env.NEXT_PUBLIC_SUPABASE_URL;
-const publicKey = () => process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
 /**
- * Browser-safe client. It only accepts NEXT_PUBLIC_* values and therefore
- * respects Supabase Row Level Security without exposing the service-role key.
+ * Supabase compatibility stub.
+ *
+ * AEON OS is deployed on Oracle Cloud with the bundled PostgreSQL database;
+ * Supabase is no longer part of the stack. These helpers intentionally return
+ * null so every caller falls back to the Flask backend, the local user store,
+ * or demo data exactly as it already does when Supabase is not configured.
+ * Keeping the module (without the @supabase/supabase-js dependency) avoids
+ * touching the ~13 call sites that guard on a null client.
+ *
+ * The return type is intentionally loose ("unknown client shape") so those
+ * call sites keep typechecking without importing the removed package. At
+ * runtime this is always null.
  */
-export function getSupabaseBrowserClient() {
-  const url = publicUrl();
-  const key = publicKey();
-  if (!url || !key) return null;
-  return createClient(url, key);
+
+export function getSupabaseBrowserClient(): any {
+  return null;
 }
 
-/**
- * Server-only client for trusted Next.js route handlers and auth callbacks.
- * SUPABASE_SERVICE_ROLE_KEY is never read by the browser client or returned
- * from any API response.
- */
-export function getSupabaseServerClient() {
-  const url = process.env.SUPABASE_URL || publicUrl();
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || publicKey();
-  if (!url || !key) return null;
-  return createClient(url, key, { auth: { persistSession: false } });
+export function getSupabaseServerClient(): any {
+  return null;
 }
