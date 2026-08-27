@@ -52,9 +52,10 @@ ENV PATH=/root/.local/bin:$PATH
 COPY aeon*.py requirements.txt alembic.ini ./
 COPY alembic ./alembic
 
-# Copy scripts
+# Copy scripts (entrypoint + admin seeder)
 COPY scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+COPY scripts/seed_admin.py /app/scripts/seed_admin.py
 
 # Create state directory
 RUN mkdir -p /app/state

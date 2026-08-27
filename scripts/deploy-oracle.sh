@@ -78,7 +78,8 @@ OPENAI_API_KEY=
 ANTHROPIC_API_KEY=
 EOF
     chmod 600 .env
-    echo ".env written — edit it later for domain/admin/LLM settings."
+    echo ".env written — set your admin login next:"
+    echo "  sudo sh $APP_DIR/scripts/set-admin.sh you@example.com 'YourPassword123'"
 fi
 
 echo ""
