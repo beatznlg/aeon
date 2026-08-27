@@ -69,6 +69,32 @@ Supabase variables (`SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_*`) are optional —
 the platform falls back to its local Postgres and demo-data rendering when
 they are unset, so nothing breaks by leaving them blank.
 
+## Automatic updates (GitHub Actions)
+
+`.github/workflows/deploy-oracle.yml` deploys every push to `main`. Enable it
+by adding three repository secrets (**Settings → Secrets and variables →
+Actions**):
+
+| Secret | Value |
+|---|---|
+| `ORACLE_HOST` | VM public IP, e.g. `138.2.153.2` |
+| `ORACLE_USER` | `ubuntu` |
+| `ORACLE_SSH_KEY` | The **private** key from instance launch (`-----BEGIN OPENSSH PRIVATE KEY-----…`, full file including last newline) |
+
+Each run: opens host-firewall ports 80/443, stops any legacy systemd stack,
+pulls latest `main`, rebuilds the Compose stack, and fails the run if health
+checks don't pass.
+
+## Troubleshooting
+
+| Symptom | Meaning / fix |
+|---|---|
+| Browser: *took too long to respond* | Packets dropped: check OCI **Security List + NSG on the VNIC** allow TCP 80/443 (0.0.0.0/0), then host firewall — both are auto-fixed by deploy-oracle.sh and by each workflow run |
+| Page loads but `/health` = 502 | Caddy is up but the Flask kernel isn't reachable — run the workflow (or `sh scripts/deploy-oracle.sh`) to rebuild; kernel container may have crashed: `docker compose -f docker-compose.oci.yml logs backend` |
+| Deploy workflow fails in ~5 s | Missing repo secret — see table above |
+| Port 80 already in use during compose up | A legacy native install holds it; the scripts stop it automatically, or manually: `sudo systemctl disable --now aeon-backend aeon-web caddy` |
+| Login page loads but data calls fail | Expected with `AEON_LLM_PROVIDER=stub` only for AI features; other errors → backend logs above |
+
 ## Updating
 
 ```bash

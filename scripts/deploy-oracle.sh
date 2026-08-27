@@ -4,9 +4,9 @@
 # Run ON the VM (Ubuntu 22.04+/Debian 12, ARM Ampere A1 or x86):
 #   sh scripts/deploy-oracle.sh https://github.com/beatznlg/aeon.git
 #
-# Installs Docker, generates secrets, writes .env, and starts the full
-# stack (Postgres + Flask kernel + Next.js web + Caddy TLS). Re-run any
-# time to update to the latest main branch — data lives in named volumes.
+# Installs Docker, generates secrets, opens host firewall ports 80/443,
+# and starts the full stack (Postgres + Flask kernel + Next.js web + Caddy).
+# Re-run any time to update to the latest main branch.
 
 set -eu
 
@@ -23,6 +23,19 @@ if ! command -v docker >/dev/null 2>&1; then
 fi
 docker compose version >/dev/null 2>&1 || { echo "Docker Compose v2 required"; exit 1; }
 
+# ── Host firewall: open 80/443 before the iptables REJECT rule ─────────────
+# Ubuntu images ship a default REJECT-after-allow rule; without this the site
+# times out from outside even when the OCI Security List is correct.
+for PORT in 80 443; do
+    if ! iptables -C INPUT -p tcp --dport "$PORT" -j ACCEPT 2>/dev/null; then
+        REJ=$(iptables -L INPUT -n --line-numbers | awk '/REJECT/{print $1; exit}')
+        POS=${REJ:-1}
+        iptables -I INPUT "$POS" -p tcp --dport "$PORT" -j ACCEPT && echo "opened port $PORT in iptables"
+    fi
+done
+command -v netfilter-persistent >/dev/null && netfilter-persistent save >/dev/null || true
+ufw status 2>/dev/null | grep -q active && ufw allow 80,443/tcp >/dev/null || true
+
 # ── Code ────────────────────────────────────────────────────────────────────
 if [ -d "$APP_DIR/.git" ]; then
     git -C "$APP_DIR" fetch origin "$BRANCH"
@@ -31,6 +44,11 @@ else
     git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$APP_DIR"
 fi
 cd "$APP_DIR"
+
+# Stop any legacy native stack that would collide with container ports.
+sudo systemctl disable --now aeon-backend aeon-web caddy 2>/dev/null || true
+sudo pkill -f 'gunicorn.*aeon_server' 2>/dev/null || true
+pgrep -x caddy >/dev/null && sudo pkill -x caddy || true
 
 # ── Secrets (.env created once, preserved across updates) ──────────────────
 if [ ! -f .env ]; then
@@ -60,12 +78,11 @@ OPENAI_API_KEY=
 ANTHROPIC_API_KEY=
 EOF
     chmod 600 .env
-    echo ".env written — edit it to set AEON_DOMAIN and admin credentials."
+    echo ".env written — edit it later for domain/admin/LLM settings."
 fi
 
-# ── Firewall note + launch ──────────────────────────────────────────────────
 echo ""
-echo "NOTE: ensure OCI Security List / NSG allows ingress TCP 80 and 443."
+echo "NOTE: OCI Security List / NSG must allow ingress TCP 80 and 443."
 echo "Starting stack..."
 docker compose -f docker-compose.oci.yml up -d --build
 

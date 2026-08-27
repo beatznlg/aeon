@@ -18,33 +18,73 @@ jobs:
     name: Deploy to Oracle VM
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    env:
-      APP_DIR: /opt/aeon
-      COMPOSE_FILE: docker-compose.oci.yml
 
     steps:
+      - name: Check required secrets are configured
+        run: |
+          ok=1
+          check() {
+            if [ -z "$2" ]; then
+              echo "::error::Repository secret '$1' is not set. Add it under Settings → Secrets and variables → Actions."
+              ok=0
+            fi
+          }
+          check ORACLE_HOST   "${{ secrets.ORACLE_HOST }}"
+          check ORACLE_USER   "${{ secrets.ORACLE_USER }}"
+          check ORACLE_SSH_KEY "${{ secrets.ORACLE_SSH_KEY }}"
+          if [ "$ok" -ne 1 ]; then
+            echo "Expected secrets:"
+            echo "  ORACLE_HOST    = public IP of the VM (e.g. 138.2.153.2)"
+            echo "  ORACLE_USER    = SSH user (ubuntu)"
+            echo "  ORACLE_SSH_KEY = the PRIVATE key (-----BEGIN OPENSSH PRIVATE KEY----- …) created at instance launch"
+            exit 1
+          fi
+
       - name: Deploy and verify
         uses: appleboy/ssh-action@v1.2.2
         with:
           host: ${{ secrets.ORACLE_HOST }}
           username: ${{ secrets.ORACLE_USER }}
           key: ${{ secrets.ORACLE_SSH_KEY }}
-          port: ${{ secrets.ORACLE_PORT || 22 }}
-          fingerprint: ${{ secrets.ORACLE_HOST_FINGERPRINT }}
+          port: 22
           script_stop: true
           command_timeout: 25m
           script: |
             set -eu
-            test -d "$APP_DIR/.git"
+            APP_DIR=/opt/aeon
+
+            echo "== [1/5] Host firewall: allow HTTP/HTTPS before the REJECT rule =="
+            for PORT in 80 443; do
+              sudo iptables -C INPUT -p tcp --dport $PORT -j ACCEPT 2>/dev/null || {
+                REJ=$(sudo iptables -L INPUT -n --line-numbers | awk '/REJECT/{print $1; exit}')
+                POS=${REJ:-1}
+                sudo iptables -I INPUT "$POS" -p tcp --dport $PORT -j ACCEPT
+                echo "opened port $PORT in iptables"
+              }
+            done
+            command -v netfilter-persistent >/dev/null && sudo netfilter-persistent save >/dev/null || true
+            ufw status 2>/dev/null | grep -q "active" && sudo ufw allow 80,443/tcp >/dev/null || true
+
+            echo "== [2/5] Stop any legacy systemd deployment holding ports 80/3000/5000 =="
+            sudo systemctl disable --now aeon-backend aeon-web caddy 2>/dev/null || true
+            sudo pkill -f 'gunicorn.*aeon_server' 2>/dev/null || true
+            sudo pkill -f 'next start' 2>/dev/null || true
+            pgrep -x caddy >/dev/null && sudo pkill -x caddy || true
+            sleep 2
+
+            echo "== [3/5] Pull latest main =="
+            test -d "$APP_DIR/.git" || { echo "::error::$APP_DIR is not a git checkout — run scripts/deploy-oracle.sh once on the VM first"; exit 1; }
             cd "$APP_DIR"
             git fetch origin main
-            git checkout main
             git reset --hard origin/main
-            docker compose -f "$COMPOSE_FILE" up -d --build --remove-orphans
-            docker compose -f "$COMPOSE_FILE" ps
-            curl --fail --silent --show-error http://localhost/health >/dev/null
-            curl --fail --silent --show-error http://localhost/api/health >/dev/null || true
-            echo "AEON deployment completed successfully"
+
+            echo "== [4/5] Build and start the Docker stack =="
+            docker compose -f docker-compose.oci.yml up -d --build --remove-orphans
+            docker compose -f docker-compose.oci.yml ps
+
+            echo "== [5/5] Health verification =="
+            curl --fail --silent --show-error http://localhost/api/health >/dev/null && echo "frontend API OK"
+            curl --fail --silent http://localhost/health | grep -q '"ok"' && echo "kernel OK"
 
       - name: Report deployment
-        run: echo "AEON was deployed to the configured Oracle VM from ${GITHUB_SHA}."
+        run: echo "AEON deployed from ${GITHUB_SHA::7} — site should answer at http://${{ secrets.ORACLE_HOST }}"
