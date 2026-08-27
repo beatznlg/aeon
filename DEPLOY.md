@@ -45,8 +45,8 @@ docker compose -f docker-compose.oci.yml up -d
 | `AEON_LLM_PROVIDER` | no | `stub`, `openai`, `anthropic`, … (default `stub`) |
 | `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` | if LLM ≠ stub | Provider keys |
 
-Supabase variables are optional — the platform falls back to its local
-Postgres when they are unset.
+AEON uses the PostgreSQL database bundled in the Oracle Docker Compose stack.
+No external database service is required.
 
 ## Verify
 

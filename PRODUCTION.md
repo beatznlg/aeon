@@ -65,10 +65,6 @@ STRIPE_API_KEY=sk_live_...                 # or sk_test_... for staging
 STRIPE_WEBHOOK_SECRET=whsec_...
 STRIPE_PRICE_TEAM=price_...
 STRIPE_PRICE_ENTERPRISE=price_...
-
-# ── Supabase (optional) ─────────────────────────────────────────────────────
-SUPABASE_URL=https://xxx.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=<service-role secret>
 ```
 
 ### Frontend (Next.js)
@@ -78,10 +74,6 @@ SUPABASE_SERVICE_ROLE_KEY=<service-role secret>
 AUTH_SECRET=<strong random value>          # Auth.js v5 session signing secret
 NEXTAUTH_URL=https://app.yourdomain.com
 AEON_PYTHON_URL=http://backend:5000        # same-VM kernel over compose net
-
-# ── Supabase public values (safe for browser; RLS applies) ──────────────────
-NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=<public anon key>
 
 # ── Optional ────────────────────────────────────────────────────────────────
 NEXT_PUBLIC_APP_NAME=AEON OS
