@@ -86,6 +86,16 @@ echo "NOTE: OCI Security List / NSG must allow ingress TCP 80 and 443."
 echo "Starting stack..."
 docker compose -f docker-compose.oci.yml up -d --build
 
+# ── Auto-update timer (replaces GitHub Actions deploys) ──────────────────
+# Runs every 30 min as root; pulls main and redeploys only when HEAD moved.
+if [ "$(id -u)" = 0 ]; then
+    sh "$APP_DIR/scripts/install-autoupdate.sh"
+else
+    echo "Tip: run 'sudo sh scripts/install-autoupdate.sh' to enable the"
+    echo "     auto-update timer (pulls main every 30 minutes, no Actions needed)."
+fi
+
 echo ""
 echo "=== Done. Check status:  docker compose -f docker-compose.oci.yml ps"
 echo "Kernel health:           curl http://localhost/health"
+echo "Auto-update timer:       systemctl list-timers aeon-autoupdate.timer"
