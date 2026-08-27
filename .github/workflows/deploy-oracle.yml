@@ -1,0 +1,50 @@
+name: Deploy AEON to Oracle Cloud
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: oracle-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Deploy to Oracle VM
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      APP_DIR: /opt/aeon
+      COMPOSE_FILE: docker-compose.oci.yml
+
+    steps:
+      - name: Deploy and verify
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.ORACLE_HOST }}
+          username: ${{ secrets.ORACLE_USER }}
+          key: ${{ secrets.ORACLE_SSH_KEY }}
+          port: ${{ secrets.ORACLE_PORT || 22 }}
+          fingerprint: ${{ secrets.ORACLE_HOST_FINGERPRINT }}
+          script_stop: true
+          command_timeout: 25m
+          script: |
+            set -eu
+            test -d "$APP_DIR/.git"
+            cd "$APP_DIR"
+            git fetch origin main
+            git checkout main
+            git reset --hard origin/main
+            docker compose -f "$COMPOSE_FILE" up -d --build --remove-orphans
+            docker compose -f "$COMPOSE_FILE" ps
+            curl --fail --silent --show-error http://localhost/health >/dev/null
+            curl --fail --silent --show-error http://localhost/api/health >/dev/null || true
+            echo "AEON deployment completed successfully"
+
+      - name: Report deployment
+        run: echo "AEON was deployed to the configured Oracle VM from ${GITHUB_SHA}."
