@@ -78,22 +78,30 @@ function LoginForm() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/demo/seed", { method: "POST" });
-      const data = await res.json();
-      if (!res.ok || !data.ok) {
-        setError(data.error || "Demo setup failed — is the backend running?");
-        setLoading(false);
-        return;
+      // Seed demo data, but never block the demo on it: the built-in demo
+      // account signs in even when the backend is unreachable. Cap the seed
+      // attempt so a wedged backend can't leave the button spinning forever.
+      let data: { email?: string; password?: string; error?: string } = {};
+      try {
+        const res = await fetch("/api/demo/seed", {
+          method: "POST",
+          signal: AbortSignal.timeout(10000),
+        });
+        if (res.ok) data = await res.json();
+      } catch {
+        // Backend unreachable or slow — fall back to the built-in demo login.
       }
+      const email = data.email || DEMO_EMAIL;
+      const password = data.password || DEMO_PASSWORD;
       // Sign in with demo credentials
       const result = await signIn("credentials", {
-        email: data.email || DEMO_EMAIL,
-        password: data.password || DEMO_PASSWORD,
+        email,
+        password,
         redirect: false,
         callbackUrl,
       });
       if (result?.ok) {
-        const flask = await loginToFlask(data.email || DEMO_EMAIL, data.password || DEMO_PASSWORD);
+        const flask = await loginToFlask(email, password);
         if (flask) storeFlaskSession(flask.token, flask.user);
         // Demo accounts follow the same setup path as registered companies.
         router.push("/onboarding?demo=1");

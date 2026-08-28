@@ -60,6 +60,8 @@ export async function loginToFlask(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "login", email, password }),
+      // Never let a wedged backend hang the login UI indefinitely.
+      signal: AbortSignal.timeout(8000),
     });
     const data = await res.json();
     if (data.ok && data.token) {
@@ -90,6 +92,8 @@ export async function registerToFlask(
         password,
         name: name || email.split("@")[0],
       }),
+      // Never let a wedged backend hang the register UI indefinitely.
+      signal: AbortSignal.timeout(8000),
     });
     const data = await res.json();
     if (data.ok && data.token) {

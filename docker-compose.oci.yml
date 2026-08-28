@@ -59,6 +59,10 @@ services:
       AEON_PYTHON_URL: http://backend:5000
       NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-}
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-}
+    volumes:
+      # Persist the offline-registration store: users who sign up while the
+      # backend is down must still exist after the next rebuild/restart.
+      - web_data:/app/.data
 
   caddy:
     image: caddy:2-alpine
@@ -82,5 +86,6 @@ services:
 volumes:
   pgdata:
   backend_state:
+  web_data:
   caddy_data:
   caddy_config:
