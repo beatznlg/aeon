@@ -43,9 +43,16 @@ docker compose -f docker-compose.oci.yml up -d
 ```
 
 First boot runs Alembic migrations and seeds the admin user from
-`AEON_ADMIN_EMAIL` / `AEON_ADMIN_PASSWORD`. The generated `.env` leaves them
-empty, so set your login right after the stack is up:
+`AEON_ADMIN_EMAIL` / `AEON_ADMIN_PASSWORD`. If those are empty, the **auto-update
+timer and the bootstrap both self-repair `.env`**: they generate an admin login
+(`admin@aeon.local` + random password), set `NEXTAUTH_URL` to the VM's public
+IP, and fill any missing secrets. View the generated login with:
 
+```bash
+sudo grep AEON_ADMIN /opt/aeon/.env
+```
+
+To choose your own email/password instead:
 ```bash
 sudo sh scripts/set-admin.sh you@example.com 'YourPassword123'
 ```
@@ -129,7 +136,7 @@ checks don't pass.
 | Deploy workflow fails in ~5 s | Missing repo secret — see table above |
 | Port 80 already in use during compose up | A legacy native install holds it; the scripts stop it automatically, or manually: `sudo systemctl disable --now aeon-backend aeon-web caddy` |
 | Login page loads but data calls fail | Expected with `AEON_LLM_PROVIDER=stub` only for AI features; other errors → backend logs above |
-| *Sign-in failed. Check your credentials.* | No admin was ever created — run `sudo sh scripts/set-admin.sh <email> '<password>'`, or register via **Create Account**, or use `admin@demo.local` / `demo123` |
+| *Sign-in failed. Check your credentials.* | No admin exists yet — wait for the auto-update tick (it creates one, then `sudo grep AEON_ADMIN /opt/aeon/.env`), or run `sudo sh scripts/set-admin.sh <email> '<password>'`, or use `admin@demo.local` / `demo123` |
 
 ## Updating
 
