@@ -9,28 +9,60 @@
 #  - Adds closed self-improvement loop (reflect → evolve → measure → rollback)
 #  - Single Colab cell; self-tests first, demo last
 # ============================================================
-def _have(name):
-    try: __import__(name.replace("-", "_")); return True
-    except Exception: return False
+# Dependency installation is a notebook convenience, never a server-startup task.
+# Importing heavyweight ML packages merely to check their presence significantly
+# delays container readiness and can trigger unbounded network work in production.
+import os
+import sys
 
-def _pip(spec):
-    n = spec.split("==")[0].replace("-", "_")
-    if _have(n):
-        print("  already " + spec); return True
-    import subprocess  #nosec B404
+
+def _have(module: str) -> bool:
     try:
-        subprocess.run([sys.executable, "-m", "pip", "install", "-q", spec],  #nosec B603
-                       check=True, stdout=subprocess.DEVNULL,
-                       stderr=subprocess.PIPE, text=True)
-        print("  installed " + spec); return True
+        __import__(module)
+        return True
     except Exception:
-        print("  skipped " + spec); return False
+        return False
 
-REQ = ["flask>=3.0", "transformers>=5.5.0", "sentence-transformers>=5.6.1",
-      "bitsandbytes", "accelerate", "requests", "beautifulsoup4",
-      "sympy", "networkx", "tiktoken", "web3"]
-print("checking deps:")
-for s in REQ: _pip(s)
+
+def _pip(spec: str, module: str) -> bool:
+    if _have(module):
+        print("  already " + spec)
+        return True
+    import subprocess  # nosec B404
+    try:
+        subprocess.run(  # nosec B603
+            [sys.executable, "-m", "pip", "install", "-q", spec],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        print("  installed " + spec)
+        return True
+    except Exception:
+        print("  skipped " + spec)
+        return False
+
+
+# Set AEON_AUTO_INSTALL_DEPS=1 only in an ephemeral notebook environment.
+# Docker and production deployments install dependencies during image build.
+if os.environ.get("AEON_AUTO_INSTALL_DEPS", "").lower() in {"1", "true", "yes"}:
+    _NOTEBOOK_REQUIREMENTS = [
+        ("flask>=3.0", "flask"),
+        ("transformers>=5.5.0", "transformers"),
+        ("sentence-transformers>=5.6.1", "sentence_transformers"),
+        ("bitsandbytes", "bitsandbytes"),
+        ("accelerate", "accelerate"),
+        ("requests", "requests"),
+        ("beautifulsoup4", "bs4"),
+        ("sympy", "sympy"),
+        ("networkx", "networkx"),
+        ("tiktoken", "tiktoken"),
+        ("web3", "web3"),
+    ]
+    print("checking optional notebook dependencies:")
+    for _spec, _module in _NOTEBOOK_REQUIREMENTS:
+        _pip(_spec, _module)
 
 import hashlib
 import json
