@@ -12,7 +12,12 @@ into source code), so passwords may contain any characters safely.
 import os
 import sys
 
-sys.path.insert(0, "/app")
+# Work both inside the Docker image (/app) and from a repo checkout
+# (e.g. legacy venv runs: python3 scripts/seed_admin.py).
+_HERE = os.path.dirname(os.path.abspath(__file__))
+for _candidate in ("/app", os.path.dirname(_HERE), _HERE):
+    if os.path.isdir(_candidate) and _candidate not in sys.path:
+        sys.path.insert(0, _candidate)
 
 from werkzeug.security import generate_password_hash  # noqa: E402
 
@@ -64,6 +69,10 @@ def main() -> int:
                 Membership(workspace_id=workspace.id, user_id=user.id, role="ADMIN")
             )
             print("[seed] ADMIN membership ensured on workspace 'default'")
+
+        # Plain sessions do NOT auto-commit on context exit — without this
+        # everything above is rolled back when the block closes.
+        session.commit()
 
     print("[seed] done")
     return 0

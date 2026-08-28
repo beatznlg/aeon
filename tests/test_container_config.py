@@ -10,8 +10,11 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_docker_healthcheck_uses_runtime_port_precedence():
     dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
 
-    assert "CMD-SHELL curl -f \"http://localhost:${AEON_PYTHON_PORT:-${PORT:-5000}}/health\"" in dockerfile
-    assert "CMD curl -f http://localhost:5000/health" not in dockerfile
+    # Dockerfile HEALTHCHECK only supports the CMD keyword (shell-form).
+    # CMD-SHELL is docker-compose syntax and, in a Dockerfile, would try to
+    # exec a binary literally named CMD-SHELL (regression fixed in d3e1de3).
+    assert 'CMD curl -f "http://localhost:${AEON_PYTHON_PORT:-${PORT:-5000}}/health"' in dockerfile
+    assert "CMD-SHELL" not in dockerfile
 
 
 def test_docker_image_includes_alembic_migrations():
