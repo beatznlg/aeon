@@ -12,30 +12,44 @@
 
 ---
 
-## 🚀 Quick Start — Self-Hosted
+## 🚀 Quick Start — Production on Oracle Cloud
 
-Run the full AEON OS stack (Postgres + Flask + Next.js) in one command:
+AEON OS runs as a single Docker Compose stack on an Oracle Cloud Compute VM:
+Next.js frontend + Flask kernel + PostgreSQL behind a Caddy HTTPS proxy.
+Bootstrap a fresh VM in one command:
 
 ```bash
-# 1. Clone the repo
+ssh ubuntu@<VM_PUBLIC_IP>
+sh -c "$(wget -qO- https://raw.githubusercontent.com/beatznlg/aeon/main/scripts/deploy-oracle.sh)"
+```
+
+The script installs Docker, generates strong secrets into `/opt/aeon/.env`,
+starts the stack, and enables the 30-minute auto-update timer.
+Full guide: [docs/oracle-cloud-deployment.md](docs/oracle-cloud-deployment.md).
+
+### Automatic deployment (GitHub → Oracle)
+
+Every push to `main` runs [`.github/workflows/deploy-oracle.yml`](.github/workflows/deploy-oracle.yml):
+SSH into the VM → **back up the database** → pull latest commit → rebuild →
+health gate → **automatic rollback** to the previous commit if the health
+check fails. Requires repository secrets `ORACLE_HOST`, `ORACLE_USER`,
+`ORACLE_SSH_KEY`. The VM-side `aeon-autoupdate.timer` provides the same
+deployment path without GitHub Actions.
+
+### Local development (same codebase)
+
+```bash
 git clone https://github.com/beatznlg/aeon.git
 cd aeon
-
-# 2. Copy and configure environment
-#    Required: NEXTAUTH_SECRET (generate with: openssl rand -base64 32)
-#    Optional: LLM provider keys and Stripe keys
-cp env.example .env
-# Edit .env with your values
-
-# 3. Launch everything
-docker compose up --build
+cp env.example .env   # set AUTH_SECRET at minimum; LLM keys optional
+docker compose up --build   # or: npm --prefix web run dev:full
 ```
 
 | Service | URL | Default Credentials |
 |---|---|---|
-| **Web Dashboard** | [http://localhost:3000](http://localhost:3000) | Admin login (if seeded) |
-| **Flask API** | [http://localhost:5000](http://localhost:5000) | — |
-| **Postgres** | `localhost:5432` | `aeon` / `aeon_dev_pass` |
+| **Web Dashboard** | [http://localhost:3000](http://localhost:3000) *(local dev stack)* | Admin login (if seeded) |
+| **Flask API** | [http://localhost:5000](http://localhost:5000) *(local dev stack)* | — |
+| **Postgres** | `localhost:5432` *(local dev stack)* | `aeon` / `aeon_dev_pass` |
 | **Prometheus** | [http://localhost:9090](http://localhost:9090) *(with monitoring profile)* | — |
 | **Grafana** | [http://localhost:3000](http://localhost:3000) *(with monitoring profile)* | `admin` / `admin` |
 
@@ -239,7 +253,7 @@ reply, err := client.Chat("Hello!", "", "")
 
 ---
 
-## 🐳 Docker Services
+### 🐳 Docker Services
 
 ### Backend (`Dockerfile`)
 - Python 3.11 slim runtime
