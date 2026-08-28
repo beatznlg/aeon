@@ -30,6 +30,7 @@ services:
       AEON_ENV: production
       AEON_DATABASE_URL: postgresql://aeon:${POSTGRES_PASSWORD}@postgres:5432/aeon
       AEON_JWT_SECRET: ${AEON_JWT_SECRET:?set AEON_JWT_SECRET in .env}
+      AEON_API_TOKEN: ${AEON_API_TOKEN:-}
       AEON_MASTER_KMS_KEY: ${AEON_MASTER_KMS_KEY:-}
       AEON_ADMIN_EMAIL: ${AEON_ADMIN_EMAIL:-}
       AEON_ADMIN_NAME: ${AEON_ADMIN_NAME:-Admin}
@@ -52,6 +53,9 @@ services:
       - backend
     environment:
       AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET in .env}
+      AEON_API_TOKEN: ${AEON_API_TOKEN:-}
+      ADMIN_EMAIL: ${AEON_ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${AEON_ADMIN_PASSWORD:-}
       # Set correctly by scripts/aeon-env-repair.sh (http://<vm-ip>).
       NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost}
       AUTH_TRUST_HOST: "true"

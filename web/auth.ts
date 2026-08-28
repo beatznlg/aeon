@@ -35,9 +35,8 @@ const DEMO_PASSWORD = "demo123";
 const DEMO_WORKSPACE_ID = "demo-workspace";
 
 function getFallbackAdmin(): AeonUser | null {
-  // Always allow the built-in demo account so users can try AEON without
-  // configuring any environment variables. Production admin credentials
-  // are handled separately via ADMIN_EMAIL / ADMIN_PASSWORD_HASH.
+  // The configured admin email is also accepted by the frontend fallback so
+  // an Oracle deployment remains usable during a brief backend restart.
   if (process.env.ADMIN_EMAIL) {
     return {
       id: "admin-fallback",
@@ -60,13 +59,14 @@ function getFallbackAdmin(): AeonUser | null {
   };
 }
 
-async function verifyFallbackPassword(password: string): Promise<boolean> {
-  // Built-in demo account
-  if (password === DEMO_PASSWORD) return true;
+async function verifyFallbackPassword(email: string, password: string): Promise<boolean> {
+  if (email === DEMO_EMAIL && password === DEMO_PASSWORD) return true;
 
+  const configuredEmail = (process.env.ADMIN_EMAIL || "").trim().toLowerCase();
   const configuredPassword = process.env.ADMIN_PASSWORD;
-  if (!configuredPassword) return false;
-  return password === configuredPassword;
+  return Boolean(
+    configuredEmail && email === configuredEmail && configuredPassword && password === configuredPassword
+  );
 }
 
 /**
@@ -133,7 +133,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // OR the configured ADMIN_EMAIL / ADMIN_PASSWORD pair.
         const fallback = getFallbackAdmin();
         if (fallback && (fallback.email === email || email === DEMO_EMAIL)) {
-          const ok = await verifyFallbackPassword(password);
+          const ok = await verifyFallbackPassword(email, password);
           if (!ok) return null;
           return { ...fallback, email };
         }

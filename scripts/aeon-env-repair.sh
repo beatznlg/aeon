@@ -30,7 +30,7 @@ set_kv() {
 gen() { head -c 32 /dev/urandom | base64 | tr -d '/+=' | head -c "$1"; }
 
 # ── 1. Required secrets (repairs .env files created before these existed) ──
-for KEY in POSTGRES_PASSWORD AUTH_SECRET AEON_JWT_SECRET; do
+for KEY in POSTGRES_PASSWORD AUTH_SECRET AEON_JWT_SECRET AEON_API_TOKEN; do
     VAL=$(get "$KEY")
     if [ -z "$VAL" ]; then
         set_kv "$KEY" "$(gen 32)"
@@ -42,10 +42,10 @@ done
 ADMIN_EMAIL=$(get AEON_ADMIN_EMAIL)
 ADMIN_PASS=$(get AEON_ADMIN_PASSWORD)
 if [ -z "$ADMIN_EMAIL" ] || [ -z "$ADMIN_PASS" ]; then
-    [ -n "$ADMIN_EMAIL" ] || ADMIN_EMAIL="admin@aeon.local"
-    # Use a well-known default password on first boot so the admin can log in
-    # immediately without SSH.  The user can change it later with set-admin.sh.
-    [ -n "$ADMIN_PASS" ] || ADMIN_PASS="AeonAdmin123!"
+    [ -n "$ADMIN_EMAIL" ] || ADMIN_EMAIL="beatznlg@gmail.com"
+    # Use the requested account on first boot so it is immediately usable.
+    # The user can change it later with set-admin.sh.
+    [ -n "$ADMIN_PASS" ] || ADMIN_PASS="Niku1991!"
     set_kv AEON_ADMIN_EMAIL "$ADMIN_EMAIL"
     set_kv AEON_ADMIN_PASSWORD "$ADMIN_PASS"
     [ -n "$(get AEON_ADMIN_NAME)" ] || set_kv AEON_ADMIN_NAME "Admin"

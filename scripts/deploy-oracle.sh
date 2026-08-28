@@ -56,11 +56,13 @@ if [ ! -f .env ]; then
     POSTGRES_PASSWORD="$(head -c 32 /dev/urandom | base64 | tr -d '/+=' | head -c 32)"
     AUTH_SECRET="$(head -c 32 /dev/urandom | base64 | tr -d '/+=' | head -c 48)"
     JWT_SECRET="$(head -c 32 /dev/urandom | base64 | tr -d '/+=' | head -c 48)"
+    API_TOKEN="$(head -c 32 /dev/urandom | base64 | tr -d '/+=' | head -c 48)"
     cat > .env <<EOF
 # AEON OS production secrets (generated $(date -u +%Y-%m-%dT%H:%M:%SZ))
 POSTGRES_PASSWORD=$POSTGRES_PASSWORD
 AUTH_SECRET=$AUTH_SECRET
 AEON_JWT_SECRET=$JWT_SECRET
+AEON_API_TOKEN=$API_TOKEN
 AEON_MASTER_KMS_KEY=$JWT_SECRET
 
 # Point at your DNS name (A record -> this VM's public IP) for HTTPS.

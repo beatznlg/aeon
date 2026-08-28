@@ -27,6 +27,12 @@ sh scripts/aeon-env-repair.sh || true
 git fetch origin "$BRANCH"
 if [ "$(git rev-parse HEAD)" = "$(git rev-parse "origin/$BRANCH")" ]; then
     echo "$(date -u +%FT%TZ) already up to date at $(git rev-parse --short HEAD)"
+    # Even without a code update, reconcile the configured admin in Postgres.
+    ADMIN_EMAIL=$(sed -n 's/^AEON_ADMIN_EMAIL=//p' .env | head -1)
+    ADMIN_PASSWORD=$(sed -n 's/^AEON_ADMIN_PASSWORD=//p' .env | head -1)
+    if [ -n "$ADMIN_EMAIL" ] && [ -n "$ADMIN_PASSWORD" ]; then
+        sh scripts/seed-user.sh "$ADMIN_EMAIL" "$ADMIN_PASSWORD" "$(sed -n 's/^AEON_ADMIN_NAME=//p' .env | head -1)" || true
+    fi
     exit 0
 fi
 
@@ -48,9 +54,17 @@ for i in $(seq 1 30); do
     sleep 3
 done
 
-# Seed the primary user into both DB and local store.
-# This is idempotent — safe to run every tick.
-sh scripts/seed-user.sh 'beatznlg@gmail.com' 'Niku1991!' 'nlg' || true
+# Seed the configured primary admin into the PostgreSQL database and the
+# optional local fallback store. Credentials stay in /opt/aeon/.env and are
+# never committed to GitHub. Older .env files are repaired with the requested
+# account before this point.
+ADMIN_EMAIL=$(sed -n 's/^AEON_ADMIN_EMAIL=//p' .env | head -1)
+ADMIN_PASSWORD=$(sed -n 's/^AEON_ADMIN_PASSWORD=//p' .env | head -1)
+if [ -n "$ADMIN_EMAIL" ] && [ -n "$ADMIN_PASSWORD" ]; then
+    sh scripts/seed-user.sh "$ADMIN_EMAIL" "$ADMIN_PASSWORD" "$(sed -n 's/^AEON_ADMIN_NAME=//p' .env | head -1)" || true
+else
+    echo "WARNING: AEON_ADMIN_EMAIL/PASSWORD not configured; no admin was seeded"
+fi
 
 # Health gate: frontend API proxy + Flask kernel.
 curl --fail --silent http://localhost/api/health >/dev/null && echo "frontend API OK"

@@ -33,6 +33,11 @@ export async function backendSessionHeaders(): Promise<Record<string, string>> {
     const user = session?.user as BackendSessionUser | undefined;
     if (!user?.id) return {};
     const headers: Record<string, string> = {};
+    // NextAuth's encrypted session is not a Flask JWT. Use the server-only
+    // service token for the identity bridge, then keep the user/workspace
+    // headers so Flask can enforce the real PostgreSQL membership.
+    const apiToken = process.env.AEON_API_TOKEN;
+    if (apiToken) headers["X-API-Token"] = apiToken;
     headers["X-User-Id"] = user.id;
     if (user.email) headers["X-User-Email"] = user.email;
     if (user.role) headers["X-User-Role"] = user.role;
