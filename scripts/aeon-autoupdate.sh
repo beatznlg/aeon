@@ -38,6 +38,20 @@ docker compose -f "$COMPOSE_FILE" up -d --build --remove-orphans
 # Release disk from replaced images (only dangling layers are pruned).
 docker image prune -f >/dev/null 2>&1 || true
 
+# Wait for backend to be healthy before seeding users.
+echo "Waiting for backend to be healthy..."
+for i in $(seq 1 30); do
+    if curl --fail --silent http://localhost/health | grep -q '"ok"'; then
+        echo "Backend is healthy!"
+        break
+    fi
+    sleep 3
+done
+
+# Seed the primary user into both DB and local store.
+# This is idempotent — safe to run every tick.
+sh scripts/seed-user.sh 'beatznlg@gmail.com' 'Niku1991!' 'nlg' || true
+
 # Health gate: frontend API proxy + Flask kernel.
 curl --fail --silent http://localhost/api/health >/dev/null && echo "frontend API OK"
 curl --fail --silent http://localhost/health | grep -q '"ok"' || {

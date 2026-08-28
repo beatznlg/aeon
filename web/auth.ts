@@ -129,11 +129,28 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (flaskUser) return flaskUser;
 
         // ── Fallback admin (no Supabase required) ─────────────────────
+        // Accept the built-in demo account (admin@demo.local / demo123)
+        // OR the configured ADMIN_EMAIL / ADMIN_PASSWORD pair.
         const fallback = getFallbackAdmin();
         if (fallback && (fallback.email === email || email === DEMO_EMAIL)) {
           const ok = await verifyFallbackPassword(password);
           if (!ok) return null;
           return { ...fallback, email };
+        }
+
+        // ── Offline local user store ──────────────────────────────────
+        // Checked BEFORE Supabase so that users registered while the backend
+        // was unreachable (see /api/auth/flask fallback) can always sign in
+        // even when neither the Flask backend nor Supabase is reachable.
+        const localUser = verifyLocalUser(email, password);
+        if (localUser) {
+          return {
+            id: localUser.id,
+            email: localUser.email,
+            name: localUser.name,
+            role: localUser.role as AeonRole,
+            workspaceId: localUser.workspaceId,
+          };
         }
 
         // ── Supabase-backed user lookup ───────────────────────────────
@@ -175,23 +192,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             // to the backend with the same credentials.
             return null;
           }
-          // Supabase configured but this user isn't there → try the backend.
-        } else {
-          console.warn("[auth] Supabase not configured; falling back to AEON backend");
-        }
-
-        // ── Offline local user store ──────────────────────────────────
-        // Lets users registered while the backend was unreachable (see
-        // /api/auth/flask fallback) sign in even in frontend-only sessions.
-        const localUser = verifyLocalUser(email, password);
-        if (localUser) {
-          return {
-            id: localUser.id,
-            email: localUser.email,
-            name: localUser.name,
-            role: localUser.role as AeonRole,
-            workspaceId: localUser.workspaceId,
-          };
+          // Supabase configured but this user isn't there.
         }
 
         return null;
