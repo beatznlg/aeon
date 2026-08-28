@@ -86,8 +86,14 @@ sh "$APP_DIR/scripts/aeon-env-repair.sh" || true
 
 echo ""
 echo "Admin login (email + password):"
-echo "  sudo grep AEON_ADMIN $APP_DIR/.env"
-echo "Optional — set your own password later:"
+if [ -f "$APP_DIR/.env" ]; then
+    _email=$(sed -n 's/^AEON_ADMIN_EMAIL=//p' "$APP_DIR/.env" | head -1)
+    _pass=$(sed -n 's/^AEON_ADMIN_PASSWORD=//p' "$APP_DIR/.env" | head -1)
+    echo "  Email:    $_email"
+    echo "  Password: $_pass"
+fi
+echo ""
+echo "Set your own password later:"
 echo "  sudo sh $APP_DIR/scripts/set-admin.sh you@example.com 'YourPassword123'"
 
 echo ""

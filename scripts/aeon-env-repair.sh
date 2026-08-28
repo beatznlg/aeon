@@ -43,12 +43,15 @@ ADMIN_EMAIL=$(get AEON_ADMIN_EMAIL)
 ADMIN_PASS=$(get AEON_ADMIN_PASSWORD)
 if [ -z "$ADMIN_EMAIL" ] || [ -z "$ADMIN_PASS" ]; then
     [ -n "$ADMIN_EMAIL" ] || ADMIN_EMAIL="admin@aeon.local"
-    [ -n "$ADMIN_PASS" ] || ADMIN_PASS="$(gen 14)"
+    # Use a well-known default password on first boot so the admin can log in
+    # immediately without SSH.  The user can change it later with set-admin.sh.
+    [ -n "$ADMIN_PASS" ] || ADMIN_PASS="AeonAdmin123!"
     set_kv AEON_ADMIN_EMAIL "$ADMIN_EMAIL"
     set_kv AEON_ADMIN_PASSWORD "$ADMIN_PASS"
     [ -n "$(get AEON_ADMIN_NAME)" ] || set_kv AEON_ADMIN_NAME "Admin"
     echo "[env-repair] admin login ensured: $ADMIN_EMAIL"
-    echo "[env-repair]   view password:  sudo grep AEON_ADMIN_PASSWORD $ENV_FILE"
+    echo "[env-repair]   password:        $ADMIN_PASS"
+    echo "[env-repair]   view later:      sudo grep AEON_ADMIN_PASSWORD $ENV_FILE"
 fi
 
 # ── 3. Public URL for Auth.js (AEON_DOMAIN stays empty -> Caddy serves :80) ─

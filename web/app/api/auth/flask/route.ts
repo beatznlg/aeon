@@ -46,6 +46,17 @@ export async function POST(req: NextRequest) {
         signal: AbortSignal.timeout(4000),
       });
       const data = await res.json();
+      // When registration succeeds on the Flask backend, also save the user
+      // locally so they can log in even if the backend later becomes
+      // unreachable (e.g. the container restarts or crashes).  This is a
+      // write-through cache — the authoritative store remains PostgreSQL.
+      if (action === "register" && data?.ok) {
+        try {
+          createLocalUser(email, password, name);
+        } catch {
+          // Best-effort: local store failure must not block registration.
+        }
+      }
       // Forward the backend's response verbatim (including errors like
       // EMAIL_TAKEN / INVALID_CREDENTIALS) — do not double-register.
       return NextResponse.json(data, { status: res.status });
