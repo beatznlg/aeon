@@ -72,9 +72,13 @@ jobs:
             pgrep -x caddy >/dev/null && sudo pkill -x caddy || true
             sleep 2
 
-            echo "== [3/5] Pull latest main =="
+            echo "== [3/5] Backup database, then pull latest main =="
             test -d "$APP_DIR/.git" || { echo "::error::$APP_DIR is not a git checkout — run scripts/deploy-oracle.sh once on the VM first"; exit 1; }
             cd "$APP_DIR"
+            PREV_SHA=$(git rev-parse HEAD)
+            echo "previous revision: $PREV_SHA"
+            sudo AEON_BACKUP_KEEP="${AEON_BACKUP_KEEP:-14}" sh scripts/backup-db.sh \
+              || echo "backup skipped (first deploy or stack not running yet)"
             git fetch origin main
             git reset --hard origin/main
 
@@ -82,7 +86,20 @@ jobs:
             docker compose -f docker-compose.oci.yml up -d --build --remove-orphans
             docker compose -f docker-compose.oci.yml ps
 
-            echo "== [5/5] Health verification =="
+            echo "== [5/5] Health verification (auto-rollback on failure) =="
+            if ! curl --fail --silent http://localhost/health | grep -q '"ok"'; then
+              echo "::warning::health check failed — rolling back to $PREV_SHA"
+              git reset --hard "$PREV_SHA"
+              docker compose -f docker-compose.oci.yml up -d --build --remove-orphans
+              sleep 10
+              if curl --fail --silent http://localhost/health | grep -q '"ok"'; then
+                echo "rollback to $PREV_SHA succeeded — site remains on the previous healthy version"
+              else
+                echo "::error::rollback also unhealthy — restore manually: sudo sh scripts/restore-db.sh <backup>"
+                docker compose -f docker-compose.oci.yml logs --tail 50 backend || true
+              fi
+              exit 1
+            fi
             curl --fail --silent --show-error http://localhost/api/health >/dev/null && echo "frontend API OK"
             curl --fail --silent http://localhost/health | grep -q '"ok"' && echo "kernel OK"
 
