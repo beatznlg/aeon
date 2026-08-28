@@ -20,6 +20,10 @@ test -d "$APP_DIR/.git" || {
 }
 cd "$APP_DIR"
 
+# Self-heal .env every tick (admin login, NEXTAUTH_URL, missing secrets) so
+# installs created by older bootstraps converge without manual commands.
+sh scripts/aeon-env-repair.sh || true
+
 git fetch origin "$BRANCH"
 if [ "$(git rev-parse HEAD)" = "$(git rev-parse "origin/$BRANCH")" ]; then
     echo "$(date -u +%FT%TZ) already up to date at $(git rev-parse --short HEAD)"

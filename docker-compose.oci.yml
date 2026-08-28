@@ -38,7 +38,8 @@ services:
       AEON_LLM_PROVIDER: ${AEON_LLM_PROVIDER:-stub}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      AEON_CORS_ALLOWED_ORIGINS: https://${AEON_DOMAIN:-localhost}
+      # Repair script writes the real origin (http://<vm-ip>) into .env.
+      AEON_CORS_ALLOWED_ORIGINS: ${AEON_CORS_ALLOWED_ORIGINS:-http://localhost}
       SUPABASE_URL: ${SUPABASE_URL:-}
       SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
     volumes:
@@ -51,7 +52,9 @@ services:
       - backend
     environment:
       AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET in .env}
-      NEXTAUTH_URL: https://${AEON_DOMAIN:-localhost}
+      # Set correctly by scripts/aeon-env-repair.sh (http://<vm-ip>).
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost}
+      AUTH_TRUST_HOST: "true"
       # Same-VM kernel over the compose network.
       AEON_PYTHON_URL: http://backend:5000
       NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-}
