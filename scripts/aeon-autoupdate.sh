@@ -27,11 +27,25 @@ sh scripts/aeon-env-repair.sh || true
 git fetch origin "$BRANCH"
 if [ "$(git rev-parse HEAD)" = "$(git rev-parse "origin/$BRANCH")" ]; then
     echo "$(date -u +%FT%TZ) already up to date at $(git rev-parse --short HEAD)"
-    # Even without a code update, reconcile the configured admin in Postgres.
+    # Self-heal: even without a code update, reconcile the admin in Postgres
+    # AND rebuild the stack if health is broken (e.g. backend crash-looped
+    # after a wedged previous build). Without this a down stack stays down
+    # until the next commit lands.
     ADMIN_EMAIL=$(sed -n 's/^AEON_ADMIN_EMAIL=//p' .env | head -1)
     ADMIN_PASSWORD=$(sed -n 's/^AEON_ADMIN_PASSWORD=//p' .env | head -1)
     if [ -n "$ADMIN_EMAIL" ] && [ -n "$ADMIN_PASSWORD" ]; then
         sh scripts/seed-user.sh "$ADMIN_EMAIL" "$ADMIN_PASSWORD" "$(sed -n 's/^AEON_ADMIN_NAME=//p' .env | head -1)" || true
+    fi
+    if ! curl --fail --silent --max-time 8 http://localhost/health | grep -q '"ok"'; then
+        echo "$(date -u +%FT%TZ) kernel /health not OK while up to date — rebuilding stack"
+        docker compose -f "$COMPOSE_FILE" up -d --build --remove-orphans
+        sleep 10
+        curl --fail --silent --max-time 10 http://localhost/health | grep -q '"ok"' || {
+            echo "$(date -u +%FT%TZ) rebuild did not restore /health — recent backend logs:"
+            docker compose -f "$COMPOSE_FILE" logs --tail 50 backend || true
+            exit 1
+        }
+        echo "$(date -u +%FT%TZ) rebuild restored /health"
     fi
     exit 0
 fi

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { getSupabaseServerClient } from "@/lib/supabase";
-import { createLocalUser, verifyLocalUser } from "@/lib/local-users";
+import { createLocalUser, findLocalUser, verifyLocalUser } from "@/lib/local-users";
 
 const AEON_PYTHON_URL = process.env.AEON_PYTHON_URL || "http://127.0.0.1:5000";
 
@@ -183,9 +183,20 @@ export async function POST(req: NextRequest) {
     if (action === "register") {
       const user = createLocalUser(email, password, name);
       if (!user) {
+        // Distinguish "email already registered" from "store unwritable":
+        // if the email is unknown, the create failed for another reason
+        // (read-only filesystem, permissions) — surface that honestly
+        // instead of a misleading EMAIL_TAKEN that traps users on the
+        // login screen.
+        if (findLocalUser(email)) {
+          return NextResponse.json(
+            { ok: false, error: "EMAIL_TAKEN" },
+            { status: 409 }
+          );
+        }
         return NextResponse.json(
-          { ok: false, error: "EMAIL_TAKEN" },
-          { status: 409 }
+          { ok: false, error: "REGISTRATION_FAILED" },
+          { status: 500 }
         );
       }
       return NextResponse.json(

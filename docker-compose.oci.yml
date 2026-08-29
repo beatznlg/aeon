@@ -57,7 +57,11 @@ services:
       ADMIN_EMAIL: ${AEON_ADMIN_EMAIL:-}
       ADMIN_PASSWORD: ${AEON_ADMIN_PASSWORD:-}
       # Set correctly by scripts/aeon-env-repair.sh (http://<vm-ip>).
-      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost}
+      # Never default to http://localhost: a wrong public URL makes Auth.js
+      # issue __Secure- cookies the browser drops over plain HTTP, trapping
+      # users on the login screen. Empty is safer — Auth.js then trusts the
+      # incoming Host header (AUTH_TRUST_HOST=true below).
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-}
       AUTH_TRUST_HOST: "true"
       # Same-VM kernel over the compose network.
       AEON_PYTHON_URL: http://backend:5000

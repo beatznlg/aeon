@@ -23,8 +23,8 @@ export async function middleware(req: NextRequest) {
     }
     const role = (token.role as string) || "VIEWER";
 
-    // Admin-only routes
-    if (pathname.startsWith("/admin") && role !== "ADMIN") {
+    // Admin-only routes — OWNER/SUPER_ADMIN are platform-admin roles too.
+    if (pathname.startsWith("/admin") && !["ADMIN", "OWNER", "SUPER_ADMIN"].includes(role.toUpperCase())) {
       return NextResponse.redirect(new URL("/settings", req.nextUrl));
     }
   }

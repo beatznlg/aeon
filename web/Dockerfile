@@ -28,6 +28,12 @@ COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
+# Pre-create the offline-registration store directory as the unprivileged
+# runtime user. Without this, the named volume (web_data) is first mounted
+# root-owned at /app/.data and the nextjs user cannot write it, which made
+# every local-store registration fail (surfacing as EMAIL_TAKEN).
+RUN mkdir -p /app/.data && chown -R nextjs:nodejs /app/.data
+
 USER nextjs
 EXPOSE 3000
 HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=3 \

@@ -55,19 +55,29 @@ if [ -z "$ADMIN_EMAIL" ] || [ -z "$ADMIN_PASS" ]; then
 fi
 
 # ── 3. Public URL for Auth.js (AEON_DOMAIN stays empty -> Caddy serves :80) ─
+# A WRONG NEXTAUTH_URL is worse than a missing one: e.g. "https://localhost"
+# makes Auth.js issue __Secure- cookies that plain-HTTP browsers drop and
+# redirect sign-ins to https://localhost — the user is trapped on /login
+# forever (MissingCSRF loop). Repair any localhost/https-mismatch value, not
+# just an empty one.
 NEXT_URL=$(get NEXTAUTH_URL)
-if [ -z "$NEXT_URL" ]; then
-    PUB_IP=""
-    PUB_IP=$(curl -fs --max-time 5 https://api.ipify.org 2>/dev/null || true)
-    [ -n "$PUB_IP" ] || PUB_IP=$(curl -fs --max-time 5 https://ipv4.icanhazip.com 2>/dev/null | tr -d '[:space:]' || true)
-    if [ -n "$PUB_IP" ]; then
-        set_kv NEXTAUTH_URL "http://$PUB_IP"
-        set_kv AEON_CORS_ALLOWED_ORIGINS "http://$PUB_IP"
-        echo "[env-repair] NEXTAUTH_URL -> http://$PUB_IP"
-    else
-        echo "[env-repair] WARNING: could not detect public IP; set NEXTAUTH_URL in $ENV_FILE manually"
-    fi
-fi
+case "$NEXT_URL" in
+    ""|http://localhost|http://localhost:*|https://localhost|https://localhost:*|http://127.0.0.1|http://127.0.0.1:*)
+        PUB_IP=""
+        PUB_IP=$(curl -fs --max-time 5 https://api.ipify.org 2>/dev/null || true)
+        [ -n "$PUB_IP" ] || PUB_IP=$(curl -fs --max-time 5 https://ipv4.icanhazip.com 2>/dev/null | tr -d '[:space:]' || true)
+        if [ -n "$PUB_IP" ]; then
+            set_kv NEXTAUTH_URL "http://$PUB_IP"
+            set_kv AEON_CORS_ALLOWED_ORIGINS "http://$PUB_IP"
+            echo "[env-repair] NEXTAUTH_URL -> http://$PUB_IP (was: '${NEXT_URL:-empty}')"
+        else
+            echo "[env-repair] WARNING: could not detect public IP; set NEXTAUTH_URL in $ENV_FILE manually"
+        fi
+        ;;
+    *)
+        echo "[env-repair] NEXTAUTH_URL ok: $NEXT_URL"
+        ;;
+esac
 
 chmod 600 "$ENV_FILE" 2>/dev/null || true
 echo "[env-repair] done"
