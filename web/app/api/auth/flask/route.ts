@@ -37,6 +37,7 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Try the Flask backend first ──────────────────────────────────
+    let backendStatus = 0;
     try {
       const res = await fetch(`${AEON_PYTHON_URL}/auth/${action}`, {
         method: "POST",
@@ -45,6 +46,7 @@ export async function POST(req: NextRequest) {
         // Don't let a hanging backend stall the login page for long.
         signal: AbortSignal.timeout(4000),
       });
+      backendStatus = res.status;
       const data = await res.json();
       // When registration succeeds on the Flask backend, also save the user
       // locally so they can log in even if the backend later becomes
@@ -62,6 +64,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(data, { status: res.status });
     } catch {
       // Backend unreachable — fall through to Supabase / local store.
+    }
+
+    // Backend answered but is broken (5xx without a usable body) — treat like
+    // unreachable and fall through to Supabase / local store so registration
+    // and login survive a wedged backend restart. 4xx responses above were
+    // real validation or auth errors and were already returned verbatim.
+    if (backendStatus < 500) {
+      return NextResponse.json(
+        { ok: false, error: "INVALID_CREDENTIALS" },
+        { status: 401 }
+      );
     }
 
     // ── Supabase (durable, production) ───────────────────────────────

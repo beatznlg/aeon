@@ -96,7 +96,7 @@ export default function AdminPage() {
     fetchData();
   }, [fetchData]);
 
-  if (role && role !== "ADMIN") {
+  if (role && !["ADMIN", "OWNER", "SUPER_ADMIN"].includes(role.toUpperCase())) {
     redirect("/settings");
   }
 

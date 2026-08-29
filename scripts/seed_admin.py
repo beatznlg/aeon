@@ -48,16 +48,21 @@ def main() -> int:
                 email=email,
                 name=admin_name,
                 password=generate_password_hash(password),
-                role="ADMIN",
+                role="OWNER",
             )
             session.add(user)
             session.flush()
-            print(f"[seed] admin user created: {email}")
+            print(f"[seed] super admin (OWNER) user created: {email}")
         elif reset_password:
             user.password = generate_password_hash(password)
-            print(f"[seed] admin password updated: {email}")
+            user.role = "OWNER"
+            print(f"[seed] admin password updated & role upgraded to OWNER: {email}")
         else:
-            print(f"[seed] admin user exists: {email}")
+            if user.role != "OWNER":
+                user.role = "OWNER"
+                print(f"[seed] admin role upgraded to OWNER: {email}")
+            else:
+                print(f"[seed] admin user exists: {email}")
 
         membership = (
             session.query(Membership)
@@ -66,9 +71,12 @@ def main() -> int:
         )
         if not membership:
             session.add(
-                Membership(workspace_id=workspace.id, user_id=user.id, role="ADMIN")
+                Membership(workspace_id=workspace.id, user_id=user.id, role="OWNER")
             )
-            print("[seed] ADMIN membership ensured on workspace 'default'")
+            print("[seed] OWNER membership ensured on workspace 'default'")
+        elif membership.role != "OWNER":
+            membership.role = "OWNER"
+            print("[seed] membership role upgraded to OWNER")
 
         # Plain sessions do NOT auto-commit on context exit — without this
         # everything above is rolled back when the block closes.

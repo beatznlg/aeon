@@ -1,69 +1,50 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
-import { requireRole } from "@/lib/auth";
-import { getSupabaseServerClient } from "@/lib/supabase";
+import { isAdminRole } from "@/lib/auth";
+import { backendFetch } from "@/lib/backend-fetch";
 
 export const dynamic = "force-dynamic";
 
-export async function PATCH(req: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const params = await context.params;
-  try {
-    const session = await auth();
-    requireRole(session, ["ADMIN"]);
-  } catch {
-    return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
+async function requirePlatformAdmin() {
+  const session = await auth();
+  if (!session?.user) {
+    return { error: NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 }) };
   }
-
-  const sb = getSupabaseServerClient();
-  if (!sb) {
-    return NextResponse.json({ ok: false, error: "Supabase not configured" }, { status: 503 });
+  if (!isAdminRole((session.user as any)?.role)) {
+    return { error: NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 }) };
   }
-
-  try {
-    const body = await req.json();
-    const updates: Record<string, any> = {};
-
-    if (body.role && ["ADMIN", "OPERATOR", "VIEWER"].includes(body.role)) {
-      updates.role = body.role;
-    }
-    if (body.name !== undefined) updates.name = body.name;
-
-    if (Object.keys(updates).length === 0) {
-      return NextResponse.json({ ok: false, error: "No valid fields to update" }, { status: 400 });
-    }
-
-    const { error } = await sb.from("users").update(updates).eq("id", params.id);
-    if (error) throw error;
-
-    return NextResponse.json({ ok: true });
-  } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message || String(e) }, { status: 500 });
-  }
+  return { session };
 }
 
-export async function DELETE(_req: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const params = await context.params;
-  try {
-    const session = await auth();
-    requireRole(session, ["ADMIN"]);
-  } catch {
-    return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
-  }
+/**
+ * Update a user's role or profile — proxied to the Flask backend
+ * (PATCH /admin/users/:id, PostgreSQL-backed).
+ */
+export async function PATCH(req: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const gate = await requirePlatformAdmin();
+  if (gate.error) return gate.error;
+  const { id } = await context.params;
+  return backendFetch(req, `/admin/users/${id}`, { method: "PATCH" });
+}
 
-  const sb = getSupabaseServerClient();
-  if (!sb) {
-    return NextResponse.json({ ok: false, error: "Supabase not configured" }, { status: 503 });
-  }
+/**
+ * Reset a user's password — POST /admin/users/:id/password on the backend.
+ * Body: { password } (min 6 chars, hashed server-side with werkzeug).
+ */
+export async function POST(req: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const gate = await requirePlatformAdmin();
+  if (gate.error) return gate.error;
+  const { id } = await context.params;
+  return backendFetch(req, `/admin/users/${id}/password`, { method: "POST" });
+}
 
-  try {
-    // Delete memberships first, then user
-    await sb.from("memberships").delete().eq("user_id", params.id);
-    await sb.from("refresh_tokens").delete().eq("user_id", params.id);
-    const { error } = await sb.from("users").delete().eq("id", params.id);
-    if (error) throw error;
-
-    return NextResponse.json({ ok: true });
-  } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message || String(e) }, { status: 500 });
-  }
+/**
+ * Delete a user and their memberships — proxied to the Flask backend
+ * (DELETE /admin/users/:id).
+ */
+export async function DELETE(req: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const gate = await requirePlatformAdmin();
+  if (gate.error) return gate.error;
+  const { id } = await context.params;
+  return backendFetch(req, `/admin/users/${id}`, { method: "DELETE" });
 }

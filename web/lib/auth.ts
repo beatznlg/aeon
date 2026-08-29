@@ -1,6 +1,6 @@
 import { auth } from "@/auth";
 
-export type AeonRole = "ADMIN" | "OPERATOR" | "VIEWER";
+export type AeonRole = "ADMIN" | "OPERATOR" | "VIEWER" | "OWNER" | "SUPER_ADMIN";
 
 export interface AuthContext {
   id?: string;
@@ -9,16 +9,31 @@ export interface AuthContext {
   workspaceId?: string;
 }
 
+/** Platform admins: OWNER/SUPER_ADMIN are super-admin roles above ADMIN. */
+const PLATFORM_ADMIN_ROLES = ["OWNER", "SUPER_ADMIN", "ADMIN"];
+
+export function isAdminRole(role: string | null | undefined): boolean {
+  if (!role) return false;
+  return PLATFORM_ADMIN_ROLES.includes(role.toUpperCase());
+}
+
 export function getRole(session: any): AeonRole {
-  return ((session?.user as any)?.role as AeonRole) || "VIEWER";
+  const raw = (session?.user as any)?.role as string | undefined;
+  if (!raw) return "VIEWER";
+  const upper = raw.toUpperCase();
+  return (
+    (PLATFORM_ADMIN_ROLES.includes(upper) || upper === "OPERATOR" || upper === "VIEWER"
+      ? upper
+      : "VIEWER") as AeonRole
+  );
 }
 
 export function isAdmin(session: any): boolean {
-  return getRole(session) === "ADMIN";
+  return isAdminRole(getRole(session));
 }
 
 export function isOperator(session: any): boolean {
-  return ["ADMIN", "OPERATOR"].includes(getRole(session));
+  return ["ADMIN", "OPERATOR"].includes(getRole(session)) || isAdminRole(getRole(session));
 }
 
 export function requireAuth(session: any): AuthContext {

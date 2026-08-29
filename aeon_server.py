@@ -2240,6 +2240,157 @@ def auth_register():
         return _error_response(f"registration failed: {e}", "REGISTRATION_FAILED", 500)
 
 
+# ── Platform admin: user management (super admin only) ──────────────────────
+def _platform_admin_required():
+    """Return an error response unless the caller is a platform admin, else None."""
+    from aeon_auth import get_current_user_context, has_role
+
+    ctx = get_current_user_context()
+    if not ctx:
+        return _error_response("unauthorized", "UNAUTHORIZED", 401)
+    if not has_role(ctx.get("role"), "SUPER_ADMIN") and ctx.get("user_id") != "admin-fallback":
+        return _error_response("platform admin required", "FORBIDDEN", 403)
+    return None
+
+
+@app.route("/admin/users", methods=["GET"])
+@require_auth
+def admin_list_users():
+    """List every registered user (platform admin only, PostgreSQL-backed)."""
+    denied = _platform_admin_required()
+    if denied is not None:
+        return denied
+    from aeon_db import get_db
+
+    db = get_db()
+    with db.session() as s:
+        users = s.query(db.User).order_by(db.User.created_at.desc()).limit(500).all()
+        payload = [
+            {
+                "id": str(u.id),
+                "email": u.email,
+                "name": u.name,
+                "role": u.role,
+                "created_at": u.created_at.isoformat() if u.created_at else None,
+            }
+            for u in users
+        ]
+    return jsonify({"ok": True, "users": payload})
+
+
+@app.route("/admin/users", methods=["POST"])
+@require_auth
+def admin_create_user():
+    """Create a user with an explicit role (platform admin only)."""
+    denied = _platform_admin_required()
+    if denied is not None:
+        return denied
+    from werkzeug.security import generate_password_hash
+
+    from aeon_db import Membership, User, Workspace, get_db
+
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    password = data.get("password") or ""
+    name = (data.get("name") or "").strip() or email.split("@")[0]
+    role = (data.get("role") or "VIEWER").strip().upper()
+    if role not in {"OWNER", "SUPER_ADMIN", "ADMIN", "OPERATOR", "VIEWER"}:
+        return _error_response("role must be OWNER/SUPER_ADMIN/ADMIN/OPERATOR/VIEWER", "ROLE_INVALID", 400)
+    if not email or not password:
+        return _error_response("email and password required", "MISSING_CREDENTIALS", 400)
+    if len(password) < 6:
+        return _error_response("password must be at least 6 characters", "WEAK_PASSWORD", 400)
+
+    db = get_db()
+    if db.get_user_by_email(email):
+        return _error_response("email already registered", "EMAIL_TAKEN", 409)
+    try:
+        with db.session() as s:
+            user = User(
+                email=email,
+                name=name,
+                password=generate_password_hash(password),
+                role=role,
+            )
+            s.add(user)
+            s.flush()
+            slug = f"ws-{str(user.id)[:8]}"
+            workspace = Workspace(slug=slug, name=f"{name}'s Workspace", plan="free")
+            s.add(workspace)
+            s.flush()
+            s.add(Membership(workspace_id=workspace.id, user_id=user.id, role=role))
+            s.commit()
+            workspace_id = str(workspace.id)
+            user_id = str(user.id)
+        _audit_auth_event("ADMIN_USER_CREATED", user_id=user_id, email=email, workspace_id=workspace_id)
+        return jsonify({"ok": True, "user": {"id": user_id, "email": email, "name": name, "role": role, "workspace_id": workspace_id}}), 201
+    except Exception as exc:
+        logger.exception("Admin user creation failed: %s", exc)
+        return _error_response(f"user creation failed: {exc}", "REGISTRATION_FAILED", 500)
+
+
+@app.route("/admin/users/<user_id>/password", methods=["POST"])
+@require_auth
+def admin_reset_password(user_id: str):
+    """Overwrite a user's password hash (platform admin only)."""
+    denied = _platform_admin_required()
+    if denied is not None:
+        return denied
+    from werkzeug.security import generate_password_hash
+
+    from aeon_db import get_db
+
+    data = request.get_json(silent=True) or {}
+    password = data.get("password") or ""
+    if len(password) < 6:
+        return _error_response("password must be at least 6 characters", "WEAK_PASSWORD", 400)
+    db = get_db()
+    user = db.get_user_by_id(user_id)
+    if not user:
+        return _error_response("user not found", "USER_NOT_FOUND", 404)
+    try:
+        with db.session() as s:
+            persisted = s.query(db.User).filter_by(id=str(user.id)).first()
+            if persisted is None:
+                return _error_response("user not found", "USER_NOT_FOUND", 404)
+            persisted.password = generate_password_hash(password)
+            s.commit()
+        _audit_auth_event("ADMIN_PASSWORD_RESET", user_id=str(user.id), email=user.email)
+        return jsonify({"ok": True, "user": {"id": str(user.id), "email": user.email}})
+    except Exception as exc:
+        logger.exception("Admin password reset failed: %s", exc)
+        return _error_response(f"password reset failed: {exc}", "INTERNAL_ERROR", 500)
+
+
+@app.route("/admin/users/<user_id>", methods=["DELETE"])
+@require_auth
+def admin_delete_user(user_id: str):
+    """Delete a user and their memberships (platform admin only)."""
+    denied = _platform_admin_required()
+    if denied is not None:
+        return denied
+    from aeon_db import get_db
+
+    db = get_db()
+    user = db.get_user_by_id(user_id)
+    if not user:
+        return _error_response("user not found", "USER_NOT_FOUND", 404)
+    try:
+        with db.session() as s:
+            persisted = s.query(db.User).filter_by(id=str(user.id)).first()
+            if persisted is None:
+                return _error_response("user not found", "USER_NOT_FOUND", 404)
+            email = persisted.email
+            s.query(db.Membership).filter_by(user_id=str(persisted.id)).delete()
+            s.delete(persisted)
+            s.commit()
+        _audit_auth_event("ADMIN_USER_DELETED", user_id=user_id, email=email)
+        return jsonify({"ok": True})
+    except Exception as exc:
+        logger.exception("Admin user deletion failed: %s", exc)
+        return _error_response(f"user deletion failed: {exc}", "INTERNAL_ERROR", 500)
+
+
 @app.route("/auth/jwt/status", methods=["GET"])
 @require_auth
 @require_role("ADMIN")
