@@ -57,11 +57,19 @@ function LoginForm() {
       if (mode === "register") {
         const registered = await registerToFlask(email, password, name);
         if (!registered.ok) {
-          setError(
-            registered.error === "EMAIL_TAKEN"
-              ? "That email is already registered. Try signing in instead."
-              : registered.error || "Registration failed. Please try again."
-          );
+          if (registered.error === "EMAIL_TAKEN") {
+            // The email exists — but maybe the user already has an account
+            // and just typed their real password into the register form.
+            // Try signing in with what they entered before dead-ending them;
+            // if it works, they're in. Otherwise, show the standard message.
+            const signedIn = await finishSignIn();
+            if (signedIn) return;
+            setError(
+              "That email is already registered. Try signing in instead."
+            );
+            return;
+          }
+          setError(registered.error || "Registration failed. Please try again.");
           return;
         }
         storeFlaskSession(registered.token, registered.user);
