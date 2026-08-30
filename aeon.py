@@ -1173,6 +1173,13 @@ class ReflectiveAgent:
             mcp_block = get_mcp_manager().agent_prompt_block(str(self.workspace_id))
         except Exception:
             mcp_block = ""
+        a2a_block = ""
+        try:
+            from aeon_a2a import get_a2a_manager
+
+            a2a_block = get_a2a_manager().agent_prompt_block(str(self.workspace_id))
+        except Exception:
+            a2a_block = ""
         trace_store = None
         trace_id = None
         try:
@@ -1196,6 +1203,7 @@ class ReflectiveAgent:
             "mcp_call, list_mcp, bounty_list, bounty_submit, service_quote. "
             + (plugin_block + ". " if plugin_block else "")
             + (mcp_block + ". " if mcp_block else "")
+            + (a2a_block + ". " if a2a_block else "")
             + "Always answer the question; do not refuse."
         )
         out = provider.generate(query, system=sys_prompt)

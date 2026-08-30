@@ -67,6 +67,7 @@ logger = logging.getLogger("aeon_server")
 
 import aeon_workflows  # patches AeonOS with workflow/swarm helpers
 from aeon import ReflectiveAgent
+from aeon_a2a_routes import register_a2a_routes
 from aeon_api_keys import ApiKeyManager
 from aeon_auth import (
     get_current_user_context,
@@ -248,6 +249,7 @@ register_operating_profile_routes(app)
 register_platform_routes(app)
 register_trace_routes(app)
 register_mcp_routes(app)
+register_a2a_routes(app)
 register_model_registry_routes(app)
 register_compliance_routes(app)
 

@@ -66,5 +66,6 @@ scripts/__pycache__/
 # Vercel build output
 .vercel/
 mcp_servers.json
+a2a_agents.json
 traces/
 *.json.tmp
