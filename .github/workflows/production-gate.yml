@@ -1,0 +1,35 @@
+name: AEON Production Gate
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  production-preflight:
+    name: Oracle production preflight
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Docker Compose
+        run: docker compose version
+
+      - name: Run deterministic production gate
+        run: sh scripts/production-gate.sh
+
+      - name: Run production security regression tests
+        env:
+          AEON_ENV: test
+          AEON_JWT_SECRET: ci-only-test-secret-please-do-not-use-in-production-0123456789
+          AEON_ENCRYPTION_MASTER_KEY: ci-only-encryption-key-012345678901234567890123
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install PyJWT Werkzeug pytest
+          pytest -q tests/test_production_security.py
