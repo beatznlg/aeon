@@ -5,25 +5,9 @@ export const dynamic = "force-dynamic";
 /**
  * GET /api/setup_check
  *
- * Reports which optional environment variables are wired on the deployed
- * server. NEVER echoes the secret value itself — only whether it
- * exists and a low-risk length hint so the user can confirm
- * "looks like 40+ chars" without seeing the string.
- *
- * Returns:
- *   {
- *     ok: true,
- *     ts: <ms>,
- *     backend: "aeon-kernel" | "hf-inference",
- *     keys: {
- *       huggingface_token:       {present, length},
- *       supabase_url:            {present, host},
- *       next_public_supabase_url:{present, host},
- *       aeon_hf_space_url:       {present, host},
- *       gh_token:                {present, length}
- *     },
- *     notes: string[]
- *   }
+ * Reports non-secret deployment configuration state. Values themselves are
+ * never returned. This endpoint is intentionally provider-agnostic so an
+ * Oracle-only deployment does not expose legacy hosting dependencies.
  */
 function safe(value: string | undefined) {
   if (!value) return { present: false, length: 0 };
@@ -33,8 +17,7 @@ function safe(value: string | undefined) {
 function hostOf(url: string | undefined) {
   if (!url) return null;
   try {
-    const u = new URL(url);
-    return u.host;
+    return new URL(url).host;
   } catch {
     return null;
   }
@@ -42,42 +25,33 @@ function hostOf(url: string | undefined) {
 
 export async function GET() {
   const HF = process.env.HUGGINGFACE_TOKEN;
-  const SB_URL = process.env.SUPABASE_URL;
-  const PUBLIC_SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const SPACE_URL = process.env.AEON_HF_SPACE_URL;
   const GH = process.env.GH_TOKEN;
+  const REDIS = process.env.AEON_REDIS_URL;
+  const DB = process.env.AEON_DATABASE_URL;
+  const LLM = process.env.AEON_LLM_PROVIDER || "stub";
+  const DOMAIN = process.env.NEXTAUTH_URL;
 
   const notes: string[] = [];
-  if (!HF)
-    notes.push(
-      "HUGGINGFACE_TOKEN missing — /api/chat will fall back to HF Inference direct but no Qwen-3B-on-GPU without it."
-    );
-  if (!SPACE_URL)
-    notes.push(
-      "AEON_HF_SPACE_URL missing — /api/chat will use the HF Inference API direct path (high rate-limit exposure, no AEON tools)."
-    );
-  if (!SB_URL && !PUBLIC_SB_URL)
-    notes.push(
-      "SUPABASE_URL + NEXT_PUBLIC_SUPABASE_URL both missing — Memory panel will be empty."
-    );
-  if (!GH) notes.push("GH_TOKEN missing — GitHub code search capped at 10/min/IP.");
+  if (!DB) notes.push("AEON_DATABASE_URL missing — database connectivity must be supplied by the Oracle stack.");
+  if (!REDIS) notes.push("AEON_REDIS_URL missing — production background workers require Redis.");
+  if (!HF && ["hf", "huggingface"].includes(LLM.toLowerCase()))
+    notes.push("HUGGINGFACE_TOKEN missing for the selected Hugging Face provider.");
+  if (!DOMAIN) notes.push("NEXTAUTH_URL missing — configure the public Oracle domain or IP before production login.");
+  if (!GH) notes.push("GH_TOKEN missing — GitHub integration may use unauthenticated API limits.");
 
   return NextResponse.json({
     ok: true,
     ts: Date.now(),
-    backend: SPACE_URL ? "aeon-kernel" : "hf-inference",
+    deployment: "oracle-self-hosted",
+    llm_provider: LLM,
     keys: {
       huggingface_token: safe(HF),
-      supabase_url: { present: !!SB_URL, host: hostOf(SB_URL) },
-      next_public_supabase_url: {
-        present: !!PUBLIC_SB_URL,
-        host: hostOf(PUBLIC_SB_URL),
-      },
-      aeon_hf_space_url: {
-        present: !!SPACE_URL,
-        host: hostOf(SPACE_URL),
-      },
-      gh_token: safe(GH),
+      github_token: safe(GH),
+      redis_url: { present: !!REDIS },
+      database_url: { present: !!DB, host: hostOf(DB) },
+      public_url: { present: !!DOMAIN, host: hostOf(DOMAIN) },
+      hf_space_url: { present: !!SPACE_URL, host: hostOf(SPACE_URL) },
     },
     notes,
   });
