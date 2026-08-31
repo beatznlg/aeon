@@ -33,10 +33,6 @@ jobs:
           check ORACLE_USER   "${{ secrets.ORACLE_USER }}"
           check ORACLE_SSH_KEY "${{ secrets.ORACLE_SSH_KEY }}"
           if [ "$ok" -ne 1 ]; then
-            echo "Expected secrets:"
-            echo "  ORACLE_HOST    = public IP of the VM (e.g. 138.2.153.2)"
-            echo "  ORACLE_USER    = SSH user (ubuntu)"
-            echo "  ORACLE_SSH_KEY = the PRIVATE key (-----BEGIN OPENSSH PRIVATE KEY----- …) created at instance launch"
             exit 1
           fi
 
@@ -53,19 +49,18 @@ jobs:
             set -eu
             APP_DIR=/opt/aeon
 
-            echo "== [1/5] Host firewall: allow HTTP/HTTPS before the REJECT rule =="
+            echo "== [1/5] Host firewall: allow HTTP/HTTPS =="
             for PORT in 80 443; do
               sudo iptables -C INPUT -p tcp --dport $PORT -j ACCEPT 2>/dev/null || {
                 REJ=$(sudo iptables -L INPUT -n --line-numbers | awk '/REJECT/{print $1; exit}')
                 POS=${REJ:-1}
                 sudo iptables -I INPUT "$POS" -p tcp --dport $PORT -j ACCEPT
-                echo "opened port $PORT in iptables"
               }
             done
             command -v netfilter-persistent >/dev/null && sudo netfilter-persistent save >/dev/null || true
             ufw status 2>/dev/null | grep -q "active" && sudo ufw allow 80,443/tcp >/dev/null || true
 
-            echo "== [2/5] Stop any legacy systemd deployment holding ports 80/3000/5000 =="
+            echo "== [2/5] Stop legacy native services =="
             sudo systemctl disable --now aeon-backend aeon-web caddy 2>/dev/null || true
             sudo pkill -f 'gunicorn.*aeon_server' 2>/dev/null || true
             sudo pkill -f 'next start' 2>/dev/null || true
@@ -76,17 +71,19 @@ jobs:
             test -d "$APP_DIR/.git" || { echo "::error::$APP_DIR is not a git checkout — run scripts/deploy-oracle.sh once on the VM first"; exit 1; }
             cd "$APP_DIR"
             PREV_SHA=$(git rev-parse HEAD)
-            echo "previous revision: $PREV_SHA"
-            sudo AEON_BACKUP_KEEP="${AEON_BACKUP_KEEP:-14}" sh scripts/backup-db.sh \
-              || echo "backup skipped (first deploy or stack not running yet)"
+            sudo AEON_BACKUP_KEEP="${AEON_BACKUP_KEEP:-14}" sh scripts/backup-db.sh || echo "backup skipped (first deploy or stack not running yet)"
             git fetch origin main
             git reset --hard origin/main
 
-            echo "== [4/5] Build and start the Docker stack =="
+            echo "== [4/5] Build and start the complete Oracle stack =="
             docker compose -f docker-compose.oci.yml up -d --build --remove-orphans
             docker compose -f docker-compose.oci.yml ps
 
             echo "== [5/5] Health verification (auto-rollback on failure) =="
+            for svc in postgres redis backend web worker beat caddy; do
+              state=$(docker compose -f docker-compose.oci.yml ps --status running -q "$svc")
+              test -n "$state" || { echo "::error::$svc is not running"; docker compose -f docker-compose.oci.yml logs --tail 80 "$svc" || true; exit 1; }
+            done
             if ! curl --fail --silent http://localhost/health | grep -q '"ok"'; then
               echo "::warning::health check failed — rolling back to $PREV_SHA"
               git reset --hard "$PREV_SHA"
@@ -95,13 +92,15 @@ jobs:
               if curl --fail --silent http://localhost/health | grep -q '"ok"'; then
                 echo "rollback to $PREV_SHA succeeded — site remains on the previous healthy version"
               else
-                echo "::error::rollback also unhealthy — restore manually: sudo sh scripts/restore-db.sh <backup>"
+                echo "::error::rollback also unhealthy — restore manually"
                 docker compose -f docker-compose.oci.yml logs --tail 50 backend || true
               fi
               exit 1
             fi
-            curl --fail --silent --show-error http://localhost/api/health >/dev/null && echo "frontend API OK"
-            curl --fail --silent http://localhost/health | grep -q '"ok"' && echo "kernel OK"
+            curl --fail --silent --show-error http://localhost/api/health >/dev/null
+            echo "frontend API OK"
+            echo "kernel OK"
+            echo "all Oracle services running"
 
       - name: Report deployment
-        run: echo "AEON deployed from ${GITHUB_SHA::7} — site should answer at http://${{ secrets.ORACLE_HOST }}"
+        run: echo "AEON deployed from ${GITHUB_SHA::7}"
