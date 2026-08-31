@@ -1,142 +1,72 @@
-# AEON OS — Docker Release
-# =========================
-# Builds, signs, and publishes Docker images to GitHub Container Registry (GHCR)
-# when a version tag is pushed (e.g. v1.0.0).
-#
-# Images published:
-#   ghcr.io/<owner>/aeon-backend:latest
-#   ghcr.io/<owner>/aeon-backend:v1.0.0
-#   ghcr.io/<owner>/aeon-frontend:latest
-#   ghcr.io/<owner>/aeon-frontend:v1.0.0
-#
-# Usage:
-#   git tag v1.0.0 && git push origin v1.0.0
+# AEON OS — Google Artifact Registry Release
+# Builds versioned frontend/backend images and publishes them to Google Artifact Registry.
+# Authentication uses GitHub OIDC / Workload Identity Federation; no long-lived GCP key is stored in GitHub.
 
-name: Docker Release
+name: Google Cloud Release
 
 on:
   push:
     tags:
       - "v*.*.*"
 
+permissions:
+  contents: read
+  id-token: write
+
 env:
-  REGISTRY: ghcr.io
   IMAGE_BACKEND: aeon-backend
   IMAGE_FRONTEND: aeon-frontend
 
 jobs:
   release:
-    name: Build & Publish
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    permissions:
-      contents: read
-      packages: write
-      id-token: write  # for cosign
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ── Extract version from tag ──────────────────────────────────────
-      - name: Extract version
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_RELEASE_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker "${{ vars.GCP_ARTIFACT_REGION }}-docker.pkg.dev" --quiet
+
+      - name: Set release metadata
         id: meta
+        shell: bash
         run: |
-          TAG=${GITHUB_REF#refs/tags/}
-          echo "version=$TAG" >> "$GITHUB_OUTPUT"
-          echo "version_raw=${TAG#v}" >> "$GITHUB_OUTPUT"
+          TAG="${GITHUB_REF#refs/tags/}"
+          VERSION="${TAG#v}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      # ── Log in to GHCR ────────────────────────────────────────────────
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      # ── Set up Docker Buildx with QEMU for multi-arch ────────────────
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      # ── Build tags ────────────────────────────────────────────────────
-      - name: Docker metadata (backend)
-        id: meta-backend
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ github.repository }}/${{ env.IMAGE_BACKEND }}
-          tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable={{is_default_branch}}
-          flavor: |
-            latest=false
-
-      - name: Docker metadata (frontend)
-        id: meta-frontend
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ github.repository }}/${{ env.IMAGE_FRONTEND }}
-          tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable={{is_default_branch}}
-          flavor: |
-            latest=false
-
-      # ── Build & push backend ──────────────────────────────────────────
-      - name: Build & push backend
-        id: build-backend
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: Dockerfile
-          push: true
-          platforms: linux/amd64,linux/arm64
-          tags: ${{ steps.meta-backend.outputs.tags }}
-          labels: ${{ steps.meta-backend.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          provenance: true
-          sbom: true
-
-      # ── Build & push frontend ─────────────────────────────────────────
-      - name: Build & push frontend
-        id: build-frontend
-        uses: docker/build-push-action@v6
-        with:
-          context: web
-          file: web/Dockerfile
-          push: true
-          platforms: linux/amd64,linux/arm64
-          tags: ${{ steps.meta-frontend.outputs.tags }}
-          labels: ${{ steps.meta-frontend.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          provenance: true
-          sbom: true
-
-      # ── Sign images with cosign ───────────────────────────────────────
-      - name: Install cosign
-        uses: sigstore/cosign-installer@v3
-
-      - name: Sign backend images
+      - name: Build and push backend
+        env:
+          REGISTRY: ${{ vars.GCP_ARTIFACT_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.GCP_ARTIFACT_REPOSITORY }}
+          VERSION: ${{ steps.meta.outputs.version }}
         run: |
-          cosign sign --yes \
-            ${{ env.REGISTRY }}/${{ github.repository }}/${{ env.IMAGE_BACKEND }}@${{ steps.build-backend.outputs.digest }}
+          docker build -t "$REGISTRY/aeon-backend:$VERSION" -t "$REGISTRY/aeon-backend:latest" .
+          docker push "$REGISTRY/aeon-backend:$VERSION"
+          docker push "$REGISTRY/aeon-backend:latest"
 
-      - name: Sign frontend images
+      - name: Build and push frontend
+        env:
+          REGISTRY: ${{ vars.GCP_ARTIFACT_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.GCP_ARTIFACT_REPOSITORY }}
+          VERSION: ${{ steps.meta.outputs.version }}
         run: |
-          cosign sign --yes \
-            ${{ env.REGISTRY }}/${{ github.repository }}/${{ env.IMAGE_FRONTEND }}@${{ steps.build-frontend.outputs.digest }}
+          docker build -t "$REGISTRY/aeon-frontend:$VERSION" -t "$REGISTRY/aeon-frontend:latest" -f web/Dockerfile web
+          docker push "$REGISTRY/aeon-frontend:$VERSION"
+          docker push "$REGISTRY/aeon-frontend:latest"
 
-      # ── Create GitHub Release ─────────────────────────────────────────
-      - name: Create Release
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')
         with:
-          name: AEON OS ${{ steps.meta.outputs.version }}
+          name: AEON OS ${{ steps.meta.outputs.tag }}
           generate_release_notes: true
           make_latest: true
