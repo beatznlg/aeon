@@ -1,57 +1,28 @@
-# AEON v2.1 — Python dependencies
-#
-# Install with:
-#   pip install -r requirements.txt
-#
-# Note: AEON v2.1 is intended to run in Google Colab on a T4 GPU.
-# transformers + bitsandbytes will download Qwen2.5-3B-Instruct on first boot.
-# Expect a multi-minute install on a fresh Colab runtime.
-
-# --- core LLM + embeddings ---
-transformers>=5.5.0
-torch
-sentence-transformers>=5.6.1
-bitsandbytes
-accelerate
-
-# --- web / parsing ---
-requests
-beautifulsoup4
-
-# --- math / graph / tokenization ---
-sympy
-networkx
-tiktoken
-
-# --- numerics ---
-numpy
-
-# --- payment processing ---
-stripe>=9.0
-
-# --- optional / future ---
+# AEON OS — production Python dependencies
 flask>=3.0
-web3
-supabase>=2.0
-
-# --- identity, multi-tenancy, persistence ---
-cryptography>=42.0
+requests>=2.32
+beautifulsoup4>=4.12
+sympy>=1.13
+networkx>=3.3
+tiktoken>=0.8
+numpy>=2.0
+stripe>=12.0
+cryptography>=43.0
 sqlalchemy>=2.0
 psycopg2-binary>=2.9
-pyjwt>=2.8
-werkzeug>=3.0
-
-# --- caching / rate limiting ---
-redis>=5.0
-
-# --- scheduled automations ---
-croniter>=1.4
-
-# --- distributed tasks / production scalability ---
-celery[redis]>=5.3
-boto3>=1.28
-alembic>=1.12
-
-# --- enterprise identity (Phase 44) ---
-joserfc>=1.0
-# python3-saml>=1.15  # optional; requires libxmlsec1 system package
+pyjwt>=2.10
+werkzeug>=3.1
+redis>=5.2
+croniter>=5.0
+celery[redis]>=5.4
+boto3>=1.35
+alembic>=1.14
+joserfc>=1.2
+# LLM / embeddings
+transformers>=4.48
+sentence-transformers>=3.3
+torch
+accelerate
+bitsandbytes
+# Optional provider/web3 integrations remain application-optional
+web3>=7.6
