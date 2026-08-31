@@ -1,8 +1,12 @@
 # AEON OS — full stack on a single Oracle Cloud VM
-# Frontend (Next.js) + Kernel (Flask) + Postgres + Caddy TLS proxy.
-# Deploy: see DEPLOY_ORACLE.md  |  Run: docker compose up -d --build
+# Frontend (Next.js) + Kernel (Flask) + Postgres + Redis + workers + Caddy TLS.
+# Deploy: see DEPLOY_ORACLE.md | Run: docker compose -f docker-compose.oci.yml up -d --build
 
 name: aeon-os
+
+networks:
+  aeon-net:
+    driver: bridge
 
 services:
   postgres:
@@ -14,8 +18,24 @@ services:
       POSTGRES_DB: aeon
     volumes:
       - pgdata:/var/lib/postgresql/data
+    networks:
+      - aeon-net
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U aeon -d aeon"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    networks:
+      - aeon-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -26,51 +46,108 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       AEON_ENV: production
       AEON_DATABASE_URL: postgresql://aeon:${POSTGRES_PASSWORD}@postgres:5432/aeon
+      AEON_REDIS_URL: redis://redis:6379/0
+      AEON_CELERY_RESULT_BACKEND: redis://redis:6379/1
       AEON_JWT_SECRET: ${AEON_JWT_SECRET:?set AEON_JWT_SECRET in .env}
       AEON_API_TOKEN: ${AEON_API_TOKEN:-}
-      AEON_MASTER_KMS_KEY: ${AEON_MASTER_KMS_KEY:-}
+      AEON_MASTER_KMS_KEY: ${AEON_MASTER_KMS_KEY:?set AEON_MASTER_KMS_KEY in .env}
       AEON_ADMIN_EMAIL: ${AEON_ADMIN_EMAIL:-}
       AEON_ADMIN_NAME: ${AEON_ADMIN_NAME:-Admin}
-      # Only set on first boot; ignored once the admin user exists.
       AEON_ADMIN_PASSWORD: ${AEON_ADMIN_PASSWORD:-}
       AEON_LLM_PROVIDER: ${AEON_LLM_PROVIDER:-stub}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      # Repair script writes the real origin (http://<vm-ip>) into .env.
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      HUGGINGFACE_TOKEN: ${HUGGINGFACE_TOKEN:-}
       AEON_CORS_ALLOWED_ORIGINS: ${AEON_CORS_ALLOWED_ORIGINS:-http://localhost}
-      SUPABASE_URL: ${SUPABASE_URL:-}
-      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
+      STRIPE_API_KEY: ${STRIPE_API_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      STRIPE_PRICE_TEAM: ${STRIPE_PRICE_TEAM:-}
+      STRIPE_PRICE_ENTERPRISE: ${STRIPE_PRICE_ENTERPRISE:-}
     volumes:
       - backend_state:/app/state
+    networks:
+      - aeon-net
+
+  worker:
+    build: .
+    restart: unless-stopped
+    command: ["celery", "-A", "aeon_worker", "worker", "--loglevel=info", "--concurrency=2"]
+    depends_on:
+      backend:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      AEON_ENV: production
+      AEON_DATABASE_URL: postgresql://aeon:${POSTGRES_PASSWORD}@postgres:5432/aeon
+      AEON_REDIS_URL: redis://redis:6379/0
+      AEON_CELERY_RESULT_BACKEND: redis://redis:6379/1
+      AEON_JWT_SECRET: ${AEON_JWT_SECRET:?set AEON_JWT_SECRET in .env}
+      AEON_MASTER_KMS_KEY: ${AEON_MASTER_KMS_KEY:?set AEON_MASTER_KMS_KEY in .env}
+      AEON_LLM_PROVIDER: ${AEON_LLM_PROVIDER:-stub}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      HUGGINGFACE_TOKEN: ${HUGGINGFACE_TOKEN:-}
+    volumes:
+      - backend_state:/app/state
+    networks:
+      - aeon-net
+
+  beat:
+    build: .
+    restart: unless-stopped
+    command: ["celery", "-A", "aeon_worker", "beat", "--loglevel=info"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      AEON_ENV: production
+      AEON_DATABASE_URL: postgresql://aeon:${POSTGRES_PASSWORD}@postgres:5432/aeon
+      AEON_REDIS_URL: redis://redis:6379/0
+      AEON_CELERY_RESULT_BACKEND: redis://redis:6379/1
+      AEON_JWT_SECRET: ${AEON_JWT_SECRET:?set AEON_JWT_SECRET in .env}
+      AEON_MASTER_KMS_KEY: ${AEON_MASTER_KMS_KEY:?set AEON_MASTER_KMS_KEY in .env}
+      AEON_LLM_PROVIDER: ${AEON_LLM_PROVIDER:-stub}
+    volumes:
+      - backend_state:/app/state
+    networks:
+      - aeon-net
 
   web:
     build: ./web
     restart: unless-stopped
     depends_on:
-      - backend
+      backend:
+        condition: service_started
     environment:
       AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET in .env}
       AEON_API_TOKEN: ${AEON_API_TOKEN:-}
       ADMIN_EMAIL: ${AEON_ADMIN_EMAIL:-}
       ADMIN_PASSWORD: ${AEON_ADMIN_PASSWORD:-}
-      # Set correctly by scripts/aeon-env-repair.sh (http://<vm-ip>).
-      # Never default to http://localhost: a wrong public URL makes Auth.js
-      # issue __Secure- cookies the browser drops over plain HTTP, trapping
-      # users on the login screen. Empty is safer — Auth.js then trusts the
-      # incoming Host header (AUTH_TRUST_HOST=true below).
       NEXTAUTH_URL: ${NEXTAUTH_URL:-}
       AUTH_TRUST_HOST: "true"
-      # Same-VM kernel over the compose network.
       AEON_PYTHON_URL: http://backend:5000
-      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-}
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-}
+      NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-AEON OS}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-}
     volumes:
-      # Persist the offline-registration store: users who sign up while the
-      # backend is down must still exist after the next rebuild/restart.
       - web_data:/app/.data
+    networks:
+      - aeon-net
 
   caddy:
     image: caddy:2-alpine
@@ -82,17 +159,17 @@ services:
       - "80:80"
       - "443:443"
     environment:
-      # Default to :80 (plain HTTP) until AEON_DOMAIN is set. An empty
-      # AEON_DOMAIN would leave the Caddyfile site address as {:80}, which
-      # Caddy mis-parses as global options.
       AEON_DOMAIN: ${AEON_DOMAIN:-:80}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
+    networks:
+      - aeon-net
 
 volumes:
   pgdata:
+  redisdata:
   backend_state:
   web_data:
   caddy_data:
