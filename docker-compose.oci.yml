@@ -1,7 +1,6 @@
-# AEON OS — full stack on a single Oracle Cloud VM
-# Frontend (Next.js) + Kernel (Flask) + Postgres + Redis + workers + Caddy TLS.
-# Deploy: see DEPLOY_ORACLE.md | Run: docker compose -f docker-compose.oci.yml up -d --build
-
+# AEON OS — production stack on a single Oracle Cloud VM
+# Frontend + API + PostgreSQL + Redis + Celery + Caddy.
+# Only Caddy is publicly exposed; all application services stay on aeon-net.
 name: aeon-os
 
 networks:
@@ -18,22 +17,21 @@ services:
       POSTGRES_DB: aeon
     volumes:
       - pgdata:/var/lib/postgresql/data
-    networks:
-      - aeon-net
+    networks: [aeon-net]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U aeon -d aeon"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
 
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
+    command: ["redis-server", "--appendonly", "yes", "--save", "900", "1", "--save", "300", "10"]
     volumes:
       - redisdata:/data
-    networks:
-      - aeon-net
+    networks: [aeon-net]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -43,19 +41,19 @@ services:
   backend:
     build: .
     restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
     environment:
       AEON_ENV: production
       AEON_DATABASE_URL: postgresql://aeon:${POSTGRES_PASSWORD}@postgres:5432/aeon
       AEON_REDIS_URL: redis://redis:6379/0
       AEON_CELERY_RESULT_BACKEND: redis://redis:6379/1
       AEON_JWT_SECRET: ${AEON_JWT_SECRET:?set AEON_JWT_SECRET in .env}
-      AEON_API_TOKEN: ${AEON_API_TOKEN:-}
       AEON_MASTER_KMS_KEY: ${AEON_MASTER_KMS_KEY:?set AEON_MASTER_KMS_KEY in .env}
+      AEON_API_TOKEN: ${AEON_API_TOKEN:-}
       AEON_ADMIN_EMAIL: ${AEON_ADMIN_EMAIL:-}
       AEON_ADMIN_NAME: ${AEON_ADMIN_NAME:-Admin}
       AEON_ADMIN_PASSWORD: ${AEON_ADMIN_PASSWORD:-}
@@ -66,27 +64,34 @@ services:
       MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       HUGGINGFACE_TOKEN: ${HUGGINGFACE_TOKEN:-}
-      AEON_CORS_ALLOWED_ORIGINS: ${AEON_CORS_ALLOWED_ORIGINS:-http://localhost}
+      AEON_CORS_ALLOWED_ORIGINS: ${AEON_CORS_ALLOWED_ORIGINS:?set AEON_CORS_ALLOWED_ORIGINS in .env}
       STRIPE_API_KEY: ${STRIPE_API_KEY:-}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
       STRIPE_PRICE_TEAM: ${STRIPE_PRICE_TEAM:-}
       STRIPE_PRICE_ENTERPRISE: ${STRIPE_PRICE_ENTERPRISE:-}
+      AEON_STORAGE_BACKEND: ${AEON_STORAGE_BACKEND:-local}
+      AWS_S3_BUCKET: ${AWS_S3_BUCKET:-}
+      AWS_REGION: ${AWS_REGION:-}
     volumes:
       - backend_state:/app/state
-    networks:
-      - aeon-net
+    networks: [aeon-net]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:5000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   worker:
     build: .
     restart: unless-stopped
+    init: true
+    stop_grace_period: 60s
     command: ["celery", "-A", "aeon_worker", "worker", "--loglevel=info", "--concurrency=2"]
     depends_on:
-      backend:
-        condition: service_started
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      backend: {condition: service_healthy}
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
     environment:
       AEON_ENV: production
       AEON_DATABASE_URL: postgresql://aeon:${POSTGRES_PASSWORD}@postgres:5432/aeon
@@ -103,18 +108,16 @@ services:
       HUGGINGFACE_TOKEN: ${HUGGINGFACE_TOKEN:-}
     volumes:
       - backend_state:/app/state
-    networks:
-      - aeon-net
+    networks: [aeon-net]
 
   beat:
     build: .
     restart: unless-stopped
+    init: true
     command: ["celery", "-A", "aeon_worker", "beat", "--loglevel=info"]
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
     environment:
       AEON_ENV: production
       AEON_DATABASE_URL: postgresql://aeon:${POSTGRES_PASSWORD}@postgres:5432/aeon
@@ -125,47 +128,43 @@ services:
       AEON_LLM_PROVIDER: ${AEON_LLM_PROVIDER:-stub}
     volumes:
       - backend_state:/app/state
-    networks:
-      - aeon-net
+    networks: [aeon-net]
 
   web:
     build: ./web
     restart: unless-stopped
+    init: true
     depends_on:
-      backend:
-        condition: service_started
+      backend: {condition: service_healthy}
     environment:
+      NODE_ENV: production
       AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET in .env}
       AEON_API_TOKEN: ${AEON_API_TOKEN:-}
       ADMIN_EMAIL: ${AEON_ADMIN_EMAIL:-}
       ADMIN_PASSWORD: ${AEON_ADMIN_PASSWORD:-}
-      NEXTAUTH_URL: ${NEXTAUTH_URL:-}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:?set NEXTAUTH_URL in .env}
       AUTH_TRUST_HOST: "true"
       AEON_PYTHON_URL: http://backend:5000
       NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-AEON OS}
-      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:?set NEXT_PUBLIC_APP_URL in .env}
     volumes:
       - web_data:/app/.data
-    networks:
-      - aeon-net
+    networks: [aeon-net]
 
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
-    depends_on:
-      - web
-      - backend
+    depends_on: [web, backend]
     ports:
       - "80:80"
       - "443:443"
     environment:
-      AEON_DOMAIN: ${AEON_DOMAIN:-:80}
+      AEON_DOMAIN: ${AEON_DOMAIN:?set AEON_DOMAIN in .env}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
-    networks:
-      - aeon-net
+    networks: [aeon-net]
 
 volumes:
   pgdata:
