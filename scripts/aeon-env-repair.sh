@@ -1,15 +1,7 @@
 #!/usr/bin/env sh
 # AEON OS — idempotent .env self-repair for the Oracle Cloud VM.
-# ==============================================================
-# Fixes the three conditions that make login impossible on installs created
-# by earlier bootstrap versions:
-#   1. AEON_ADMIN_EMAIL / AEON_ADMIN_PASSWORD left empty  -> no user in DB
-#   2. NEXTAUTH_URL left empty                            -> Auth.js breaks
-#   3. Required secrets missing                           -> compose won't start
-# Run automatically by scripts/aeon-autoupdate.sh (every 30 min) and by
-# scripts/deploy-oracle.sh. Never blocks a deploy: exits 0 on any problem it
-# cannot fix. Safe to re-run at any time.
-#   View the admin login afterwards:  sudo grep AEON_ADMIN /opt/aeon/.env
+# Generates missing secrets and a random first-boot admin password without
+# embedding user-specific credentials in source control.
 set -eu
 
 APP_DIR="${AEON_APP_DIR:-/opt/aeon}"
@@ -18,7 +10,6 @@ ENV_FILE="$APP_DIR/.env"
 [ -f "$ENV_FILE" ] || { echo "[env-repair] no $ENV_FILE — nothing to repair"; exit 0; }
 
 get() { sed -n "s|^$1=||p" "$ENV_FILE" | head -1; }
-
 set_kv() {
     if grep -q "^$1=" "$ENV_FILE"; then
         sed -i "s|^$1=.*|$1=$2|" "$ENV_FILE"
@@ -26,59 +17,54 @@ set_kv() {
         printf '%s=%s\n' "$1" "$2" >>"$ENV_FILE"
     fi
 }
+gen() { head -c 64 /dev/urandom | base64 | tr -d '/+=' | head -c "$1"; }
 
-gen() { head -c 32 /dev/urandom | base64 | tr -d '/+=' | head -c "$1"; }
-
-# ── 1. Required secrets (repairs .env files created before these existed) ──
+# Required independent secrets. Do not reuse authentication keys for encryption.
 for KEY in POSTGRES_PASSWORD AUTH_SECRET AEON_JWT_SECRET AEON_API_TOKEN; do
     VAL=$(get "$KEY")
     if [ -z "$VAL" ]; then
-        set_kv "$KEY" "$(gen 32)"
+        set_kv "$KEY" "$(gen 48)"
         echo "[env-repair] generated missing $KEY"
     fi
 done
 
-# ── 2. Admin login: create one if email or password is missing ─────────────
-ADMIN_EMAIL=$(get AEON_ADMIN_EMAIL)
-ADMIN_PASS=$(get AEON_ADMIN_PASSWORD)
-if [ -z "$ADMIN_EMAIL" ] || [ -z "$ADMIN_PASS" ]; then
-    [ -n "$ADMIN_EMAIL" ] || ADMIN_EMAIL="beatznlg@gmail.com"
-    # Use the requested account on first boot so it is immediately usable.
-    # The user can change it later with set-admin.sh.
-    [ -n "$ADMIN_PASS" ] || ADMIN_PASS="Niku1991!"
-    set_kv AEON_ADMIN_EMAIL "$ADMIN_EMAIL"
-    set_kv AEON_ADMIN_PASSWORD "$ADMIN_PASS"
-    [ -n "$(get AEON_ADMIN_NAME)" ] || set_kv AEON_ADMIN_NAME "Admin"
-    echo "[env-repair] admin login ensured: $ADMIN_EMAIL"
-    echo "[env-repair]   password:        $ADMIN_PASS"
-    echo "[env-repair]   view later:      sudo grep AEON_ADMIN_PASSWORD $ENV_FILE"
+KMS=$(get AEON_MASTER_KMS_KEY)
+if [ -z "$KMS" ] || [ "$KMS" = "$(get AEON_JWT_SECRET)" ]; then
+    set_kv AEON_MASTER_KMS_KEY "$(gen 64)"
+    echo "[env-repair] generated independent AEON_MASTER_KMS_KEY"
 fi
 
-# ── 3. Public URL for Auth.js (AEON_DOMAIN stays empty -> Caddy serves :80) ─
-# A WRONG NEXTAUTH_URL is worse than a missing one: e.g. "https://localhost"
-# makes Auth.js issue __Secure- cookies that plain-HTTP browsers drop and
-# redirect sign-ins to https://localhost — the user is trapped on /login
-# forever (MissingCSRF loop). Repair any localhost/https-mismatch value, not
-# just an empty one.
+# First-boot admin: never ship a fixed password. Existing credentials are preserved.
+ADMIN_EMAIL=$(get AEON_ADMIN_EMAIL)
+ADMIN_PASS=$(get AEON_ADMIN_PASSWORD)
+if [ -z "$ADMIN_EMAIL" ]; then
+    ADMIN_EMAIL="admin@aeon.local"
+    set_kv AEON_ADMIN_EMAIL "$ADMIN_EMAIL"
+fi
+if [ -z "$ADMIN_PASS" ]; then
+    ADMIN_PASS="$(gen 28)"
+    set_kv AEON_ADMIN_PASSWORD "$ADMIN_PASS"
+    echo "[env-repair] generated a random first-boot admin password"
+fi
+[ -n "$(get AEON_ADMIN_NAME)" ] || set_kv AEON_ADMIN_NAME "Platform Admin"
+
+# Public URL. Prefer an explicit domain; otherwise use the detected public IP.
 NEXT_URL=$(get NEXTAUTH_URL)
 case "$NEXT_URL" in
     ""|http://localhost|http://localhost:*|https://localhost|https://localhost:*|http://127.0.0.1|http://127.0.0.1:*)
-        PUB_IP=""
         PUB_IP=$(curl -fs --max-time 5 https://api.ipify.org 2>/dev/null || true)
-        [ -n "$PUB_IP" ] || PUB_IP=$(curl -fs --max-time 5 https://ipv4.icanhazip.com 2>/dev/null | tr -d '[:space:]' || true)
+        PUB_IP=${PUB_IP:-$(curl -fs --max-time 5 https://ipv4.icanhazip.com 2>/dev/null | tr -d '[:space:]' || true)}
         if [ -n "$PUB_IP" ]; then
             set_kv NEXTAUTH_URL "http://$PUB_IP"
             set_kv AEON_CORS_ALLOWED_ORIGINS "http://$PUB_IP"
-            echo "[env-repair] NEXTAUTH_URL -> http://$PUB_IP (was: '${NEXT_URL:-empty}')"
+            set_kv NEXT_PUBLIC_APP_URL "http://$PUB_IP"
+            echo "[env-repair] NEXTAUTH_URL -> http://$PUB_IP"
         else
-            echo "[env-repair] WARNING: could not detect public IP; set NEXTAUTH_URL in $ENV_FILE manually"
+            echo "[env-repair] WARNING: could not detect public IP; set NEXTAUTH_URL manually"
         fi
         ;;
-    *)
-        echo "[env-repair] NEXTAUTH_URL ok: $NEXT_URL"
-        ;;
+    *) echo "[env-repair] NEXTAUTH_URL ok: $NEXT_URL" ;;
 esac
 
 chmod 600 "$ENV_FILE" 2>/dev/null || true
 echo "[env-repair] done"
-exit 0
