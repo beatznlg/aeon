@@ -1,7 +1,5 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
-import bcrypt from "bcryptjs";
-import { getSupabaseServerClient } from "@/lib/supabase";
 import { verifyLocalUser } from "@/lib/local-users";
 
 export type AeonRole = "ADMIN" | "OPERATOR" | "VIEWER";
@@ -15,78 +13,27 @@ interface AeonUser {
 }
 
 const AEON_PYTHON_URL = (process.env.AEON_PYTHON_URL || "http://127.0.0.1:5000").replace(/\/$/, "");
-// Always provide a fallback so NextAuth boots without explicit configuration.
-// In production, override with a strong random value via AUTH_SECRET.
-const AUTH_SECRET = process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || "aeon-dev-fallback-do-not-use-in-production";
-// NextAuth refuses to run on unknown hosts in production unless explicitly
-// trusted. The Oracle Cloud deploy serves one origin behind Caddy, so default
-// to trusted and only opt out explicitly via AUTH_TRUST_HOST=false.
-const TRUST_HOST =
-  process.env.AUTH_TRUST_HOST === "true" ||
-  process.env.AUTH_TRUST_HOST === "1" ||
-  process.env.AUTH_TRUST_HOST !== "false";
+const AUTH_SECRET = process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || "";
+const TRUST_HOST = process.env.AUTH_TRUST_HOST !== "false";
+const DEMO_ENABLED = process.env.AEON_DEMO_ENABLED === "true" || process.env.NODE_ENV !== "production";
+const DEMO_EMAIL = process.env.AEON_DEMO_EMAIL || "admin@demo.local";
+const DEMO_PASSWORD = process.env.AEON_DEMO_PASSWORD || "demo123";
+const DEMO_WORKSPACE_ID = process.env.AEON_DEMO_WORKSPACE_ID || "demo-workspace";
 
-/**
- * Fallback admin user that works when Supabase is not configured.
- * This lets the project boot and the first admin log in immediately.
- */
-const DEMO_EMAIL = "admin@demo.local";
-const DEMO_PASSWORD = "demo123";
-const DEMO_WORKSPACE_ID = "demo-workspace";
-
-function getFallbackAdmin(): AeonUser | null {
-  // The configured admin email is also accepted by the frontend fallback so
-  // an Oracle deployment remains usable during a brief backend restart.
-  if (process.env.ADMIN_EMAIL) {
-    return {
-      id: "admin-fallback",
-      email: process.env.ADMIN_EMAIL,
-      name: "Administrator",
-      role: "ADMIN" as AeonRole,
-      workspaceId: DEMO_WORKSPACE_ID,
-    };
-  }
-  // Built-in demo account fallback. The id matches the Flask backend's
-  // platform admin (aeon_auth._FallbackAdmin.id) so the proxy's X-User-Id
-  // header grants workspace-scoped access when the backend is running but
-  // the demo user has not been registered there yet.
-  return {
-    id: "admin-fallback",
-    email: DEMO_EMAIL,
-    name: "Demo Admin",
-    role: "ADMIN" as AeonRole,
-    workspaceId: DEMO_WORKSPACE_ID,
-  };
+if (process.env.NODE_ENV === "production" && AUTH_SECRET.length < 32) {
+  throw new Error("AUTH_SECRET/NEXTAUTH_SECRET must be at least 32 characters in production");
 }
 
-async function verifyFallbackPassword(email: string, password: string): Promise<boolean> {
-  if (email === DEMO_EMAIL && password === DEMO_PASSWORD) return true;
-
-  const configuredEmail = (process.env.ADMIN_EMAIL || "").trim().toLowerCase();
-  const configuredPassword = process.env.ADMIN_PASSWORD;
-  return Boolean(
-    configuredEmail && email === configuredEmail && configuredPassword && password === configuredPassword
-  );
-}
-
-/**
- * Authenticate against the AEON Flask backend.
- *
- * The frontend identity layer (NextAuth/Supabase) and the Python backend keep
- * users in separate stores, so a user registered through the backend (e.g. the
- * one-click demo account or the "Create Account" tab) is invisible to NextAuth.
- * This bridge lets those backend users sign in through the normal NextAuth
- * credentials flow while Supabase users and the env fallback admin still work.
- */
 async function loginViaFlask(email: string, password: string): Promise<AeonUser | null> {
   try {
     const res = await fetch(`${AEON_PYTHON_URL}/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password }),
-      // Don't let a half-up backend stall the login flow.
       signal: AbortSignal.timeout(4000),
+      cache: "no-store",
     });
+    if (!res.ok) return null;
     const data = await res.json();
     if (!data?.ok || !data?.user?.id) return null;
     return {
@@ -102,12 +49,10 @@ async function loginViaFlask(email: string, password: string): Promise<AeonUser 
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  secret: AUTH_SECRET,
+  ...(AUTH_SECRET ? { secret: AUTH_SECRET } : {}),
   trustHost: TRUST_HOST,
   session: { strategy: "jwt" },
-  pages: {
-    signIn: "/login",
-  },
+  pages: { signIn: "/login" },
   providers: [
     Credentials({
       name: "Credentials",
@@ -116,32 +61,26 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) return null;
+        const email = String(credentials?.email || "").trim().toLowerCase();
+        const password = String(credentials?.password || "");
+        if (!email || !password) return null;
 
-        const email = credentials.email as string;
-        const password = credentials.password as string;
-
-        // ── AEON Flask backend bridge ─────────────────────────────────
-        // Authenticate first against the Python backend so users registered
-        // there (self-service signups and the seeded demo account) use their
-        // real workspace + membership instead of the frontend fallback.
+        // Oracle production source of truth: Flask + PostgreSQL.
         const flaskUser = await loginViaFlask(email, password);
         if (flaskUser) return flaskUser;
 
-        // ── Fallback admin (no Supabase required) ─────────────────────
-        // Accept the built-in demo account (admin@demo.local / demo123)
-        // OR the configured ADMIN_EMAIL / ADMIN_PASSWORD pair.
-        const fallback = getFallbackAdmin();
-        if (fallback && (fallback.email === email || email === DEMO_EMAIL)) {
-          const ok = await verifyFallbackPassword(email, password);
-          if (!ok) return null;
-          return { ...fallback, email };
+        // Demo is an explicit opt-in in production and uses configurable credentials.
+        if (DEMO_ENABLED && email === DEMO_EMAIL && password === DEMO_PASSWORD) {
+          return {
+            id: "admin-fallback",
+            email: DEMO_EMAIL,
+            name: "Demo Admin",
+            role: "ADMIN",
+            workspaceId: DEMO_WORKSPACE_ID,
+          };
         }
 
-        // ── Offline local user store ──────────────────────────────────
-        // Checked BEFORE Supabase so that users registered while the backend
-        // was unreachable (see /api/auth/flask fallback) can always sign in
-        // even when neither the Flask backend nor Supabase is reachable.
+        // Development/offline bootstrap only.
         const localUser = verifyLocalUser(email, password);
         if (localUser) {
           return {
@@ -152,49 +91,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             workspaceId: localUser.workspaceId,
           };
         }
-
-        // ── Supabase-backed user lookup ───────────────────────────────
-        const sb = getSupabaseServerClient();
-        if (sb) {
-          const { data: user, error } = await sb
-            .from("users")
-            .select("id, email, name, password, role")
-            .eq("email", email)
-            .single();
-
-          if (!error && user?.password) {
-            const isValid = await bcrypt.compare(password, String(user.password));
-            if (isValid) {
-              let workspaceId: string | undefined;
-              let workspaceRole = user.role as AeonRole;
-              try {
-                const { data: membership } = await sb
-                  .from("memberships")
-                  .select("workspace_id, role")
-                  .eq("user_id", user.id)
-                  .limit(1)
-                  .maybeSingle();
-                workspaceId = membership?.workspace_id;
-                workspaceRole = (membership?.role as AeonRole) || workspaceRole;
-              } catch {
-                // Older Supabase schemas may not expose memberships; keep the
-                // authenticated user role and let the setup gate explain the gap.
-              }
-              return {
-                id: user.id,
-                email: user.email,
-                name: user.name,
-                role: workspaceRole,
-                workspaceId,
-              };
-            }
-            // Known Supabase user with a wrong password — do not fall through
-            // to the backend with the same credentials.
-            return null;
-          }
-          // Supabase configured but this user isn't there.
-        }
-
         return null;
       },
     }),
