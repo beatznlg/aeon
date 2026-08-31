@@ -1,0 +1,52 @@
+name: Deploy AEON to Google Cloud
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gcp-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Deploy to Google Compute Engine
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Validate deployment secrets
+        env:
+          GCP_HOST: ${{ secrets.GCP_HOST }}
+          GCP_USER: ${{ secrets.GCP_USER }}
+          GCP_SSH_KEY: ${{ secrets.GCP_SSH_KEY }}
+        run: |
+          set -eu
+          for pair in "GCP_HOST:$GCP_HOST" "GCP_USER:$GCP_USER" "GCP_SSH_KEY:$GCP_SSH_KEY"; do
+            key="${pair%%:*}"; value="${pair#*:}"
+            test -n "$value" || { echo "::error::Missing repository secret $key"; exit 1; }
+          done
+
+      - name: Deploy and verify
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.GCP_HOST }}
+          username: ${{ secrets.GCP_USER }}
+          key: ${{ secrets.GCP_SSH_KEY }}
+          port: 22
+          script_stop: true
+          command_timeout: 25m
+          script: |
+            set -eu
+            APP_DIR=/opt/aeon
+            cd "$APP_DIR"
+            test -d .git || { echo "::error::$APP_DIR is not a Git checkout"; exit 1; }
+            test -f docker-compose.gcp.yml || { echo "::error::GCP Compose file missing"; exit 1; }
+            test -f .env || { echo "::error::Production .env missing"; exit 1; }
+            bash scripts/deploy-gcp.sh
+
+      - name: Report deployment
+        run: echo "AEON deployed to Google Cloud from ${GITHUB_SHA::7}"
