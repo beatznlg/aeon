@@ -1,151 +1,148 @@
 # AEON OS — Full Deployment on Oracle Cloud
 
-Everything (frontend, kernel, database, TLS) runs on **one Oracle Cloud
-Compute VM** via Docker Compose. The always-free **VM.Standard.A1.Flex**
-(Ampere ARM) tier covers this stack comfortably: 4 OCPU / 24 GB RAM.
+Everything required for the AEON application runtime is self-hosted on **one Oracle Cloud Compute VM** via Docker Compose: Next.js, Flask, PostgreSQL, Redis, Celery worker, Celery Beat and Caddy.
 
-```
+```text
                     Oracle Cloud VM (Ubuntu, Ampere A1)
-   ┌──────────────────────────────────────────────────────────┐
-   │  Caddy :80/:443 ── auto-HTTPS ─┬─▶ web    (Next.js :3000)│
-   │                                └─▶ backend (Flask  :5000) │
-   │                                     └─▶ postgres (:5432)  │
-   │  data persists in Docker volumes (pgdata, backend_state)  │
-   └──────────────────────────────────────────────────────────┘
+   ┌─────────────────────────────────────────────────────────────┐
+   │ Caddy :80/:443 ── auto-HTTPS ──▶ web (Next.js :3000)       │
+   │                         └──────▶ backend (Flask :5000)      │
+   │                                      │                     │
+   │                           ┌──────────┴──────────┐          │
+   │                           ▼                     ▼          │
+   │                      PostgreSQL              Redis         │
+   │                                                 │          │
+   │                                      Celery worker + Beat  │
+   │                                                             │
+   │ Persistent Docker volumes: database, state, Redis, web,    │
+   │ and Caddy certificates/configuration.                      │
+   └─────────────────────────────────────────────────────────────┘
 ```
 
 ## 1. Create the VM
 
 1. OCI Console → **Compute → Instances → Create Instance**
-2. Image: **Ubuntu 22.04+** · Shape: **VM.Standard.A1.Flex** (2–4 OCPU)
-3. SSH keys: add yours · Networking: public IPv4 + allow **TCP 22, 80, 443**
+2. Ubuntu 22.04+ · Shape `VM.Standard.A1.Flex` (2–4 OCPU is a sensible starting point)
+3. Add your SSH key.
+4. Allow inbound TCP **22, 80, 443** in the OCI Security List/NSG. Do not expose PostgreSQL or Redis publicly.
 
-## 2. Point DNS (optional but recommended)
+## 2. Point DNS
 
-Create an `A` record for e.g. `aeon.yourdomain.com` → the VM's public IP.
-Caddy then issues/renews Let's Encrypt certificates automatically. Without a
-domain the site serves plain HTTP on port 80.
+Create an `A` record such as `aeon.yourdomain.com` → the VM public IP. Set `AEON_DOMAIN` and `NEXTAUTH_URL` to the HTTPS URL before customer traffic. Caddy automatically obtains and renews the certificate.
 
-## 3. One command
+## 3. Bootstrap
 
 ```bash
 ssh ubuntu@<VM_PUBLIC_IP>
 sh -c "$(wget -qO- https://raw.githubusercontent.com/beatznlg/aeon/main/scripts/deploy-oracle.sh)"
 ```
 
-The script installs Docker, generates strong secrets into `/opt/aeon/.env`,
-and starts the whole stack. Then edit the env and restart:
+The bootstrap installs Docker, creates `/opt/aeon/.env` with independent secrets, repairs required configuration, and starts the complete stack.
+
+For a domain deployment, set at minimum:
 
 ```bash
 cd /opt/aeon
-nano .env            # set AEON_DOMAIN, AEON_ADMIN_EMAIL/PASSWORD, LLM keys
-docker compose -f docker-compose.oci.yml up -d
+nano .env
+# AEON_DOMAIN=aeon.yourdomain.com
+# NEXTAUTH_URL=https://aeon.yourdomain.com
+# AEON_CORS_ALLOWED_ORIGINS=https://aeon.yourdomain.com
+# AEON_LLM_PROVIDER=openai
+# OPENAI_API_KEY=...
+docker compose -f docker-compose.oci.yml up -d --build
 ```
 
-First boot runs Alembic migrations and seeds the admin user from
-`AEON_ADMIN_EMAIL` / `AEON_ADMIN_PASSWORD`. If those are empty, the **auto-update
-timer and the bootstrap both self-repair `.env`**: they generate an admin login
-(`admin@aeon.local` + random password), set `NEXTAUTH_URL` to the VM's public
-IP, and fill any missing secrets. View the generated login with:
+If no admin credentials are supplied, `aeon-env-repair.sh` creates `admin@aeon.local` with a random password. **Save it securely and rotate it after first login.** Never commit the generated `.env`.
+
+To choose an admin account explicitly:
 
 ```bash
-sudo grep AEON_ADMIN /opt/aeon/.env
+sudo sh scripts/set-admin.sh you@example.com 'A-unique-strong-password'
 ```
 
-To choose your own email/password instead:
-```bash
-sudo sh scripts/set-admin.sh you@example.com 'YourPassword123'
-```
-
-This creates (or resets) the ADMIN account immediately — no container restart
-needed. You can also self-register at `/login` → **Create Account**, or use
-the built-in demo (`admin@demo.local` / `demo123`).
-
-Forgot your password later? Re-run `set-admin.sh` with a new password.
-
-## 4. Verify
+## 4. Verify the full stack
 
 ```bash
-curl http://localhost/health          # {"ok": true, ...}
-curl https://aeon.yourdomain.com/api/health
+cd /opt/aeon
+docker compose -f docker-compose.oci.yml ps
+curl http://localhost/health
+curl http://localhost/api/health
 ```
 
-## Environment variables (.env)
+All of these services must be running:
 
-| Variable | Required | Purpose |
-|---|---|---|
-| `POSTGRES_PASSWORD` | ✅ (auto-generated) | Postgres superuser password |
-| `AUTH_SECRET` | ✅ (auto-generated) | Auth.js session signing |
-| `AEON_JWT_SECRET` | ✅ (auto-generated) | Kernel JWT signing |
-| `AEON_MASTER_KMS_KEY` | recommended | Encryption-at-rest master key |
-| `AEON_DOMAIN` | for HTTPS | Your DNS name; empty = HTTP only |
-| `AEON_ADMIN_EMAIL` / `AEON_ADMIN_PASSWORD` | first boot | Admin seed |
-| `AEON_LLM_PROVIDER` | no | `stub`, `openai`, `anthropic`, … |
-| `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` | if LLM ≠ stub | Provider keys |
+- `postgres`
+- `redis`
+- `backend`
+- `worker`
+- `beat`
+- `web`
+- `caddy`
 
-Supabase variables (`SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_*`) are optional —
-the platform falls back to its local Postgres and demo-data rendering when
-they are unset, so nothing breaks by leaving them blank.
+## 5. Oracle-only runtime rules
 
-## Automatic updates — two options
+- Vercel is **not required** for frontend hosting.
+- Supabase is **not required** for application persistence/authentication.
+- Railway/Render are **not required** for backend/workers.
+- PostgreSQL and Redis remain inside the Docker network.
+- Only Caddy is publicly exposed on ports 80/443; SSH is handled at the OCI/network layer.
+- External APIs such as OpenAI, Anthropic, Stripe, email providers and third-party integrations may still be used when explicitly configured; these are dependencies, not hosting platforms.
 
-### Option A (recommended, no billing required): systemd timer on the VM
+## 6. Automatic updates
 
-The bootstrap script installs **`aeon-autoupdate.timer`** automatically: as
-root it runs every 30 minutes, pulls `main`, and redeploys **only when the
-commit changed** — idle ticks are no-ops. It never touches GitHub Actions or
-billing.
-
-Manage it on the VM:
+The VM can run `aeon-autoupdate.timer` every 30 minutes. It pulls `main` and redeploys when the commit changes.
 
 ```bash
-docker compose -f docker-compose.oci.yml ps   # current version
-systemctl list-timers aeon-autoupdate.timer   # next scheduled pull
-sudo systemctl start aeon-autoupdate.service  # update now
-journalctl -u aeon-autoupdate.service -f      # live logs
+systemctl list-timers aeon-autoupdate.timer
+sudo systemctl start aeon-autoupdate.service
+journalctl -u aeon-autoupdate.service -f
 ```
 
-Change the cadence by editing `OnUnitActiveSec=` in
-`scripts/install-autoupdate.sh` and re-running it.
+GitHub Actions can also deploy on every push when `ORACLE_HOST`, `ORACLE_USER` and `ORACLE_SSH_KEY` repository secrets are configured. The workflow backs up the database, rebuilds the stack and verifies all seven services before declaring success.
 
-### Option B: GitHub Actions on every push to `main`
+## 7. Backups
 
-Also available if billing is sorted out. Enable by adding three repository
-secrets (**Settings → Secrets and variables → Actions**):
+Local backups are not a complete disaster-recovery strategy. At minimum, run:
 
-| Secret | Value |
+```bash
+sudo sh /opt/aeon/scripts/backup-db.sh
+```
+
+For production, copy verified backups to an **independent Oracle Object Storage bucket** and test restoration regularly. The VM itself is a single failure domain.
+
+## 8. Security requirements
+
+Before accepting real customer traffic:
+
+- Use HTTPS with a real domain.
+- Keep `.env` at mode `600`.
+- Rotate the bootstrap admin password.
+- Keep Postgres and Redis private.
+- Use unique independent secrets for Auth.js, JWT, API authentication and encryption.
+- Configure rate limits.
+- Configure Stripe webhook signing when billing is enabled.
+- Review audit logs and AI execution ledger.
+- Verify backup and restore on a clean environment.
+- Run CI security gates before release.
+
+## 9. Troubleshooting
+
+| Symptom | Check |
 |---|---|
-| `ORACLE_HOST` | VM public IP, e.g. `138.2.153.2` |
-| `ORACLE_USER` | `ubuntu` |
-| `ORACLE_SSH_KEY` | The **private** key from instance launch (`-----BEGIN OPENSSH PRIVATE KEY-----…`, full file including last newline) |
+| Browser timeout | OCI Security List/NSG and host firewall allow 80/443 |
+| `/health` 502 | `docker compose -f docker-compose.oci.yml logs backend` |
+| Worker not running | `docker compose -f docker-compose.oci.yml logs worker` |
+| Scheduled automations not running | Check `beat`, `worker`, Redis and automation schedule state |
+| Redis unavailable | `docker compose -f docker-compose.oci.yml logs redis` |
+| Login problems | Verify `AUTH_SECRET`, `NEXTAUTH_URL`, admin account and CORS configuration |
+| TLS not issued | DNS A record must point to the VM and TCP 80/443 must be reachable |
+| Migration failure | Inspect backend logs; migrations are intentionally fail-closed |
 
-Each run: opens host-firewall ports 80/443, stops any legacy systemd stack,
-pulls latest `main`, rebuilds the Compose stack, and fails the run if health
-checks don't pass.
-
-> While Option A is active you can leave these unset — the VM keeps itself up
-> to date without them.
-
-## Troubleshooting
-
-| Symptom | Meaning / fix |
-|---|---|
-| Browser: *took too long to respond* | Packets dropped: check OCI **Security List + NSG on the VNIC** allow TCP 80/443 (0.0.0.0/0), then host firewall — both are auto-fixed by deploy-oracle.sh and by each workflow run |
-| Workflow shows billing/payment error | GitHub refused to start the job — fix payment method / spending limit in Billing settings, or just rely on Option A |
-| Page loads but `/health` = 502 | Caddy is up but the Flask kernel isn't reachable — run the workflow (or `sh scripts/deploy-oracle.sh`) to rebuild; kernel container may have crashed: `docker compose -f docker-compose.oci.yml logs backend` |
-| Deploy workflow fails in ~5 s | Missing repo secret — see table above |
-| Port 80 already in use during compose up | A legacy native install holds it; the scripts stop it automatically, or manually: `sudo systemctl disable --now aeon-backend aeon-web caddy` |
-| Login page loads but data calls fail | Expected with `AEON_LLM_PROVIDER=stub` only for AI features; other errors → backend logs above |
-| *Sign-in failed. Check your credentials.* | No admin exists yet — wait for the auto-update tick (it creates one, then `sudo grep AEON_ADMIN /opt/aeon/.env`), or run `sudo sh scripts/set-admin.sh <email> '<password>'`, or use `admin@demo.local` / `demo123` |
-
-## Updating
+## 10. Updating
 
 ```bash
-sh scripts/deploy-oracle.sh        # re-run: pulls main, rebuilds, restarts
+cd /opt/aeon
+sh scripts/deploy-oracle.sh
 ```
 
-Data survives updates (named volumes). Back up with:
-
-```bash
-docker exec aeon-os-postgres-1 pg_dump -U aeon aeon > backup.sql
-```
+Named volumes preserve application data across normal rebuilds. Always take a verified database backup before schema-changing releases.
