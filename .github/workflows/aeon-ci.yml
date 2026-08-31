@@ -5,7 +5,6 @@ on:
     branches:
       - "main"
   workflow_dispatch:
-  repository_dispatch:
 
 # CI only checks out source and publishes test artifacts.
 permissions:
@@ -15,22 +14,15 @@ jobs:
   smoke-check:
     name: Compile + notebook sanity
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v7
-
       - uses: actions/setup-python@v7
         with:
           python-version: "3.10"
-
       - name: Compile-check aeon.py
-        run: |
-          python -m py_compile aeon.py
-          echo "✅ aeon.py compiles cleanly."
-
+        run: python -m py_compile aeon.py
       - name: Install minimal Python deps for stub self-tests
         run: python -m pip install numpy requests web3 sympy
-
       - name: Run AEON 7 self-tests (stub mode)
         run: |
           python - <<'PY'
@@ -41,74 +33,33 @@ jobs:
           if m: src = src[:m.start()]
           src += '\nprint("smoke: self-tests only, no demo")\n'
           with tempfile.TemporaryDirectory() as td:
-              p = os.path.join(td, "aeon.py"); open(p, "w").write(src)
+              p = os.path.join(td, "aeon.py")
+              open(p, "w").write(src)
               shutil.copy("aeon_llm.py", os.path.join(td, "aeon_llm.py"))
               env = {**os.environ, "AEON_ROOT": td}
-              # Force stub-mode: zero network calls.
-              for k in ("HUGGINGFACE_TOKEN","SUPABASE_URL","SUPABASE_ANON_KEY",
-                        "SUPABASE_SERVICE_ROLE_KEY","GH_TOKEN","GITHUB_TOKEN"):
+              for k in ("HUGGINGFACE_TOKEN","SUPABASE_URL","SUPABASE_ANON_KEY","SUPABASE_SERVICE_ROLE_KEY","GH_TOKEN","GITHUB_TOKEN"):
                   env.pop(k, None)
               r = subprocess.run([sys.executable, p], cwd=td, timeout=60, env=env)
           sys.exit(0 if r.returncode == 0 else 1)
           PY
-
       - name: Validate colab_runner.ipynb
         run: |
-          python -c "
-          import json
-          nb = json.load(open('colab_runner.ipynb'))
-          assert nb['nbformat'] == 4, 'notebook not nbformat 4'
-          assert len(nb['cells']) >= 1, 'no cells'
-          code_cells = [c for c in nb['cells'] if c['cell_type'] == 'code']
-          assert code_cells, 'no code cells'
-          print(' colab_runner.ipynb: nbformat 4,', len(nb['cells']), 'cell(s),', len(code_cells), 'code cell(s)')
-          "
-
-      - name: Validate web/package.json is valid JSON
+          python -c "import json; nb=json.load(open('colab_runner.ipynb')); assert nb['nbformat']==4; assert nb['cells']; assert any(c['cell_type']=='code' for c in nb['cells']); print('notebook valid')"
+      - name: Validate web/package.json
         run: |
-          python -c "
-          import json, sys
-          p = json.load(open('web/package.json'))
-          assert 'dependencies' in p and 'scripts' in p, 'missing fields'
-          print('✅ web/package.json: deps =', ', '.join(sorted(p['dependencies'].keys())))
-          "
-
-      - name: Re-validate launcher URL builders
-        run: |
-          python - <<'PY'
-          from urllib.parse import urlparse
-          REPO = "beatznlg/aeon"
-          for tag, tok in [("anon", None), ("token_env", "ghp_FAKE_FOR_TEST")]:
-            url = (f"https://x-access-token:{tok}@github.com/{REPO}.git"
-                   if tok else f"https://github.com/{REPO}.git")
-            p = urlparse(url)
-            assert p.scheme == "https" and p.path == "/" + REPO + ".git", (tag, url)
-            print(f"✅ {tag}: {url[:80]}… ok")
-          PY
-
-      - name: Print click-to-run URL
-        if: success()
-        run: |
-          SHA=$(git rev-parse --short HEAD)
-          echo ""
-          echo "🚀 Commit $SHA is on origin/main."
-          echo "👉 Run on free Colab (T4 GPU required for Qwen 7B):"
-          echo "   https://colab.research.google.com/github/beatznlg/aeon/blob/main/colab_runner.ipynb"
+          python -c "import json; p=json.load(open('web/package.json')); assert 'dependencies' in p and 'scripts' in p; print('package.json valid')"
 
   web-build-check:
     name: Web TS type-check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-
       - uses: actions/setup-node@v7
         with:
           node-version: "20"
-
       - name: Install web deps
         working-directory: web
-        run: npm install --no-audit --no-fund --prefer-offline
-
+        run: npm ci --no-audit --no-fund
       - name: Type-check web/ (no emit)
         working-directory: web
         run: npx tsc --noEmit
@@ -118,20 +69,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-
       - uses: actions/setup-python@v7
         with:
           python-version: "3.10"
-
       - name: Install Python dependencies
         run: python -m pip install pyyaml
-
       - name: Cache monitoring binaries
         uses: actions/cache@v6
         with:
           path: ~/.cache/aeon-ci
           key: monitoring-binaries-v1-0.27.0-2.53.0
-
       - name: Download Alertmanager binary
         run: |
           mkdir -p ~/.cache/aeon-ci
@@ -139,8 +86,6 @@ jobs:
             curl -fsSL -o /tmp/am.tar.gz https://github.com/prometheus/alertmanager/releases/download/v0.27.0/alertmanager-0.27.0.linux-amd64.tar.gz
             tar -xzf /tmp/am.tar.gz -C ~/.cache/aeon-ci
           fi
-          ~/.cache/aeon-ci/alertmanager-0.27.0.linux-amd64/alertmanager --version
-
       - name: Download Prometheus binary
         run: |
           mkdir -p ~/.cache/aeon-ci
@@ -148,8 +93,6 @@ jobs:
             curl -fsSL -o /tmp/prom.tar.gz https://github.com/prometheus/prometheus/releases/download/v2.53.0/prometheus-2.53.0.linux-amd64.tar.gz
             tar -xzf /tmp/prom.tar.gz -C ~/.cache/aeon-ci
           fi
-          ~/.cache/aeon-ci/prometheus-2.53.0.linux-amd64/prometheus --version
-
       - name: Run Alertmanager tests
         working-directory: monitoring
         run: |
@@ -164,41 +107,22 @@ jobs:
     if: always()
     steps:
       - uses: actions/checkout@v7
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-
       - name: Build AEON server image (stub mode)
-        run: |
-          docker build --build-arg STUB_MODE=true -t aeon-server:latest .
-
+        run: docker build --build-arg STUB_MODE=true -t aeon-server:latest .
       - name: Run container and verify liveness/readiness
         run: |
-          docker run -d --name aeon-server-smoke \
-            -p 5000:5000 \
-            -e AEON_PYTHON_HOST=0.0.0.0 \
-            -e AEON_PYTHON_PORT=5000 \
-            -e AEON_ROOT=/home/aeon/app/aeon_state \
-            aeon-server:latest
-
-          # Wait for the container to become healthy.
+          docker run -d --name aeon-server-smoke -p 5000:5000 -e AEON_PYTHON_HOST=0.0.0.0 -e AEON_PYTHON_PORT=5000 -e AEON_ROOT=/app/state aeon-server:latest
           for i in {1..30}; do
-            if curl -fsS http://127.0.0.1:5000/live >/dev/null 2>&1; then
-              echo "✅ /live responded"
-              break
-            fi
-            echo "Waiting for /live... ($i/30)"
+            if curl -fsS http://127.0.0.1:5000/live >/dev/null 2>&1; then echo "live responded"; break; fi
             sleep 2
           done
-
           curl -fsS http://127.0.0.1:5000/live
-          echo ""
           curl -fsS http://127.0.0.1:5000/ready
-          echo ""
-
           docker stop aeon-server-smoke
           docker rm aeon-server-smoke
-
-      - name: Build docker-compose stack
-        run: |
-          docker compose -f docker-compose.yml config
+      - name: Validate base docker-compose configuration
+        run: docker compose -f docker-compose.yml config
+      - name: Validate Oracle docker-compose configuration
+        run: docker compose -f docker-compose.oci.yml config
