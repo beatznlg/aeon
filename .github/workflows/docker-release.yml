@@ -89,7 +89,7 @@ jobs:
       # ── Build & push backend ──────────────────────────────────────────
       - name: Build & push backend
         id: build-backend
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: Dockerfile
@@ -105,7 +105,7 @@ jobs:
       # ── Build & push frontend ─────────────────────────────────────────
       - name: Build & push frontend
         id: build-frontend
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: web
           file: web/Dockerfile
