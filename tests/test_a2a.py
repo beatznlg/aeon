@@ -115,20 +115,44 @@ def test_agent_directory_and_prompt_block(manager: A2aManager):
     assert "Bot B (A2A): search, summarize" in block
 
 
-def test_routes_crud_and_delegation():
+class _FakePeerResponse:
+    """Minimal stand-in for a ``requests`` response from the remote peer."""
+
+    def __init__(self, status_code: int = 200, payload: dict | None = None):
+        self.status_code = status_code
+        self._payload = payload
+
+    def json(self) -> dict:
+        if self._payload is None:
+            raise ValueError("no JSON body")
+        return self._payload
+
+
+_PEER_AGENT_CARD = {
+    "name": "PeerBot",
+    "description": "A mocked remote A2A peer",
+    "protocolVersion": "0.3.0",
+    "skills": [{"name": "translate"}, {"name": "summarize"}],
+}
+
+
+def _jsonrpc_ok(payload: dict, result: dict) -> dict:
+    return {"jsonrpc": "2.0", "id": payload.get("id"), "result": result}
+
+
+def _build_a2a_app_with_fake_auth():
+    """Fresh Flask app with the A2A routes registered and auth bypassed.
+
+    The fake decorators inject ``g.user`` / ``g.workspace_id`` exactly like
+    the real ones, so the route handlers run unmodified.
+    """
     flask = pytest.importorskip("flask")
     app = flask.Flask(__name__)
     app.config["TESTING"] = True
 
-    import aeon_auth
-    from aeon_a2a_routes import register_a2a_routes
-
-    reset_a2a_manager()
-    with patch.dict("sys.modules", {}):
-        pass
-
-    # Bypass real auth: fake decorators that set g.workspace_id.
     from flask import g
+
+    import aeon_auth
 
     def fake_require_auth(fn):
         def wrapper(*args, **kwargs):
@@ -151,11 +175,17 @@ def test_routes_crud_and_delegation():
     ):
         import aeon_a2a_routes
         importlib.reload(aeon_a2a_routes)
-        register_a2a_routes(app)
+        aeon_a2a_routes.register_a2a_routes(app)
+    return app
 
+
+def test_routes_crud_and_delegation(tmp_path: Path):
+    app = _build_a2a_app_with_fake_auth()
     reset_a2a_manager()
-    import tempfile
-    with patch.object(aeon_a2a, "get_a2a_manager", lambda root=None: A2aManager(Path(tempfile.mkdtemp()))):
+
+    with patch.dict("os.environ", {"AEON_ROOT": str(tmp_path)}), patch(
+        "aeon_a2a.requests.post", return_value=_FakePeerResponse(500)
+    ):
         client = app.test_client()
 
         resp = client.get("/a2a/agents")
@@ -167,7 +197,7 @@ def test_routes_crud_and_delegation():
         agent_id = resp.get_json()["agent"]["id"]
 
         resp = client.post(f"/a2a/agents/{agent_id}/message", json={"message": {"content": "hola"}})
-        # Delegation to an unreachable peer is a structured failure (502), not a crash.
+        # Delegation to a failing peer is a structured failure (502), not a crash.
         assert resp.status_code == HTTPStatus.BAD_GATEWAY
         assert resp.get_json()["ok"] is False
 
@@ -191,3 +221,140 @@ def test_well_known_agent_card():
     card = resp.get_json()
     assert card["name"] == "AEON OS"
     assert "skills" in card
+
+
+def test_delegate_endpoint_with_mocked_peer(tmp_path: Path):
+    """Full HTTP round-trip against a mocked A2A peer: register, discover,
+    delegate via message/send and poll the task — verifying the outbound
+    JSON-RPC wire format and Bearer auth on the wire."""
+    pytest.importorskip("flask")
+    app = _build_a2a_app_with_fake_auth()
+    reset_a2a_manager()
+    client = app.test_client()
+
+    peer_url = "https://peer.example.com/a2a"
+
+    def fake_post(url, headers=None, json=None, timeout=None):
+        method = (json or {}).get("method")
+        if method == "message/send":
+            result = {"id": "task-777", "contextId": "ctx-1", "status": {"state": "completed"}}
+        elif method == "tasks/get":
+            result = {
+                "id": "task-777",
+                "status": {"state": "completed"},
+                "artifacts": [{"parts": [{"text": "hola traducido"}]}],
+            }
+        else:
+            result = {}
+        return _FakePeerResponse(200, _jsonrpc_ok(json or {}, result))
+
+    with patch.dict("os.environ", {"AEON_ROOT": str(tmp_path)}), patch(
+        "aeon_a2a.requests.post", side_effect=fake_post
+    ) as mock_post, patch(
+        "aeon_a2a.requests.get",
+        side_effect=lambda url, **kw: _FakePeerResponse(200, _PEER_AGENT_CARD),
+    ):
+        # Register the peer with an auth token.
+        resp = client.post(
+            "/a2a/agents",
+            json={"name": "PeerBot", "url": peer_url, "token": "topsecret-token-4321"},
+        )
+        assert resp.status_code == HTTPStatus.CREATED
+        agent_id = resp.get_json()["agent"]["id"]
+
+        # The raw token must never appear in API responses.
+        assert "topsecret-token-4321" not in json.dumps(client.get("/a2a/agents").get_json())
+
+        # Discovery: refresh pulls the peer's agent card.
+        resp = client.post(f"/a2a/agents/{agent_id}/refresh")
+        assert resp.status_code == HTTPStatus.OK
+        assert resp.get_json()["agent_card"]["name"] == "PeerBot"
+
+        # The cached card feeds the agent-facing directory.
+        entries = client.get("/a2a/agent-directory").get_json()["agents"]
+        assert entries[0]["skills"] == ["translate", "summarize"]
+
+        # Delegation over HTTP.
+        resp = client.post(
+            f"/a2a/agents/{agent_id}/message",
+            json={"message": {"content": "translate: hola"}},
+        )
+        assert resp.status_code == HTTPStatus.OK
+        body = resp.get_json()
+        assert body["ok"] is True
+        assert body["result"]["id"] == "task-777"
+        assert body["result"]["status"]["state"] == "completed"
+
+        # Task polling over HTTP.
+        resp = client.get(f"/a2a/agents/{agent_id}/tasks/task-777")
+        assert resp.status_code == HTTPStatus.OK
+        assert resp.get_json()["task"]["status"]["state"] == "completed"
+
+    # Outbound wire format: exactly one message/send, correct JSON-RPC shape,
+    # Bearer token attached, sent to the registered peer URL.
+    sends = [c for c in mock_post.call_args_list if c.kwargs["json"]["method"] == "message/send"]
+    assert len(sends) == 1
+    call = sends[0]
+    assert call.args[0] == peer_url
+    wire = call.kwargs["json"]
+    assert wire["jsonrpc"] == "2.0"
+    assert wire["method"] == "message/send"
+    assert wire["params"]["message"]["content"] == "translate: hola"
+    assert call.kwargs["headers"]["Authorization"] == "Bearer topsecret-token-4321"
+
+    reset_a2a_manager()
+
+
+def test_delegate_endpoint_breaker_trips_over_http(tmp_path: Path):
+    """After the failure threshold the delegate endpoint fails fast (502 with
+    a circuit-breaker error) without contacting the peer again."""
+    pytest.importorskip("flask")
+    app = _build_a2a_app_with_fake_auth()
+    reset_a2a_manager()
+    client = app.test_client()
+
+    with patch.dict("os.environ", {"AEON_ROOT": str(tmp_path)}), patch(
+        "aeon_a2a.requests.post", return_value=_FakePeerResponse(500)
+    ) as mock_post:
+        resp = client.post("/a2a/agents", json={"name": "FlakyBot", "url": "https://flaky.example.com"})
+        assert resp.status_code == HTTPStatus.CREATED
+        agent_id = resp.get_json()["agent"]["id"]
+
+        for _ in range(aeon_a2a._BREAKER_THRESHOLD):
+            resp = client.post(f"/a2a/agents/{agent_id}/message", json={"message": {"content": "hi"}})
+            assert resp.status_code == HTTPStatus.BAD_GATEWAY
+            assert resp.get_json()["ok"] is False
+
+        calls_at_threshold = mock_post.call_count
+
+        # Next call fails fast: the peer is not contacted again.
+        resp = client.post(f"/a2a/agents/{agent_id}/message", json={"message": {"content": "hi"}})
+        assert resp.status_code == HTTPStatus.BAD_GATEWAY
+        assert "circuit breaker" in resp.get_json()["error"]
+        assert mock_post.call_count == calls_at_threshold
+
+    reset_a2a_manager()
+
+
+def test_delegate_endpoint_validation_errors(tmp_path: Path):
+    """Blank message content → 400; unknown agent → 404 (delegate + poll)."""
+    pytest.importorskip("flask")
+    app = _build_a2a_app_with_fake_auth()
+    reset_a2a_manager()
+    client = app.test_client()
+
+    with patch.dict("os.environ", {"AEON_ROOT": str(tmp_path)}):
+        # Blank message content is rejected before any peer contact.
+        resp = client.post("/a2a/agents/whatever/message", json={"message": {"content": "   "}})
+        assert resp.status_code == HTTPStatus.BAD_REQUEST
+
+        # Unknown agent → 404 (delegation).
+        resp = client.post("/a2a/agents/nope/message", json={"message": {"content": "hi"}})
+        assert resp.status_code == HTTPStatus.NOT_FOUND
+        assert resp.get_json()["error"] == "agent not found"
+
+        # Unknown agent → 404 (task polling).
+        resp = client.get("/a2a/agents/nope/tasks/task-1")
+        assert resp.status_code == HTTPStatus.NOT_FOUND
+
+    reset_a2a_manager()
