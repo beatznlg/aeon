@@ -64,7 +64,7 @@ jobs:
       # ── Build tags ────────────────────────────────────────────────────
       - name: Docker metadata (backend)
         id: meta-backend
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ github.repository }}/${{ env.IMAGE_BACKEND }}
           tags: |
@@ -76,7 +76,7 @@ jobs:
 
       - name: Docker metadata (frontend)
         id: meta-frontend
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ github.repository }}/${{ env.IMAGE_FRONTEND }}
           tags: |
