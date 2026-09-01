@@ -1,6 +1,6 @@
 # AEON OS — Google Cloud Production Deployment
 
-AEON OS runs as a single full-stack production unit on Google Cloud Compute Engine: Next.js frontend, Flask API/kernel, PostgreSQL, Redis, Celery worker/Beat, and Caddy all run inside the GCP VM using Docker Compose.
+AEON OS runs as a **single full-stack production unit on Google Cloud Compute Engine**: Next.js frontend, Flask API/kernel, PostgreSQL, Redis, Celery worker/Beat, and Caddy all run inside the GCP VM using Docker Compose.
 
 ## Architecture
 
@@ -20,7 +20,7 @@ Only Caddy is publicly exposed. PostgreSQL, Redis, API, workers and frontend are
 
 ## Quick start
 
-1. Create an Ubuntu Compute Engine VM in Google Cloud.
+1. Create an Ubuntu Compute Engine VM in Google Cloud (e2-micro or larger; see the [free-tier runbook](docs/google-cloud-deployment.md) for the Always Free limits).
 2. Install Docker Engine and Docker Compose.
 3. Clone this repository to `/opt/aeon`.
 4. Create `/opt/aeon/.env` from `.env.gcp.example`.
@@ -32,6 +32,8 @@ Only Caddy is publicly exposed. PostgreSQL, Redis, API, workers and frontend are
 cd /opt/aeon
 bash scripts/deploy-gcp.sh
 ```
+
+The script handles the full cycle: database backup → pull latest `main` → `docker compose -f docker-compose.gcp.yml up -d --build` → service liveness checks → HTTP health gate with automatic rollback to the previous revision if the health check fails.
 
 ## Required environment variables
 

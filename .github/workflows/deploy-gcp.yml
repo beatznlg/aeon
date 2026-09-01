@@ -2,7 +2,8 @@ name: Deploy AEON to Google Cloud
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -17,18 +18,32 @@ jobs:
     name: Deploy to Google Compute Engine
     runs-on: ubuntu-latest
     timeout-minutes: 30
+
     steps:
-      - name: Validate deployment secrets
+      - name: Check required secrets are configured
         env:
           GCP_HOST: ${{ secrets.GCP_HOST }}
           GCP_USER: ${{ secrets.GCP_USER }}
           GCP_SSH_KEY: ${{ secrets.GCP_SSH_KEY }}
         run: |
           set -eu
-          for pair in "GCP_HOST:$GCP_HOST" "GCP_USER:$GCP_USER" "GCP_SSH_KEY:$GCP_SSH_KEY"; do
-            key="${pair%%:*}"; value="${pair#*:}"
-            test -n "$value" || { echo "::error::Missing repository secret $key"; exit 1; }
-          done
+          ok=1
+          check() {
+            if [ -z "$2" ]; then
+              echo "::error::Repository secret '$1' is not set. Add it under Settings → Secrets and variables → Actions."
+              ok=0
+            fi
+          }
+          check GCP_HOST     "$GCP_HOST"
+          check GCP_USER     "$GCP_USER"
+          check GCP_SSH_KEY  "$GCP_SSH_KEY"
+          if [ "$ok" -ne 1 ]; then
+            echo "Expected secrets:"
+            echo "  GCP_HOST    = external IP of the GCP VM (e.g. 34.121.10.20)"
+            echo "  GCP_USER    = SSH user on the VM (e.g. ubuntu)"
+            echo "  GCP_SSH_KEY = the PRIVATE key registered with the VM (full PEM, trailing newline)"
+            exit 1
+          fi
 
       - name: Deploy and verify
         uses: appleboy/ssh-action@v1.2.2
@@ -42,11 +57,9 @@ jobs:
           script: |
             set -eu
             APP_DIR=/opt/aeon
+            test -d "$APP_DIR/.git" || { echo "::error::$APP_DIR is not a git checkout — run scripts/deploy-gcp.sh on the VM first"; exit 1; }
             cd "$APP_DIR"
-            test -d .git || { echo "::error::$APP_DIR is not a Git checkout"; exit 1; }
-            test -f docker-compose.gcp.yml || { echo "::error::GCP Compose file missing"; exit 1; }
-            test -f .env || { echo "::error::Production .env missing"; exit 1; }
             bash scripts/deploy-gcp.sh
 
       - name: Report deployment
-        run: echo "AEON deployed to Google Cloud from ${GITHUB_SHA::7}"
+        run: echo "AEON deployed to Google Cloud VM ${GCP_HOST:+at $GCP_HOST} from ${GITHUB_SHA::7}"

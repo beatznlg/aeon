@@ -2,8 +2,8 @@
 AEON OS Phase 43 — Pluggable Storage Abstraction
 ================================================
 Provides a backend-agnostic file/object store so AEON can run statelessly
-in multi-node Kubernetes deployments. Supports local filesystem (dev) and
-S3-compatible object stores (production).
+in multi-node Kubernetes deployments. Supports local filesystem (dev),
+S3-compatible object stores and Google Cloud Storage (production).
 
 Usage:
     from aeon_storage import get_storage
@@ -152,14 +152,60 @@ class S3StorageBackend(StorageBackend):
         return keys
 
 
+class GCSStorageBackend(StorageBackend):
+    """Google Cloud Storage backend.
+
+    Credentials are resolved by google-auth in the standard order:
+    GOOGLE_APPLICATION_CREDENTIALS env var, gcloud ADC, or the GCE/metadata
+    server when running on a GCP VM.
+    """
+
+    def __init__(self, bucket: str, prefix: str = "") -> None:
+        from google.cloud import storage  # imported lazily: optional dependency
+
+        self.bucket_name = bucket
+        self.prefix = prefix.strip().rstrip("/")
+        self._client = storage.Client()
+        self._bucket = self._client.bucket(bucket)
+
+    def _key(self, key: str) -> str:
+        key = key.strip("/")
+        if not key or ".." in key:
+            raise ValueError(f"Invalid storage key: {key}")
+        if self.prefix:
+            return f"{self.prefix}/{key}"
+        return key
+
+    def read(self, key: str) -> bytes:
+        return self._bucket.blob(self._key(key)).download_as_bytes()
+
+    def write(self, key: str, data: bytes) -> None:
+        self._bucket.blob(self._key(key)).upload_from_string(data)
+
+    def delete(self, key: str) -> None:
+        self._bucket.blob(self._key(key)).delete()
+
+    def exists(self, key: str) -> bool:
+        return self._bucket.blob(self._key(key)).exists()
+
+    def list_prefix(self, prefix: str) -> list[str]:
+        gcs_prefix = self._key(prefix)
+        return [
+            blob.name[len(self.prefix) + 1:] if self.prefix else blob.name
+            for blob in self._client.list_blobs(self.bucket_name, prefix=gcs_prefix)
+        ]
+
+
 def get_storage() -> StorageBackend:
     """Return the configured storage backend.
 
     Environment variables:
-      AEON_STORAGE_BACKEND: "local" (default) or "s3"
+      AEON_STORAGE_BACKEND: "local" (default), "s3" or "gcs"
       AEON_ROOT: root directory for local backend
       AEON_S3_BUCKET, AEON_S3_PREFIX, AEON_S3_REGION, AEON_S3_ENDPOINT_URL,
       AEON_S3_ACCESS_KEY_ID, AEON_S3_SECRET_ACCESS_KEY
+      AEON_GCS_BUCKET, AEON_GCS_PREFIX;
+      GOOGLE_APPLICATION_CREDENTIALS points at the service-account JSON key.
     """
     backend = os.environ.get("AEON_STORAGE_BACKEND", "local").lower()
     if backend == "s3":
@@ -170,6 +216,11 @@ def get_storage() -> StorageBackend:
             endpoint_url=os.environ.get("AEON_S3_ENDPOINT_URL"),
             access_key_id=os.environ.get("AEON_S3_ACCESS_KEY_ID"),
             secret_access_key=os.environ.get("AEON_S3_SECRET_ACCESS_KEY"),
+        )
+    if backend == "gcs":
+        return GCSStorageBackend(
+            bucket=os.environ["AEON_GCS_BUCKET"],
+            prefix=os.environ.get("AEON_GCS_PREFIX", ""),
         )
     if backend == "local":
         root = os.environ.get("AEON_ROOT", "./aeon_state")

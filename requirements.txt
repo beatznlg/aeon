@@ -12,17 +12,32 @@ sqlalchemy>=2.0
 psycopg2-binary>=2.9
 pyjwt>=2.10
 werkzeug>=3.1
+
+# --- caching / rate limiting ---
 redis>=5.2
+
+# --- scheduled automations ---
 croniter>=5.0
 celery[redis]>=5.4
+
+# --- object storage (Phase 43) ---
+# boto3: S3-compatible backends; google-cloud-storage: GCS backend
+# (only required when AEON_STORAGE_BACKEND=gcs)
 boto3>=1.35
+google-cloud-storage>=2.14
+
 alembic>=1.14
+
+# --- enterprise identity (Phase 44) ---
 joserfc>=1.2
+# python3-saml>=1.15  # optional; requires libxmlsec1 system package
+
 # LLM / embeddings
 transformers>=4.48
 sentence-transformers>=3.3
 torch
 accelerate
 bitsandbytes
+
 # Optional provider/web3 integrations remain application-optional
 web3>=7.6
