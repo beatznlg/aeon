@@ -8,7 +8,12 @@ RUN npm ci
 
 FROM node:20-slim AS builder
 WORKDIR /app
-ENV AEON_DOCKER_BUILD=1 \
+# Auth.js throws at module load when the secret is < 32 chars during the
+# production build's page-data collection. A placeholder lets the image build
+# anywhere (Cloud Build has no secrets); the real AUTH_SECRET is injected at
+# runtime by Cloud Run / compose and overrides this image-level ENV.
+ARG AUTH_SECRET=build-time-only-placeholder-secret-0123456789abcdef
+ENV AUTH_SECRET=$AUTH_SECRET \
     NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
