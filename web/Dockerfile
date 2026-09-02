@@ -13,8 +13,13 @@ WORKDIR /app
 # anywhere (Cloud Build has no secrets); the real AUTH_SECRET is injected at
 # runtime by Cloud Run / compose and overrides this image-level ENV.
 ARG AUTH_SECRET=build-time-only-placeholder-secret-0123456789abcdef
+# AEON_BUILD_CPUS: 8-vCPU Cloud Build machines prerender ~60 routes ~4x
+# faster than the single-CPU default; next.config.js reads this at build
+# time. Local compose builds keep the 1-CPU default via this ARG.
+ARG AEON_BUILD_CPUS=1
 ENV AUTH_SECRET=$AUTH_SECRET \
-    NEXT_TELEMETRY_DISABLED=1
+    NEXT_TELEMETRY_DISABLED=1 \
+    AEON_BUILD_CPUS=$AEON_BUILD_CPUS
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run build

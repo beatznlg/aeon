@@ -55,6 +55,9 @@ steps:
       - |
         python -m pip install --upgrade pip
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        # pytest lives in requirements-dev.txt, not requirements.txt — without
+        # this the quality gate below fails on its very first run.
+        if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
         if [ -d tests ]; then python -m pytest -q; fi
 
   - id: build-backend
@@ -71,6 +74,9 @@ steps:
       - build
       - -t
       - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/aeon-frontend:$COMMIT_SHA
+      # Prerender ~60 routes on 4 of the 8 builder CPUs (Dockerfile default is 1).
+      - --build-arg
+      - AEON_BUILD_CPUS=4
       - -f
       - web/Dockerfile
       - web
