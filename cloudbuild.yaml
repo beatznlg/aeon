@@ -148,7 +148,11 @@ images:
   - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/aeon-backend:$COMMIT_SHA
   - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/aeon-frontend:$COMMIT_SHA
 
-timeout: 1800s
+timeout: 3600s
 
 options:
+  # torch (~900 MB) + transformers install and the 60-route Next.js build
+  # do not fit comfortably in the default 2-vCPU machine within 30 min.
+  # E2_HIGHCPU_8 costs only for the build duration and cuts build time ~4x.
+  machineType: E2_HIGHCPU_8
   logging: CLOUD_LOGGING_ONLY
