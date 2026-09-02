@@ -2,7 +2,7 @@
 # Install with: pip install -r requirements-dev.txt
 
 # Testing
-pytest>=7.0
+pytest>=9.1.1
 pytest-flask>=1.2.0
 
 # Linting / formatting
