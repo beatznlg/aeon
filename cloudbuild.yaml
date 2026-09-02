@@ -24,6 +24,12 @@
 # After that, every push to main from anywhere (including Freebuff) builds,
 # tests, and deploys the new images to Cloud Run automatically.
 #
+# Fastest path — run the idempotent one-shot script from Cloud Shell:
+#   sh scripts/setup-gcp-cicd.sh
+# It enables APIs, grants roles, fixes the push trigger (no manual approval,
+# correct service account), waits for the first build, and wires up aeon-web
+# env vars. After it succeeds once, pushes to main deploy on their own.
+#
 # Manual one-off run: COMMIT_SHA is only auto-set for trigger builds, so pass
 # it explicitly when submitting by hand:
 #   gcloud builds submit --config cloudbuild.yaml \
@@ -116,8 +122,17 @@ steps:
           --image ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/aeon-frontend:$COMMIT_SHA \
           --region ${_REGION} \
           --quiet
+        echo "Waiting for frontend to respond..."
         URL=$(gcloud run services describe ${_FRONTEND_SERVICE} --region ${_REGION} --format='value(status.url)')
-        curl -fsS "$URL/api/health" >/dev/null && echo "Frontend responding."
+        for i in $(seq 1 30); do
+          if curl -fsS "$URL/api/health" >/dev/null 2>&1; then
+            echo "Frontend responding after $i attempts."
+            exit 0
+          fi
+          sleep 5
+        done
+        echo "::error::Frontend health gate failed after 150s — rollout will be marked failed." >&2
+        exit 1
 
   - id: report
     name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
