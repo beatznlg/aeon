@@ -13,7 +13,18 @@
 set -eu
 
 REPO_URL="${1:-https://github.com/beatznlg/aeon.git}"
-APP_DIR="${AEON_APP_DIR:-/opt/aeon}"
+# Default install location is /opt/aeon. When running from an existing checkout
+# (e.g. Cloud Shell: ~/aeon), the repo dir is auto-detected so the script works
+# from anywhere:  sh scripts/deploy-gcp.sh   (from the repo root)
+APP_DIR="${AEON_APP_DIR:-}"
+if [ -z "$APP_DIR" ]; then
+  _script_dir="$(cd "$(dirname "$0")" && pwd)"
+  if [ -f "$_script_dir/../.git/config" ] || [ -d "$_script_dir/../.git" ]; then
+    APP_DIR="$(cd "$_script_dir/.." && pwd)"
+  else
+    APP_DIR="/opt/aeon"
+  fi
+fi
 BRANCH="${AEON_BRANCH:-main}"
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.gcp.yml}"
 BACKUP_KEEP="${AEON_BACKUP_KEEP:-14}"
@@ -44,6 +55,11 @@ fi
 
 # ── Code ────────────────────────────────────────────────────────────────
 if [ ! -d "$APP_DIR/.git" ]; then
+  if [ "$(id -u)" != "0" ] && [ ! -w "$(dirname "$APP_DIR")" ]; then
+    echo "Creating $APP_DIR (requires sudo)..."
+    sudo mkdir -p "$APP_DIR"
+    sudo chown "$(id -un)":"$(id -gn)" "$APP_DIR"
+  fi
   echo "Cloning repository..."
   git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$APP_DIR"
 fi

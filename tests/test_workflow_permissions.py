@@ -9,7 +9,6 @@ WORKFLOW_DIR = Path(__file__).resolve().parents[1] / ".github" / "workflows"
 READ_ONLY_WORKFLOWS = (
     "aeon-ci.yml",
     "docker-ci.yml",
-    "deploy-gcp.yml",
     "quality-gate.yml",
 )
 

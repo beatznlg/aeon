@@ -1,13 +1,41 @@
 # Google Cloud Build pipeline for AEON OS.
-# Configure a GitHub trigger for the main branch after connecting the repository.
-# Images are stored in Artifact Registry. Production deployment should promote
-# only after the repository production gate and runtime verification pass.
+#
+# Wire-up (one time, from Cloud Shell in your GCP project):
+#   1. Enable APIs and create the Artifact Registry repo:
+#        gcloud services enable cloudbuild.googleapis.com run.googleapis.com \
+#          artifactregistry.googleapis.com sqladmin.googleapis.com
+#        gcloud artifacts repositories create aeon \
+#          --repository-format=docker --location=europe-west1
+#
+#   2. Connect the GitHub repo + create the push trigger:
+#        gcloud builds triggers create github \
+#          --name aeon-main \
+#          --repo-name aeon --repo-owner beatznlg \
+#          --branch-pattern '^main$' \
+#          --build-config cloudbuild.yaml
+#
+#   3. Grant the Cloud Build service account the roles it needs:
+#        PROJECT_NUMBER=$(gcloud projects describe $(gcloud config get-value project) --format='value(projectNumber)')
+#        for ROLE in roles/run.admin roles/iam.serviceAccountUser roles/artifactregistry.writer; do
+#          gcloud projects add-iam-policy-binding $(gcloud config get-value project) \
+#            --member "serviceAccount:$PROJECT_NUMBER@cloudbuild.gserviceaccount.com" --role "$ROLE"
+#        done
+#
+# After that, every push to main from anywhere (including Freebuff) builds,
+# tests, and deploys the new images to Cloud Run automatically.
+#
+# The deploy steps do NOT touch service-level environment variables, Cloud SQL
+# connections, or service accounts — they only roll out the new image revision,
+# so existing production configuration is preserved.
 
 substitutions:
   _REGION: europe-west1
   _REPOSITORY: aeon
+  _BACKEND_SERVICE: aeon-api
+  _FRONTEND_SERVICE: aeon-web
 
 steps:
+  # ── Quality gates ─────────────────────────────────────────────────────
   - id: test-backend
     name: python:3.12-slim
     entrypoint: bash
@@ -48,9 +76,59 @@ steps:
       - push
       - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/aeon-frontend:$COMMIT_SHA
 
+  # ── Deploy (Cloud Run) ────────────────────────────────────────────────
+  # Only the image changes; env vars, Cloud SQL instances, service accounts,
+  # and ingress settings on the existing services are untouched.
+  - id: deploy-backend
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        gcloud run deploy ${_BACKEND_SERVICE} \
+          --image ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/aeon-backend:$COMMIT_SHA \
+          --region ${_REGION} \
+          --quiet
+        echo "Waiting for backend to become healthy..."
+        URL=$(gcloud run services describe ${_BACKEND_SERVICE} --region ${_REGION} --format='value(status.url)')
+        for i in $(seq 1 30); do
+          if curl -fsS "$URL/health" | grep -q '"ok":true'; then
+            echo "Backend healthy after $i attempts."
+            exit 0
+          fi
+          sleep 5
+        done
+        echo "::error::Backend health gate failed after 150s — rollout will be marked failed." >&2
+        exit 1
+
+  - id: deploy-frontend
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        gcloud run deploy ${_FRONTEND_SERVICE} \
+          --image ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/aeon-frontend:$COMMIT_SHA \
+          --region ${_REGION} \
+          --quiet
+        URL=$(gcloud run services describe ${_FRONTEND_SERVICE} --region ${_REGION} --format='value(status.url)')
+        curl -fsS "$URL/api/health" >/dev/null && echo "Frontend responding."
+
+  - id: report
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        echo "AEON deployed from commit ${COMMIT_SHA:0:7}"
+        echo "Backend:  $(gcloud run services describe ${_BACKEND_SERVICE} --region ${_REGION} --format='value(status.url)')"
+        echo "Frontend: $(gcloud run services describe ${_FRONTEND_SERVICE} --region ${_REGION} --format='value(status.url)')"
+
 images:
   - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/aeon-backend:$COMMIT_SHA
   - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/aeon-frontend:$COMMIT_SHA
+
+timeout: 1800s
 
 options:
   logging: CLOUD_LOGGING_ONLY
