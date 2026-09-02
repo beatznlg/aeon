@@ -24,6 +24,11 @@
 # After that, every push to main from anywhere (including Freebuff) builds,
 # tests, and deploys the new images to Cloud Run automatically.
 #
+# Manual one-off run: COMMIT_SHA is only auto-set for trigger builds, so pass
+# it explicitly when submitting by hand:
+#   gcloud builds submit --config cloudbuild.yaml \
+#     --substitutions COMMIT_SHA=$(git rev-parse HEAD) .
+#
 # The deploy steps do NOT touch service-level environment variables, Cloud SQL
 # connections, or service accounts — they only roll out the new image revision,
 # so existing production configuration is preserved.
