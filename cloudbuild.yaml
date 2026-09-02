@@ -105,6 +105,7 @@ steps:
         gcloud run deploy ${_BACKEND_SERVICE} \
           --image ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/aeon-backend:$COMMIT_SHA \
           --region ${_REGION} \
+          --allow-unauthenticated \
           --quiet
         echo "Waiting for backend to become healthy..."
         URL=$(gcloud run services describe ${_BACKEND_SERVICE} --region ${_REGION} --format='value(status.url)')
@@ -124,9 +125,13 @@ steps:
     args:
       - -ceu
       - |
+        # --allow-unauthenticated is critical on FIRST deploy: a newly created
+        # service otherwise defaults to authenticated-only (403 for everyone,
+        # including the health gate below and every dashboard user).
         gcloud run deploy ${_FRONTEND_SERVICE} \
           --image ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/aeon-frontend:$COMMIT_SHA \
           --region ${_REGION} \
+          --allow-unauthenticated \
           --quiet
         echo "Waiting for frontend to respond..."
         URL=$(gcloud run services describe ${_FRONTEND_SERVICE} --region ${_REGION} --format='value(status.url)')

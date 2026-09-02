@@ -108,7 +108,9 @@ esac
 
 if [ -z "$PASSWORD" ]; then
   GENERATED=1
-  PASSWORD=$(openssl rand -base64 18)
+  # hex (not base64): no '=', '+', or '/' — safe inside the comma-separated
+  # --update-env-vars list below.
+  PASSWORD=$(openssl rand -hex 16)
 fi
 [ "${#PASSWORD}" -ge 8 ] || {
   echo "ERROR: password must be at least 8 characters" >&2; exit 1
