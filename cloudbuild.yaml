@@ -44,6 +44,9 @@ substitutions:
   _REPOSITORY: aeon
   _BACKEND_SERVICE: aeon-api
   _FRONTEND_SERVICE: aeon-web
+  # Email for the auto-created dashboard admin on first deploy. The password
+  # is generated randomly and printed ONCE in the first build log.
+  _ADMIN_EMAIL: beatznlg@gmail.com
 
 steps:
   # ── Quality gates ─────────────────────────────────────────────────────
@@ -144,6 +147,53 @@ steps:
         done
         echo "::error::Frontend health gate failed after 150s — rollout will be marked failed." >&2
         exit 1
+
+  - id: seed-admin
+    # Zero-touch dashboard admin bootstrap on the FIRST deploy. Skipped once
+    # AEON_ADMIN_EMAIL exists on the service, so later deploys never rotate a
+    # password the owner already knows. Re-seed manually any time with
+    # scripts/seed-admin-gcp.sh from Cloud Shell.
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        if gcloud run services describe ${_BACKEND_SERVICE} --region ${_REGION} \
+            --format='value(spec.template.spec.containers[0].env)' 2>/dev/null \
+            | grep -q 'AEON_ADMIN_EMAIL'; then
+          echo "AEON_ADMIN_EMAIL already configured — skipping admin bootstrap."
+          exit 0
+        fi
+        ADMIN_EMAIL='${_ADMIN_EMAIL}'
+        ADMIN_PASSWORD=$(python3 -c 'import secrets; print(secrets.token_hex(16))')
+        echo "Bootstrapping dashboard admin: ${ADMIN_EMAIL}"
+        gcloud run services update ${_BACKEND_SERVICE} --region ${_REGION} \
+          --update-env-vars "AEON_ADMIN_EMAIL=${ADMIN_EMAIL},AEON_ADMIN_PASSWORD=${ADMIN_PASSWORD},AEON_ADMIN_RESET_PASSWORD=true" \
+          --quiet
+        gcloud run services wait ${_BACKEND_SERVICE} --region ${_REGION} --quiet || true
+        gcloud run services update ${_BACKEND_SERVICE} --region ${_REGION} \
+          --remove-env-vars AEON_ADMIN_RESET_PASSWORD --quiet
+        gcloud run services wait ${_BACKEND_SERVICE} --region ${_REGION} --quiet || true
+        URL=$(gcloud run services describe ${_BACKEND_SERVICE} --region ${_REGION} --format='value(status.url)')
+        LOGIN_CODE=000
+        for i in $(seq 1 24); do
+          LOGIN_CODE=$(curl -s -o /dev/null -w '%{http_code}' -m 10 \
+            -H 'Content-Type: application/json' \
+            -d "{\"email\":\"${ADMIN_EMAIL}\",\"password\":\"${ADMIN_PASSWORD}\"}" \
+            "$URL/auth/login" || echo 000)
+          [ "$LOGIN_CODE" = "200" ] && break
+          sleep 5
+        done
+        echo "=========================================================="
+        echo " AEON dashboard admin account:"
+        echo "   email:    ${ADMIN_EMAIL}"
+        echo "   password: ${ADMIN_PASSWORD}"
+        echo " Shown once in this build log. If the login check did not"
+        echo " pass, re-run scripts/seed-admin-gcp.sh from Cloud Shell."
+        echo "=========================================================="
+        if [ "$LOGIN_CODE" != "200" ]; then
+          echo "::warning::admin login check returned ${LOGIN_CODE} — verify manually"
+        fi
 
   - id: report
     name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
