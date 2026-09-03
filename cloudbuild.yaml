@@ -25,6 +25,15 @@
 #       invalid value for 'build.substitutions': key in the template "URL"
 #       is not a valid built-in substitution
 #
+# ── NO CURL, NO HEREDOCS ───────────────────────────────────────────────────
+# • cloudsdktool/cloud-sdk:slim ships no curl binary — any curl-based gate
+#   fails with non-zero status even after a successful deploy. HTTP checks
+#   below use python3 (which the image includes).
+# • Bash heredocs cannot be embedded in YAML block scalars (their column-0
+#   content terminates the scalar and corrupts the file). Multi-line python
+#   is passed via `python3 -c "..."` with values handed over through
+#   environment variables instead of string interpolation.
+#
 # The deploy steps do NOT touch Cloud SQL instances or service accounts —
 # they roll out new image revisions and merge environment variables
 # (--update-env-vars never removes existing keys).
@@ -88,7 +97,8 @@ steps:
 
   # ── Deploy (Cloud Run) ────────────────────────────────────────────────
   # Only the image changes; existing env vars, Cloud SQL connections, and
-  # service accounts on the services are preserved.
+  # service accounts on the services are preserved. `gcloud run services
+  # wait` blocks until the new revision is Ready (startup probes passed).
   - id: deploy-backend
     name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
     entrypoint: bash
@@ -100,16 +110,17 @@ steps:
           --region ${_REGION} \
           --allow-unauthenticated \
           --quiet
-        echo "Waiting for backend to become healthy..."
+        echo "Waiting for the new backend revision to become Ready..."
+        gcloud run services wait ${_BACKEND_SERVICE} --region ${_REGION} --quiet
         URL=$$(gcloud run services describe ${_BACKEND_SERVICE} --region ${_REGION} --format='value(status.url)')
         for i in $$(seq 1 30); do
-          if curl -fsS "$$URL/health" | grep -q '"ok":true'; then
-            echo "Backend healthy after $$i attempts."
+          if python3 -c "import urllib.request as u,sys; sys.exit(0 if u.urlopen('$${URL}/health',timeout=10).status==200 else 1)" 2>/dev/null; then
+            echo "Backend healthy after $$i attempt(s)."
             exit 0
           fi
           sleep 5
         done
-        echo "::error::Backend health gate failed after 150s — rollout will be marked failed." >&2
+        echo "::error::Backend health gate failed after 150s." >&2
         exit 1
 
   - id: deploy-frontend
@@ -126,16 +137,17 @@ steps:
           --region ${_REGION} \
           --allow-unauthenticated \
           --quiet
-        echo "Waiting for frontend to respond..."
+        echo "Waiting for the new frontend revision to become Ready..."
+        gcloud run services wait ${_FRONTEND_SERVICE} --region ${_REGION} --quiet
         URL=$$(gcloud run services describe ${_FRONTEND_SERVICE} --region ${_REGION} --format='value(status.url)')
         for i in $$(seq 1 30); do
-          if curl -fsS "$$URL/api/health" >/dev/null 2>&1; then
-            echo "Frontend responding after $$i attempts."
+          if python3 -c "import urllib.request as u,sys; sys.exit(0 if u.urlopen('$${URL}/api/health',timeout=10).status==200 else 1)" 2>/dev/null; then
+            echo "Frontend responding after $$i attempt(s)."
             exit 0
           fi
           sleep 5
         done
-        echo "::error::Frontend health gate failed after 150s — rollout will be marked failed." >&2
+        echo "::error::Frontend health gate failed after 150s." >&2
         exit 1
 
   - id: wire-frontend-env
@@ -192,15 +204,24 @@ steps:
           --remove-env-vars AEON_ADMIN_RESET_PASSWORD --quiet
         gcloud run services wait ${_BACKEND_SERVICE} --region ${_REGION} --quiet || true
         URL=$$(gcloud run services describe ${_BACKEND_SERVICE} --region ${_REGION} --format='value(status.url)')
-        LOGIN_CODE=000
-        for i in $$(seq 1 24); do
-          LOGIN_CODE=$$(curl -s -o /dev/null -w '%{http_code}' -m 10 \
-            -H 'Content-Type: application/json' \
-            -d "{\"email\":\"$${ADMIN_EMAIL}\",\"password\":\"$${ADMIN_PASSWORD}\"}" \
-            "$$URL/auth/login" || echo 000)
-          [ "$$LOGIN_CODE" = "200" ] && break
-          sleep 5
-        done
+        export AEON_URL="$$URL" AEON_EM="$${ADMIN_EMAIL}" AEON_PW="$${ADMIN_PASSWORD}"
+        LOGIN_CODE=$$(python3 -c "import json,os,time,urllib.request as u,urllib.error as e
+        code = 0
+        for attempt in range(24):
+            try:
+                req = u.Request(os.environ['AEON_URL'].rstrip('/') + '/auth/login',
+                                data=json.dumps({'email': os.environ['AEON_EM'], 'password': os.environ['AEON_PW']}).encode(),
+                                headers={'Content-Type': 'application/json'})
+                code = u.urlopen(req, timeout=10).status
+                break
+            except e.HTTPError as exc:
+                code = exc.code
+                if code in (400, 401, 403):
+                    break
+            except Exception:
+                pass
+            time.sleep(5)
+        print(code)" 2>/dev/null || echo 000)
         echo "=========================================================="
         echo " AEON dashboard admin account:"
         echo "   email:    $${ADMIN_EMAIL}"
