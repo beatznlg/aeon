@@ -233,4 +233,5 @@ options:
   # do not fit comfortably in the default 2-vCPU machine within 30 min.
   # E2_HIGHCPU_8 costs only for the build duration and cuts build time ~4x.
   machineType: E2_HIGHCPU_8
-  logging: CLOUD_LOGGING_ONLY
+  # logging stays at the default (GCS + Cloud Logging): CLOUD_LOGGING_ONLY
+  # would silence `gcloud builds submit` streaming, which looks like a hang.
