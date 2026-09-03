@@ -1,43 +1,33 @@
 # Google Cloud Build pipeline for AEON OS.
 #
 # Wire-up (one time, from Cloud Shell in your GCP project):
-#   1. Enable APIs and create the Artifact Registry repo:
-#        gcloud services enable cloudbuild.googleapis.com run.googleapis.com \
-#          artifactregistry.googleapis.com sqladmin.googleapis.com
-#        gcloud artifacts repositories create aeon \
-#          --repository-format=docker --location=europe-west1
-#
-#   2. Connect the GitHub repo + create the push trigger:
-#        gcloud builds triggers create github \
-#          --name aeon-main \
-#          --repo-name aeon --repo-owner beatznlg \
-#          --branch-pattern '^main$' \
-#          --build-config cloudbuild.yaml
-#
-#   3. Grant the Cloud Build service account the roles it needs:
-#        PROJECT_NUMBER=$(gcloud projects describe $(gcloud config get-value project) --format='value(projectNumber)')
-#        for ROLE in roles/run.admin roles/iam.serviceAccountUser roles/artifactregistry.writer; do
-#          gcloud projects add-iam-policy-binding $(gcloud config get-value project) \
-#            --member "serviceAccount:$PROJECT_NUMBER@cloudbuild.gserviceaccount.com" --role "$ROLE"
-#        done
-#
-# After that, every push to main from anywhere (including Freebuff) builds,
-# tests, and deploys the new images to Cloud Run automatically.
-#
-# Fastest path — run the idempotent one-shot script from Cloud Shell:
 #   sh scripts/setup-gcp-cicd.sh
 # It enables APIs, grants roles, fixes the push trigger (no manual approval,
-# correct service account), waits for the first build, and wires up aeon-web
-# env vars. After it succeeds once, pushes to main deploy on their own.
+# correct service account), and verifies the deployment. After it succeeds
+# once, every push to main builds, tests, and deploys both services
+# automatically — including the dashboard admin bootstrap and the aeon-web
+# environment wiring.
 #
 # Manual one-off run: COMMIT_SHA is only auto-set for trigger builds, so pass
 # it explicitly when submitting by hand:
 #   gcloud builds submit --config cloudbuild.yaml \
 #     --substitutions COMMIT_SHA=$(git rev-parse HEAD) .
 #
-# The deploy steps do NOT touch service-level environment variables, Cloud SQL
-# connections, or service accounts — they only roll out the new image revision,
-# so existing production configuration is preserved.
+# ── '$' ESCAPING RULE (read before editing the step scripts) ────────────────
+# Cloud Build performs substitution on EVERY string in this file, including
+# the bash scripts embedded in `args`. Therefore:
+#   • Genuine build substitutions stay unescaped: $PROJECT_ID, $COMMIT_SHA,
+#     ${_REGION}, ${_REPOSITORY}, ${_BACKEND_SERVICE}, ${_FRONTEND_SERVICE},
+#     ${_ADMIN_EMAIL}.
+#   • Every literal '$' that bash must see at runtime is written as '$$' —
+#     Cloud Build unescapes '$$' to '$' after substitution. A bare '$URL' or
+#     '$i' would fail validation with:
+#       invalid value for 'build.substitutions': key in the template "URL"
+#       is not a valid built-in substitution
+#
+# The deploy steps do NOT touch Cloud SQL instances or service accounts —
+# they roll out new image revisions and merge environment variables
+# (--update-env-vars never removes existing keys).
 
 substitutions:
   _REGION: europe-west1
@@ -97,8 +87,8 @@ steps:
       - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/aeon-frontend:$COMMIT_SHA
 
   # ── Deploy (Cloud Run) ────────────────────────────────────────────────
-  # Only the image changes; env vars, Cloud SQL instances, service accounts,
-  # and ingress settings on the existing services are untouched.
+  # Only the image changes; existing env vars, Cloud SQL connections, and
+  # service accounts on the services are preserved.
   - id: deploy-backend
     name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
     entrypoint: bash
@@ -111,10 +101,10 @@ steps:
           --allow-unauthenticated \
           --quiet
         echo "Waiting for backend to become healthy..."
-        URL=$(gcloud run services describe ${_BACKEND_SERVICE} --region ${_REGION} --format='value(status.url)')
-        for i in $(seq 1 30); do
-          if curl -fsS "$URL/health" | grep -q '"ok":true'; then
-            echo "Backend healthy after $i attempts."
+        URL=$$(gcloud run services describe ${_BACKEND_SERVICE} --region ${_REGION} --format='value(status.url)')
+        for i in $$(seq 1 30); do
+          if curl -fsS "$$URL/health" | grep -q '"ok":true'; then
+            echo "Backend healthy after $$i attempts."
             exit 0
           fi
           sleep 5
@@ -137,16 +127,43 @@ steps:
           --allow-unauthenticated \
           --quiet
         echo "Waiting for frontend to respond..."
-        URL=$(gcloud run services describe ${_FRONTEND_SERVICE} --region ${_REGION} --format='value(status.url)')
-        for i in $(seq 1 30); do
-          if curl -fsS "$URL/api/health" >/dev/null 2>&1; then
-            echo "Frontend responding after $i attempts."
+        URL=$$(gcloud run services describe ${_FRONTEND_SERVICE} --region ${_REGION} --format='value(status.url)')
+        for i in $$(seq 1 30); do
+          if curl -fsS "$$URL/api/health" >/dev/null 2>&1; then
+            echo "Frontend responding after $$i attempts."
             exit 0
           fi
           sleep 5
         done
         echo "::error::Frontend health gate failed after 150s — rollout will be marked failed." >&2
         exit 1
+
+  - id: wire-frontend-env
+    # Point the dashboard at the backend and give Auth.js its settings.
+    # --update-env-vars merges; unrelated existing env vars are preserved.
+    # AUTH_SECRET is generated only if none is set, so redeploys never rotate
+    # it (rotating would sign out every existing session).
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        API_URL=$$(gcloud run services describe ${_BACKEND_SERVICE} --region ${_REGION} --format='value(status.url)')
+        WEB_URL=$$(gcloud run services describe ${_FRONTEND_SERVICE} --region ${_REGION} --format='value(status.url)')
+        CURRENT=$$(gcloud run services describe ${_FRONTEND_SERVICE} --region ${_REGION} \
+          --format='value(spec.template.spec.containers[0].env)')
+        ENV_UPDATE="AEON_PYTHON_URL=$${API_URL},NEXTAUTH_URL=$${WEB_URL},AUTH_TRUST_HOST=true"
+        case "$$CURRENT" in
+          *AUTH_SECRET*)
+            echo "AUTH_SECRET already set — left untouched." ;;
+          *)
+            AUTH_SECRET=$$(python3 -c 'import secrets; print(secrets.token_hex(32))')
+            ENV_UPDATE="$$ENV_UPDATE,AUTH_SECRET=$$AUTH_SECRET"
+            echo "Generated a new AUTH_SECRET (none was set)." ;;
+        esac
+        gcloud run services update ${_FRONTEND_SERVICE} --region ${_REGION} \
+          --update-env-vars "$$ENV_UPDATE" --quiet
+        echo "aeon-web env wired: AEON_PYTHON_URL, NEXTAUTH_URL, AUTH_TRUST_HOST (+ AUTH_SECRET if new)"
 
   - id: seed-admin
     # Zero-touch dashboard admin bootstrap on the FIRST deploy. Skipped once
@@ -165,34 +182,34 @@ steps:
           exit 0
         fi
         ADMIN_EMAIL='${_ADMIN_EMAIL}'
-        ADMIN_PASSWORD=$(python3 -c 'import secrets; print(secrets.token_hex(16))')
-        echo "Bootstrapping dashboard admin: ${ADMIN_EMAIL}"
+        ADMIN_PASSWORD=$$(python3 -c 'import secrets; print(secrets.token_hex(16))')
+        echo "Bootstrapping dashboard admin: $${ADMIN_EMAIL}"
         gcloud run services update ${_BACKEND_SERVICE} --region ${_REGION} \
-          --update-env-vars "AEON_ADMIN_EMAIL=${ADMIN_EMAIL},AEON_ADMIN_PASSWORD=${ADMIN_PASSWORD},AEON_ADMIN_RESET_PASSWORD=true" \
+          --update-env-vars "AEON_ADMIN_EMAIL=$${ADMIN_EMAIL},AEON_ADMIN_PASSWORD=$${ADMIN_PASSWORD},AEON_ADMIN_RESET_PASSWORD=true" \
           --quiet
         gcloud run services wait ${_BACKEND_SERVICE} --region ${_REGION} --quiet || true
         gcloud run services update ${_BACKEND_SERVICE} --region ${_REGION} \
           --remove-env-vars AEON_ADMIN_RESET_PASSWORD --quiet
         gcloud run services wait ${_BACKEND_SERVICE} --region ${_REGION} --quiet || true
-        URL=$(gcloud run services describe ${_BACKEND_SERVICE} --region ${_REGION} --format='value(status.url)')
+        URL=$$(gcloud run services describe ${_BACKEND_SERVICE} --region ${_REGION} --format='value(status.url)')
         LOGIN_CODE=000
-        for i in $(seq 1 24); do
-          LOGIN_CODE=$(curl -s -o /dev/null -w '%{http_code}' -m 10 \
+        for i in $$(seq 1 24); do
+          LOGIN_CODE=$$(curl -s -o /dev/null -w '%{http_code}' -m 10 \
             -H 'Content-Type: application/json' \
-            -d "{\"email\":\"${ADMIN_EMAIL}\",\"password\":\"${ADMIN_PASSWORD}\"}" \
-            "$URL/auth/login" || echo 000)
-          [ "$LOGIN_CODE" = "200" ] && break
+            -d "{\"email\":\"$${ADMIN_EMAIL}\",\"password\":\"$${ADMIN_PASSWORD}\"}" \
+            "$$URL/auth/login" || echo 000)
+          [ "$$LOGIN_CODE" = "200" ] && break
           sleep 5
         done
         echo "=========================================================="
         echo " AEON dashboard admin account:"
-        echo "   email:    ${ADMIN_EMAIL}"
-        echo "   password: ${ADMIN_PASSWORD}"
+        echo "   email:    $${ADMIN_EMAIL}"
+        echo "   password: $${ADMIN_PASSWORD}"
         echo " Shown once in this build log. If the login check did not"
         echo " pass, re-run scripts/seed-admin-gcp.sh from Cloud Shell."
         echo "=========================================================="
-        if [ "$LOGIN_CODE" != "200" ]; then
-          echo "::warning::admin login check returned ${LOGIN_CODE} — verify manually"
+        if [ "$$LOGIN_CODE" != "200" ]; then
+          echo "::warning::admin login check returned $$LOGIN_CODE — verify manually"
         fi
 
   - id: report
@@ -201,9 +218,9 @@ steps:
     args:
       - -ceu
       - |
-        echo "AEON deployed from commit ${COMMIT_SHA:0:7}"
-        echo "Backend:  $(gcloud run services describe ${_BACKEND_SERVICE} --region ${_REGION} --format='value(status.url)')"
-        echo "Frontend: $(gcloud run services describe ${_FRONTEND_SERVICE} --region ${_REGION} --format='value(status.url)')"
+        echo "AEON deployed from commit ${COMMIT_SHA}"
+        echo "Backend:  $$(gcloud run services describe ${_BACKEND_SERVICE} --region ${_REGION} --format='value(status.url)')"
+        echo "Frontend: $$(gcloud run services describe ${_FRONTEND_SERVICE} --region ${_REGION} --format='value(status.url)')"
 
 images:
   - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/aeon-backend:$COMMIT_SHA
