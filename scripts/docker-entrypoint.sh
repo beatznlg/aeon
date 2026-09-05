@@ -13,15 +13,33 @@ echo "=== AEON OS Backend Entrypoint ==="
 # ── Wait for Postgres ───────────────────────────────────────────────────────
 DB_URL="${AEON_DATABASE_URL:-}"
 if [ -n "$DB_URL" ]; then
-    # Extract host:port from database URL
-    DB_HOST=$(echo "$DB_URL" | sed -n 's/.*@\([^:/]*\).*/\1/p')
-    DB_PORT=$(echo "$DB_URL" | sed -n 's/.*@[^:/]*:\([0-9]*\).*/\1/p')
-    DB_HOST="${DB_HOST:-postgres}"
-    DB_PORT="${DB_PORT:-5432}"
+    # Cloud Run + Cloud SQL uses a Unix socket in /cloudsql.
+    # psycopg2 reads this from the host= query parameter in AEON_DATABASE_URL.
+    DB_SOCKET=$(echo "$DB_URL" | sed -n 's/.*[?&]host=\([^&]*\).*/\1/p')
 
-    echo "Waiting for Postgres at $DB_HOST:$DB_PORT ..."
-    for i in $(seq 1 30); do
-        if python3 -c "
+    if [[ "$DB_SOCKET" == /cloudsql/* ]]; then
+        echo "Waiting for Cloud SQL socket at $DB_SOCKET ..."
+        for i in $(seq 1 30); do
+            if [ -S "$DB_SOCKET/.s.PGSQL.5432" ]; then
+                echo "Cloud SQL socket is ready!"
+                break
+            fi
+            if [ "$i" -eq 30 ]; then
+                echo "ERROR: Cloud SQL socket did not become ready in time"
+                exit 1
+            fi
+            sleep 2
+        done
+    else
+        # TCP Postgres fallback for local/dev environments.
+        DB_HOST=$(echo "$DB_URL" | sed -n 's/.*@\([^:/]*\).*/\1/p')
+        DB_PORT=$(echo "$DB_URL" | sed -n 's/.*@[^:/]*:\([0-9]*\).*/\1/p')
+        DB_HOST="${DB_HOST:-postgres}"
+        DB_PORT="${DB_PORT:-5432}"
+
+        echo "Waiting for Postgres at $DB_HOST:$DB_PORT ..."
+        for i in $(seq 1 30); do
+            if python3 -c "
 import socket, sys
 try:
     s = socket.create_connection(('$DB_HOST', $DB_PORT), timeout=2)
@@ -30,15 +48,16 @@ try:
 except Exception:
     sys.exit(1)
 " 2>/dev/null; then
-            echo "Postgres is ready!"
-            break
-        fi
-        if [ "$i" -eq 30 ]; then
-            echo "ERROR: Postgres did not become ready in time"
-            exit 1
-        fi
-        sleep 2
-    done
+                echo "Postgres is ready!"
+                break
+            fi
+            if [ "$i" -eq 30 ]; then
+                echo "ERROR: Postgres did not become ready in time"
+                exit 1
+            fi
+            sleep 2
+        done
+    fi
 
     # ── Run ordered DB migrations ───────────────────────────────────────
     echo "Running database migrations..."
